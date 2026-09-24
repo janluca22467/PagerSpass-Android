@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Klartext nur für die Entwicklungsmaschine.
+
+    Android verbietet seit API 28 unverschlüsseltes HTTP. Das ist richtig so und
+    bleibt für alles, was nach draußen geht: `pagerspass.de` und
+    `beta.pagerspass.de` sprechen HTTPS, und diese Datei ändert daran nichts.
+
+    Die beiden Ausnahmen sind die lokale API beim Entwickeln. `localhost` gilt
+    zusammen mit `adb reverse tcp:5473 tcp:5473` — das ist der Weg, der auf
+    dieser Maschine funktioniert; `10.0.2.2` (der Wirt aus Sicht des Emulators)
+    steht daneben, weil er auf anderen Maschinen der übliche ist.
+
+    <b>Warum die Ausnahme nicht auf den Debug-Bau beschränkt ist.</b> Sie ist es
+    faktisch: Beide Namen zeigen auf das Gerät selbst bzw. den Emulator-Wirt und
+    sind auf einem Telefon im Feld nicht erreichbar. Eine zweite Manifest-Fassung
+    für den Debug-Bau wäre eine Datei mehr, die auseinanderlaufen kann, ohne dass
+    ein Nutzer etwas davon hätte.
+-->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">localhost</domain>
+        <domain includeSubdomains="false">10.0.2.2</domain>
+    </domain-config>
+</network-security-config>

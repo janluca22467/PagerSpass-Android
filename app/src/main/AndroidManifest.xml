@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!--
+        Die App spricht dieselbe API wie das Web. Ohne diese Zeile scheitert jede
+        Anfrage mit einer SecurityException, und zwar erst zur Laufzeit.
+    -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!--
+        Der Melder als Systemmeldung — ab Android 13 eine eigene Berechtigung,
+        die zusätzlich zur Laufzeitabfrage hier angemeldet sein muss. Ohne
+        diese Zeile erscheint der Berechtigungsdialog nie und `pm grant`
+        scheitert still: Die App fragt, das System kennt die Frage nicht.
+    -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!--
+        Der Sprechfunk — die Sprechtaste holt die Laufzeit-Berechtigung beim
+        ersten Druck. Der Funk als Text geht auch ohne.
+    -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
+    <!--
+        Der QR-Code des mobilen Begleiters. Die Kopplungsseite holt die
+        Laufzeit-Berechtigung beim ersten Öffnen des Suchers; wer sie ablehnt,
+        setzt stattdessen den kopierten Link ein.
+    -->
+    <uses-permission android:name="android.permission.CAMERA" />
+
+    <!--
+        Ausdrücklich nicht erforderlich: Ohne Kamera fehlt nur der Sucher, nicht
+        die App. Ohne diese Zeile schlösse Google Play jedes Gerät ohne Kamera
+        aus — `uses-permission CAMERA` setzt sonst stillschweigend eine
+        `uses-feature`-Anforderung.
+    -->
+    <uses-feature android:name="android.hardware.camera.any" android:required="false" />
+
+    <application
+        android:allowBackup="true"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:networkSecurityConfig="@xml/netzwerk"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.PagerSpass">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:theme="@style/Theme.PagerSpass"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+
+</manifest>

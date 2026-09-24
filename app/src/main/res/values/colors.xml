@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Hier steht genau eine Farbe, und sie ist eine Abschrift.
+
+    Das Erscheinungsbild der App liegt vollständig in Kotlin (ui/theme/Farben.kt) —
+    eine zweite Fassung in XML wäre ab dem ersten Tag eine Fassung, die ausschert.
+    Was das System aber braucht, bevor Compose überhaupt zeichnet, kann nicht in
+    Kotlin stehen: die Fensterfarbe, die zwischen dem Antippen des Symbols und dem
+    ersten gezeichneten Bild zu sehen ist.
+
+    Vorher stand hier die helle Vorlagenfarbe, und die App blitzte bei jedem
+    Kaltstart weiß auf, bevor der dunkle Leitstellenarbeitsplatz kam.
+
+    Wer `Farben.Bg` ändert, muss diese Zeile mitändern. Das ist der Preis dafür,
+    dass das System vor Compose an der Reihe ist.
+-->
+<resources>
+    <color name="fenstergrund">#FF080B10</color>
+</resources>

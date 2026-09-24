@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Das Fenster, bevor Compose zeichnet.
+
+    Drei Zeilen, und jede hat einen Grund:
+
+    * `Theme.Material.NoActionBar` statt `…Light.NoActionBar` — die helle Fassung
+      stand hier aus der Projektvorlage. Sie färbt nicht nur den Grund, sondern
+      auch die Symbole der Systemleisten nach hell.
+    * `windowBackground` auf den Seitengrund — das ist die Fläche zwischen dem
+      Antippen des Symbols und dem ersten gezeichneten Bild. Weiß blitzte dort
+      bei jedem Kaltstart auf.
+    * Beide Systemleisten durchsichtig, damit der Grund der Seite unter Uhr und
+      Wischstreifen durchläuft. Ihre Symbole stellt `enableEdgeToEdge` in
+      MainActivity auf dunkel; hier steht nur die Fläche.
+-->
+<resources>
+
+    <style name="Theme.PagerSpass" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/fenstergrund</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+</resources>

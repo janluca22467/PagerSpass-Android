@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Das Programmsymbol: die drei sendenden Balken.
+
+    Dasselbe Zeichen wie über der Anmeldung, im Startbildschirm und im Web —
+    wer es dort gesehen hat, erkennt die App im Launcher wieder. Die Balken
+    sitzen in der sicheren Zone des adaptiven Symbols (66 dp um die Mitte);
+    was ein Launcher rund oder eckig maskiert, schneidet nie in sie hinein.
+
+    Die Höhen 24/50/34 sind die 9/19/13 des Sendezeichens, hochgerechnet —
+    der kurze Ausschlag eines Funkgeräts beim Sprechen, nicht die gleichmäßige
+    Treppe, die man zeichnen würde, wenn man nicht hinsähe.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FFB020"
+        android:pathData="M33 60 a5 5 0 0 1 5 -5 a5 5 0 0 1 5 5 v14 a5 5 0 0 1 -5 5 a5 5 0 0 1 -5 -5 z" />
+    <path
+        android:fillColor="#FFB020"
+        android:pathData="M49 34 a5 5 0 0 1 5 -5 a5 5 0 0 1 5 5 v40 a5 5 0 0 1 -5 5 a5 5 0 0 1 -5 -5 z" />
+    <path
+        android:fillColor="#FFB020"
+        android:pathData="M65 50 a5 5 0 0 1 5 -5 a5 5 0 0 1 5 5 v24 a5 5 0 0 1 -5 5 a5 5 0 0 1 -5 -5 z" />
+</vector>
