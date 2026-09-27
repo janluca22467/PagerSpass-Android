@@ -317,8 +317,15 @@ class Wachenspeicher(
      * Austreten. Danach gibt es nichts mehr zu zeigen — der lokale Stand fällt
      * mit. Der Hub erfährt es über den Anstoß des Servers.
      */
+    /**
+     * Wer die Wache verlässt, meldet das auch dem Sozial-Hub (`GemeinschaftVerlassen`),
+     * damit die Gruppe des Wachenchats ihn nicht weiter beliefert — wie im Web.
+     */
+    var beiVerlassen: ((String) -> Unit)? = null
+
     fun verlassen(id: String, danach: () -> Unit = {}) = mitMeldung(danach) { k ->
         wege.mitgliedEntfernen(k, id, k)
+        beiVerlassen?.invoke(id)
         Neuer.Raus
     }
 
@@ -350,6 +357,7 @@ class Wachenspeicher(
 
     fun aufloesen(id: String, danach: () -> Unit = {}) = mitMeldung(danach) { k ->
         wege.aufloesen(k, id)
+        beiVerlassen?.invoke(id)
         Neuer.Raus
     }
 

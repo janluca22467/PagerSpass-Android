@@ -167,6 +167,12 @@ data class Freund(
     val wappenfarbe: Int = 0,
     val profilrahmen: String = "keiner",
     val kopfmuster: String = "keines",
+    // Freunde (Sozial-Port): die Vorschauzeile der Gesprächsliste und der
+    // Wachentag vor dem Namen — `null`, solange nie geschrieben wurde.
+    val letzteNachricht: String? = null,
+    val letzteNachrichtVonMir: Boolean = false,
+    val letzteNachrichtUm: String? = null,
+    val wachentag: String? = null,
 ) {
     /** Steht diese Freundschaft, oder ist sie noch eine Anfrage? */
     val bestaetigt: Boolean get() = stand.equals("Bestaetigt", true)
@@ -421,6 +427,16 @@ data class Profil(
     val kopfmuster: String = "keines",
     val profilbild: String? = null,
     val titel: String? = null,
+    // Freunde (Sozial-Port): was das fremde Profil zusätzlich braucht. `stand`
+    // und `vonMir` sagen, wie man zueinander steht; `standardsichtbarkeit` steht
+    // nur im eigenen Profil und ist die Vorgabe des Verfassen-Felds am Brett.
+    val vitrine: List<VitrinenAbzeichen> = emptyList(),
+    val gemeinschaftId: String? = null,
+    val stand: String? = null,
+    val vonMir: Boolean = false,
+    val standardsichtbarkeit: String? = null,
+    val kartenausschnitt: Kartenausschnitt? = null,
+    val wachentag: String? = null,
 )
 
 /**
@@ -610,6 +626,8 @@ data class BrettVerfasser(
     val profilbild: String? = null,
     val premium: Boolean = false,
     val teammitglied: Boolean = false,
+    /** Freunde (Sozial-Port): der Tag der Wache vor dem Namen. */
+    val wachentag: String? = null,
 )
 
 /**
