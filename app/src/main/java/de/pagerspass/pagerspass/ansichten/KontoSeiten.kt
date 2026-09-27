@@ -600,7 +600,8 @@ private fun Emailkarte(wege: Kontowege, konto: Konto) {
                 titel = "Adresse",
                 unter = pf?.email ?: "Keine hinterlegt",
                 mono = true,
-                zweiteZeile = pf?.email?.let { if (pf.bestaetigt) "Bestätigt" else "Noch nicht bestätigt" },
+                zweiteZeile = pf?.takeIf { it.email != null }
+                    ?.let { if (it.bestaetigt) "Bestätigt" else "Noch nicht bestätigt" },
                 unterFarbe = if (pf?.bestaetigt == true) Farben.GruenHell else Farben.SignalHell,
             ) {
                 Knopf(if (pf?.email != null) "Ändern" else "Hinzufügen", { umschalten("email") }, kompakt = true)

@@ -698,13 +698,19 @@ private fun Meldereiter(
     Column(verticalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
         Melderkatalog.BAUFORMEN.forEach { b ->
             val frei = if (b.premium) premium else stufe >= b.abLevel
-            Pille(
-                aufschrift = (if (b.premium) "★ " else "") + b.name + " — " + b.erklaerung +
-                    if (!frei && !b.premium) " · ab St. ${b.abLevel}" else "",
-                an = bauform == b.id,
-                beiDruck = { bereich.launch { ablage.melderBauformSetzen(b.id) } },
-                aktiv = frei,
-            )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(Abstand.Normal),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Pille(
+                    aufschrift = (if (b.premium) "★ " else "") + b.name +
+                        if (!frei && !b.premium) " · ab St. ${b.abLevel}" else "",
+                    an = bauform == b.id,
+                    beiDruck = { bereich.launch { ablage.melderBauformSetzen(b.id) } },
+                    aktiv = frei,
+                )
+                SehrLeise(b.erklaerung, modifier = Modifier.weight(1f))
+            }
         }
     }
     SehrLeise(

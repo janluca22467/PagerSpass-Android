@@ -51,7 +51,7 @@ object Einsprung {
     fun aufnehmen(absicht: Intent?) {
         absicht ?: return
         val route = absicht.getStringExtra(ZIEL)?.trim()?.trimStart('/')?.takeIf { it.isNotBlank() }
-            ?: absicht.data?.let(::routeAus)
+            ?: absicht.data?.let { routeAus(it) }
             ?: return
         _ziel.value = route
     }
@@ -120,7 +120,8 @@ object Einsprung {
     fun routeAus(adresse: Uri): String? {
         val schema = adresse.scheme?.lowercase()
         if (schema != "https" && schema != "http") return null
-        if (adresse.host?.lowercase() !in HOSTS) return null
+        val host = adresse.host?.lowercase() ?: return null
+        if (host !in HOSTS) return null
         return routeAusPfad(adresse.path.orEmpty(), abfrage(adresse))
     }
 
@@ -225,7 +226,8 @@ object Einsprung {
 
     /**
      * Die Rückkehr von Kasse und Abo-Verwaltung: `/konto?premium=erfolg&session_id=…`.
-     * Die Kontoseite liest beides aus ihrer Route (siehe `mobil/Kontobereich.kt`).
+     * `EinsprungFolgen` legt beides in [premiumRueckkehr] und öffnet die Kontozentrale
+     * (siehe `mobil/Kontobereich.kt`); die Route `konto` selbst trägt keine Argumente.
      */
     private fun kontoRoute(abfrage: Map<String, String>): String {
         val premium = abfrage["premium"]?.takeIf { it.isNotBlank() } ?: return "konto"

@@ -60,7 +60,7 @@ import kotlinx.coroutines.withContext
  * Die Rechtstexte in der App — und die Dialoge, die an ihnen hängen.
  *
  * <b>Die Texte liegen im Paket und nicht im Netz.</b> Sie stehen unter
- * `assets/recht/*.md`, erzeugt aus `web/src/recht/rechtstexte.ts`. Der Grund ist
+ * `assets/recht/` (je Seite eine `.md`), erzeugt aus `web/src/recht/rechtstexte.ts`. Der Grund ist
  * derselbe, aus dem das Web sie beim Bauen hineinnimmt: Der Text gehört zu der
  * Fassung, der jemand zustimmt, und darf sich nicht hinter dem Rücken der App
  * ändern — und er muss ohne Netz und ohne Anmeldung lesbar sein.
@@ -622,8 +622,8 @@ fun EmailPflichtblende(
  *         frage = f,
  *         wege = sitzung.kontowege,
  *         kennung = konto.kennung,
- *         beiEingewilligt = { /* Beitritt wiederholen oder StreamerfreigabeNachtragen */ },
- *         beiAbgelehnt = { /* Frage vergessen — wer schon saß, verlässt die Runde */ },
+ *         beiEingewilligt = { runde.beitreten(code, name) },   // oder: StreamerfreigabeNachtragen
+ *         beiAbgelehnt = { frage = null },                     // wer schon saß: runde.verlassen()
  *     )
  * }
  * ```
