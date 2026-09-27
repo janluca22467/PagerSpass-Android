@@ -75,6 +75,19 @@ data class Konto(
     val merkmal: String? = null,
     /** Nur bei der Kontoanlage — und nur dieses eine Mal. */
     val wiederherstellungscode: String? = null,
+    // ------------------------------------------------------ Bereich Konto
+    /** `Free`, `Active`, `PastDue` oder `Canceled` — der Zustand des Abos. */
+    val premiumStatus: String = "Free",
+    /** `None`, `Monthly` oder `Yearly`. */
+    val premiumPlan: String = "None",
+    /** Der Tag der Wache — steht wie der Haken vor dem Namen. */
+    val wachentag: String? = null,
+    /**
+     * Ob an diesem Konto noch keine E-Mail-Adresse steht — dann legt sich die
+     * Pflichtblende über alles, bis eine eingetragen ist. Ein älterer Server
+     * kennt das Feld nicht; dann gilt: nichts zu tun.
+     */
+    val emailFehlt: Boolean = false,
 ) {
     /**
      * Wie weit die aktuelle Stufe gefüllt ist, zwischen 0 und 1.

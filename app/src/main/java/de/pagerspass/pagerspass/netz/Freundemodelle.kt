@@ -68,19 +68,6 @@ data class VitrinenAbzeichen(
     val kategorie: String = "",
 )
 
-/**
- * Der Kartenausschnitt hinter einem Profilkopf — das Abo-Muster „Eigene Lage".
- *
- * Der Server schickt ihn nur mit, wenn er auch gezeichnet werden darf, oder auf
- * dem eigenen Profil. `zoom` ist eine ganze Stufe zwischen 4 und 14.
- */
-@Serializable
-data class Kartenausschnitt(
-    val lat: Double = 0.0,
-    val lon: Double = 0.0,
-    val zoom: Int = 6,
-)
-
 /** Die Antwort auf eine Quittung: steht sie jetzt, und wie viele sind es. */
 @Serializable
 data class Quittungsstand(

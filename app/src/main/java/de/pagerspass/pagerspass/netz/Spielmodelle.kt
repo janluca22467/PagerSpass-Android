@@ -344,6 +344,9 @@ data class Landkreis(
     val art: String = "",
     // Übungen: die Träger mit Wachen im Kreis — leer heißt „alle" (siehe traegerImKreis).
     val hiOrgs: List<String> = emptyList(),
+    // Bereich Konto: der Kreisort, für „Zu einem Kreis springen" in der Kartenwahl.
+    val lat: Double = 0.0,
+    val lon: Double = 0.0,
 ) {
     /**
      * Wie der Kreis in der Liste steht.
@@ -473,6 +476,11 @@ data class Profilaenderung(
     val profilrahmen: String? = null,
     val kopfmuster: String? = null,
     val titel: String? = null,
+    // ------------------------------------------------------ Bereich Konto
+    /** `Freunde`, `Wache` oder `Oeffentlich`. */
+    val standardsichtbarkeit: String? = null,
+    /** Nur mitschicken, wenn das Kartenmuster gewählt ist — sonst weist der Server ab. */
+    val kartenausschnitt: Kartenausschnitt? = null,
 )
 
 /**

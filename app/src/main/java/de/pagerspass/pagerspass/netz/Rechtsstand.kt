@@ -27,18 +27,18 @@ package de.pagerspass.pagerspass.netz
  * die Web-Fassung stand schon auf `2026-09-15b`, diese hier noch auf
  * `2026-09-15`.
  *
- * <b>Was noch aussteht.</b> Die App zeigt die Texte bisher nicht selbst; die
- * Wege im Konto und im Fuß der Anmeldung führen an den Browser. Für die
- * Veröffentlichung reicht das nicht: Die Texte beschreiben derzeit nur die
- * Web-Anwendung und erfassen die App formal nicht (siehe `doku/app/android-app.md`,
- * Blocker 4).
+ * <b>Die App zeigt die Texte selbst.</b> Sie liegen als Markdown unter
+ * `assets/recht/` — erzeugt aus `web/src/recht/rechtstexte.ts` (dort stehen sie als
+ * Zeichenketten mit eingesetzten Angaben) und `web/src/recht/datenverarbeitung.md`.
+ * Wer eine neue Fassung setzt, erzeugt die Dateien neu und zieht `AKTUELL` und
+ * `ANSAGE` hier mit; gesetzt werden sie von `ansichten/RechtSeiten.kt`.
  */
 object Rechtsstand {
     /** Muss zeichengleich `RECHTSSTAND` in `web/src/recht/rechtstexte.ts` sein. */
-    const val AKTUELL = "2026-09-24"
+    const val AKTUELL = "2026-09-25"
 
     /** Wie der Stand in einer Fußzeile heißt. */
-    const val ANSAGE = "Stand: 24. September 2026 (Fassung $AKTUELL)"
+    const val ANSAGE = "Stand: 25. September 2026 (Fassung $AKTUELL)"
 
     /**
      * Ist diesem Konto die aktuelle Fassung noch vorzulegen?
@@ -48,7 +48,7 @@ object Rechtsstand {
      */
     fun vorzulegen(stand: String?): Boolean = stand == null || stand < AKTUELL
 
-    /** Wo die Texte im Web stehen. Von dort holt sie auch die App. */
+    /** Wo die Texte im Web stehen — für „im Browser öffnen" und zum Teilen. */
     fun adresse(server: String, seite: String) = "$server/recht/$seite"
 
     /** Die vier Texte, die an der Anmeldung hängen. */
@@ -56,4 +56,29 @@ object Rechtsstand {
     const val NUTZUNGSBEDINGUNGEN = "nutzungsbedingungen"
     const val DATENSCHUTZ = "datenschutz"
     const val IMPRESSUM = "impressum"
+
+    /** Die Einwilligung in die Übertragung einer Schicht, als lesbare Seite. */
+    const val UEBERTRAGUNG = "uebertragung"
+
+    /** Die Seiten, die es gibt — mit ihrem Titel (`RECHTSTEXTE` in `rechtstexte.ts`). */
+    val TITEL: Map<String, String> = linkedMapOf(
+        NUTZUNGSBEDINGUNGEN to "Nutzungsbedingungen",
+        AGB to "Allgemeine Geschäftsbedingungen",
+        DATENSCHUTZ to "Datenschutzerklärung",
+        IMPRESSUM to "Impressum",
+        UEBERTRAGUNG to "Übertragung einer Schicht",
+    )
+
+    /**
+     * Fassung des Einwilligungstextes zur Übertragung — der Spiegel von
+     * `UEBERTRAGUNG_FASSUNG` im Web und `Streamingrecht.Fassung` am Server. Sie
+     * geht beim Erteilen mit; stimmt sie nicht, weist der Server ab.
+     */
+    const val UEBERTRAGUNG_FASSUNG = "2026-09-15"
+
+    /** Ab diesem Alter willigt man allein in eine Übertragung ein. */
+    const val MINDESTALTER_EINWILLIGUNG = 18
+
+    /** Die Support-Adresse — `SUPPORT_EMAIL` im Web. */
+    const val SUPPORT_EMAIL = "support@pagerspass.de"
 }
