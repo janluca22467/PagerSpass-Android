@@ -7,6 +7,7 @@ import de.pagerspass.pagerspass.netz.Ablage
 import de.pagerspass.pagerspass.netz.Alarmmeldung
 import de.pagerspass.pagerspass.netz.Begleiterbeitritt
 import de.pagerspass.pagerspass.netz.Begleitergeraete
+import de.pagerspass.pagerspass.netz.Einzelruf
 import de.pagerspass.pagerspass.netz.Funkgruppe
 import de.pagerspass.pagerspass.netz.Funkverbindung
 import de.pagerspass.pagerspass.netz.Funkzeile
@@ -67,6 +68,27 @@ class Begleiter(anwendung: Application) : AndroidViewModel(anwendung) {
     private var funklimit: Job? = null
 
     /**
+     * Der Hörer des Einzelrufs — ein eigener Lautsprecher, damit Funk und
+     * Telefonat sich nicht denselben Abspielpuffer teilen.
+     */
+    private val einzelrufLautsprecher = Lautsprecher()
+
+    /**
+     * Für welchen Ruf das Mikrofon gerade offen ist. Die Ruf-Id und nicht nur ein
+     * Ja/Nein: Endet ein Gespräch und beginnt im selben Zustand ein neues
+     * (auflegen, sofort zurückrufen), sähe ein bloßes „läuft" keinen Wechsel.
+     */
+    @Volatile
+    private var einzelrufMikroFuer: String? = null
+
+    /** Ob gerade eine Äußerung an eine Bot-Besatzung aufgenommen wird. */
+    @Volatile
+    private var amEinzelrufSprechen = false
+
+    /** Die Toneinstellungen überleben den Neustart — wie im Web im Melder-Speicher. */
+    private val tonablage = anwendung.getSharedPreferences("pagerspass-begleiter-ton", 0)
+
+    /**
      * Ob die Begleiteransicht gerade im Vordergrund liegt.
      *
      * Der Wert muss die Verbindung überleben: Nach einem Netzabriss besitzt der
@@ -90,6 +112,9 @@ class Begleiter(anwendung: Application) : AndroidViewModel(anwendung) {
     var beiAlarm: ((Alarmmeldung) -> Unit)? = null
 
     init {
+        _stand.update { mitTon(it) }
+        pegelAnwenden()
+
         draht.beiLage = { lage ->
             _stand.update { it.copy(lage = lage) }
 
@@ -162,7 +187,7 @@ class Begleiter(anwendung: Application) : AndroidViewModel(anwendung) {
                 }.getOrNull()
             } ?: return@auf
 
-            _stand.update { it.copy(geraete = geraete) }
+            geraeteUebernehmen(geraete)
         }
 
         // ------------------------------------------------------- Sprechfunk
@@ -199,6 +224,38 @@ class Begleiter(anwendung: Application) : AndroidViewModel(anwendung) {
             val erkannt = argumente.firstOrNull()?.let { text(it) }
             _stand.update { it.copy(wirdVerstanden = false) }
             if (!erkannt.isNullOrBlank()) funken(erkannt)
+        }
+
+        // -------------------------------------------------------- Einzelruf
+        //
+        // Nur die Gegenstelle des eigenen laufenden Gesprächs kommt durch — ein
+        // spätes Paket eines eben beendeten Rufs soll nicht ins nächste Gespräch
+        // hineinsprechen. Der Server schickt an Rechner *und* Handy eines Platzes;
+        // gespielt wird nur dort, wo der Einzelruf stattfindet (`einzelrufHier`).
+        draht.auf("EinzelrufAudio") { argumente ->
+            val von = argumente.getOrNull(0)?.let { text(it) } ?: return@auf
+            val paket = argumente.getOrNull(1)?.let { text(it) } ?: return@auf
+            val s = _stand.value
+            val ruf = s.eigenerEinzelruf ?: return@auf
+            val gegenstelle = if (ruf.vonPlayerId == s.spielerId) ruf.angenommenVonPlayerId else ruf.vonPlayerId
+            if (von != gegenstelle) return@auf
+            einzelrufLautsprecher.abspielen(paket)
+        }
+
+        // Was der Server aus der Äußerung an eine Bot-Besatzung verstanden hat.
+        draht.auf("EinzelrufErkannt") { argumente ->
+            val rufId = argumente.getOrNull(0)?.let { text(it) }
+            val erkannt = argumente.getOrNull(1)?.let { text(it) }
+            _stand.update { it.copy(einzelrufErkennung = false) }
+
+            if (erkannt.isNullOrBlank()) {
+                _stand.update { it.copy(funkhinweis = "Nichts verstanden — der Satz wurde nicht gesagt.") }
+                return@auf
+            }
+            // Wer inzwischen aufgelegt hat, darf seinen letzten Satz nicht im
+            // nächsten Gespräch wiederfinden.
+            if (rufId == null || rufId != _stand.value.laufenderEinzelruf?.id) return@auf
+            einzelrufSagen(rufId, erkannt)
         }
     }
 
@@ -240,7 +297,7 @@ class Begleiter(anwendung: Application) : AndroidViewModel(anwendung) {
             return@launch
         }
 
-        _stand.update { Begleiterstand(token = token, laeuft = true) }
+        _stand.update { mitTon(Begleiterstand(token = token, laeuft = true)) }
 
         runCatching {
             draht.verbinden()
@@ -248,7 +305,7 @@ class Begleiter(anwendung: Application) : AndroidViewModel(anwendung) {
         }.onFailure { f ->
             draht.trennen()
             _stand.update {
-                Begleiterstand(fehler = f.message ?: "Die Kopplung ist fehlgeschlagen.")
+                mitTon(Begleiterstand(fehler = f.message ?: "Die Kopplung ist fehlgeschlagen."))
             }
         }
         _stand.update { it.copy(laeuft = false) }
@@ -276,7 +333,7 @@ class Begleiter(anwendung: Application) : AndroidViewModel(anwendung) {
         }.onFailure {
             ablage.begleiterMerken(null)
             draht.trennen()
-            _stand.update { Begleiterstand() }
+            _stand.update { mitTon(Begleiterstand()) }
         }
     }
 
@@ -302,11 +359,12 @@ class Begleiter(anwendung: Application) : AndroidViewModel(anwendung) {
                 raum = ergebnis.state,
                 spielerId = ergebnis.playerId.orEmpty(),
                 name = ergebnis.name.orEmpty(),
-                geraete = ergebnis.geraete ?: it.geraete,
                 funk = ergebnis.state.funkprotokoll,
                 fehler = null,
             )
         }
+        ergebnis.geraete?.let { geraeteUebernehmen(it) }
+        einzelrufNachziehen()
 
         ablage.begleiterMerken(token)
 
@@ -336,11 +394,12 @@ class Begleiter(anwendung: Application) : AndroidViewModel(anwendung) {
     /** Die Kopplung lösen — der Rechner bekommt Funk und Melder zurück. */
     fun trennen() = viewModelScope.launch {
         sprechenAbbrechen()
+        einzelrufAufraeumen()
         lautsprecher.schliessen()
         runCatching { draht.rufen("Leave") }
         draht.trennen()
         ablage.begleiterMerken(null)
-        _stand.value = Begleiterstand()
+        _stand.value = mitTon(Begleiterstand())
     }
 
     fun fehlerWegnehmen() = _stand.update { it.copy(fehler = null) }
@@ -418,6 +477,11 @@ class Begleiter(anwendung: Application) : AndroidViewModel(anwendung) {
         val jetzt = System.currentTimeMillis()
         val s = _stand.value
         if (s.sendet) return true
+        // Ein Mikrofon, zwei Wege: Wer telefoniert, funkt nicht zugleich.
+        if (einzelrufMikroFuer != null || amEinzelrufSprechen) {
+            _stand.update { it.copy(funkhinweis = "Im Einzelruf — erst auflegen, dann funken.") }
+            return false
+        }
         if (s.sprecher.isNotEmpty()) {
             _stand.update {
                 it.copy(funkhinweis = "Kanal belegt – ${s.sprecher.values.first()} spricht.")
@@ -490,10 +554,11 @@ class Begleiter(anwendung: Application) : AndroidViewModel(anwendung) {
     /** Die Kopplung ist zu Ende — mit einem Satz, der erklärt, warum. */
     private fun beenden(grund: String) = viewModelScope.launch {
         sprechenAbbrechen()
+        einzelrufAufraeumen()
         lautsprecher.schliessen()
         draht.trennen()
         ablage.begleiterMerken(null)
-        _stand.value = Begleiterstand(fehler = grund)
+        _stand.value = mitTon(Begleiterstand(fehler = grund))
     }
 
     private fun setzen(roh: JsonElement) {
@@ -502,6 +567,7 @@ class Begleiter(anwendung: Application) : AndroidViewModel(anwendung) {
         }.getOrNull() ?: return
 
         _stand.update { it.copy(raum = raum, funk = raum.funkprotokoll) }
+        einzelrufNachziehen()
     }
 
     private fun text(roh: JsonElement): String? = (roh as? JsonPrimitive)?.content
@@ -513,6 +579,169 @@ class Begleiter(anwendung: Application) : AndroidViewModel(anwendung) {
         super.onCleared()
         mikrofon.stoppen()
         lautsprecher.schliessen()
+        einzelrufLautsprecher.schliessen()
+    }
+
+    // ----------------------------------------------------- Der Gerätestand
+
+    /**
+     * Den gespiegelten Gerätestand übernehmen — samt der Wahl, was der Begleiter
+     * zeigt, und ob er der Funkplatz ist.
+     *
+     * Nur echte Angaben zählen: `null` kommt von einem Rechner, der die Wahl noch
+     * nicht kannte, und lässt stehen, was hier gilt.
+     */
+    private fun geraeteUebernehmen(g: Begleitergeraete) {
+        _stand.update {
+            it.copy(
+                geraete = g,
+                zeigtMelder = g.zeigtMelder ?: it.zeigtMelder,
+                zeigtFunkgeraet = g.zeigtFunkgeraet ?: it.zeigtFunkgeraet,
+                zeigtFunkchat = g.zeigtFunkchat ?: it.zeigtFunkchat,
+                istFunkplatz = g.funkAusgelagert ?: it.istFunkplatz,
+            )
+        }
+        einzelrufNachziehen()
+    }
+
+    // ------------------------------------------------------------ Einzelruf
+    //
+    // Das Telefonat über das Funkgerät. Die Vermittlung liegt am Server
+    // (`GameRoom.Einzelrufe`); hier stehen nur die Handgriffe — und dass das
+    // Mikrofon dem Gespräch folgt. Der Hub lässt sie vom Begleiter durch, solange
+    // das Handy der Funkplatz ist (`GameHub.Mit`).
+
+    fun einzelrufStarten(zielVehicleId: String?) {
+        draht.rufen("EinzelrufStarten", zielVehicleId?.let { wert(it) } ?: JsonNull)
+    }
+
+    fun einzelrufAnnehmen(rufId: String) = draht.rufen("EinzelrufAnnehmen", wert(rufId))
+
+    fun einzelrufAbweisen(rufId: String) = draht.rufen("EinzelrufAbweisen", wert(rufId))
+
+    fun einzelrufBeenden(rufId: String) = draht.rufen("EinzelrufBeenden", wert(rufId))
+
+    /** Ein Satz ins Gespräch — nur mit einer Bot-Besatzung; zwischen Menschen trägt die Leitung Stimme. */
+    fun einzelrufSagen(rufId: String, text: String) {
+        if (text.isBlank()) return
+        draht.rufen("EinzelrufSagen", wert(rufId), wert(text.trim()))
+    }
+
+    /** Der Ruhe-Schalter des Platzes — die Leitstelle kommt immer durch. */
+    fun einzelrufZulassen(zulassen: Boolean) = draht.rufen("EinzelrufZulassenSetzen", wert(zulassen))
+
+    /**
+     * Eine Äußerung an eine Bot-Besatzung beginnen — die rastende Taste der Leiste.
+     *
+     * Am anderen Ende hört niemand zu: Der Server schneidet mit und schickt den
+     * erkannten Satz als `EinzelrufErkannt` zurück.
+     *
+     * @return false, wenn das Mikrofon nicht zu bekommen war.
+     */
+    fun einzelrufSprechenStarten(): Boolean {
+        if (amEinzelrufSprechen) return true
+        if (_stand.value.sendet) return false
+
+        val los = mikrofon.starten { paket -> draht.rufen("EinzelrufAudio", wert(paket)) }
+        if (!los) {
+            _stand.update { it.copy(funkhinweis = "Das Mikrofon war nicht zu bekommen.") }
+            return false
+        }
+        amEinzelrufSprechen = true
+        draht.rufen("EinzelrufSprechenStarten")
+        _stand.update { it.copy(einzelrufHoert = true) }
+        return true
+    }
+
+    fun einzelrufSprechenBeenden(rufId: String) {
+        if (!amEinzelrufSprechen) return
+        amEinzelrufSprechen = false
+        mikrofon.stoppen()
+        _stand.update { it.copy(einzelrufHoert = false) }
+
+        bereich.launch {
+            val antwort = runCatching { draht.frage("EinzelrufSprechenBeenden", wert(rufId)) }.getOrNull()
+            if ((antwort as? JsonPrimitive)?.content == "true") {
+                _stand.update { it.copy(einzelrufErkennung = true) }
+            }
+        }
+    }
+
+    /**
+     * Das Mikrofon folgt dem Gespräch — vollduplex, also ohne Sprechtaste: Es geht
+     * mit der Annahme an und mit dem Auflegen aus.
+     *
+     * Mit einer Bot-Besatzung bleibt es zu: Am anderen Ende hört niemand zu; dort
+     * öffnet die rastende Taste der Leiste das Mikrofon für eine Äußerung.
+     */
+    private fun einzelrufNachziehen() {
+        val s = _stand.value
+        val ruf = s.eigenerEinzelruf
+
+        if (ruf != null && einzelrufMikroFuer != ruf.id) {
+            einzelrufMikroFuer = ruf.id
+            if (ruf.mitBot) return
+
+            // Wer gerade funkt, hört damit auf — ein Mikrofon, ein Weg.
+            if (s.sendet) sprechenBeenden()
+            val los = mikrofon.starten { paket -> draht.rufen("EinzelrufAudio", wert(paket)) }
+            if (!los) _stand.update { it.copy(funkhinweis = "Das Mikrofon war nicht zu bekommen.") }
+            return
+        }
+
+        if (ruf == null && einzelrufMikroFuer != null) {
+            einzelrufAufraeumen()
+        }
+    }
+
+    /** Aufgelegt, beendet oder abgerissen — Mikrofon zu, Hörer leer. */
+    private fun einzelrufAufraeumen() {
+        if (einzelrufMikroFuer == null && !amEinzelrufSprechen) return
+        einzelrufMikroFuer = null
+        amEinzelrufSprechen = false
+        if (!_stand.value.sendet) mikrofon.stoppen()
+        // Was noch im Puffer liegt, gehört zu einem Gespräch, das es nicht mehr gibt.
+        einzelrufLautsprecher.schliessen()
+        _stand.update { it.copy(einzelrufHoert = false) }
+    }
+
+    // ------------------------------------------------------------ Tonregler
+
+    /**
+     * Lauter, leiser, still — der Tonregler im Kopf des Begleiters.
+     *
+     * Der Funkregler trägt wie im Web auch den Einzelruf; „stumm" nimmt alles weg
+     * außer dem Melder. Gespeichert wird am Gerät.
+     */
+    fun tonSetzen(funk: Float? = null, melder: Float? = null, stumm: Boolean? = null) {
+        _stand.update {
+            it.copy(
+                tonFunk = funk?.coerceIn(0f, 1f) ?: it.tonFunk,
+                tonMelder = melder?.coerceIn(0f, 1f) ?: it.tonMelder,
+                stumm = stumm ?: it.stumm,
+            )
+        }
+        val s = _stand.value
+        tonablage.edit()
+            .putFloat("funk", s.tonFunk)
+            .putFloat("melder", s.tonMelder)
+            .putBoolean("stumm", s.stumm)
+            .apply()
+        pegelAnwenden()
+    }
+
+    /** Ein neuer Stand trägt die Toneinstellungen weiter — sie gehören dem Gerät, nicht der Kopplung. */
+    private fun mitTon(neu: Begleiterstand): Begleiterstand = neu.copy(
+        tonFunk = tonablage.getFloat("funk", 1f),
+        tonMelder = tonablage.getFloat("melder", 0.9f),
+        stumm = tonablage.getBoolean("stumm", false),
+    )
+
+    private fun pegelAnwenden() {
+        val s = _stand.value
+        val funk = if (s.stumm) 0f else s.tonFunk
+        lautsprecher.lautstaerke(funk)
+        einzelrufLautsprecher.lautstaerke(funk)
     }
 }
 
@@ -559,7 +788,56 @@ data class Begleiterstand(
     val funkhinweis: String? = null,
     /** Ob der Server den Funkverkehr vorliest. */
     val vorlesen: Boolean = false,
+    /** Was der Begleiter zeigt — die Wahl vom Rechner (siehe `Begleitergeraete`). */
+    val zeigtMelder: Boolean = true,
+    val zeigtFunkgeraet: Boolean = true,
+    val zeigtFunkchat: Boolean = true,
+    /**
+     * Ob dieses Handy der Funkplatz ist — dann klingelt hier der Einzelruf. Vorgabe
+     * ja: Der Dialog am Rechner setzt den Haken beim Erzeugen des QR-Codes selbst.
+     */
+    val istFunkplatz: Boolean = true,
+    /** Ob gerade eine Äußerung an eine Bot-Besatzung aufgenommen wird. */
+    val einzelrufHoert: Boolean = false,
+    /** Ob der Server die letzte Äußerung gerade in Text übersetzt. */
+    val einzelrufErkennung: Boolean = false,
+    /** Der Funkregler, 0–1 — Stimmen und Einzelruf. */
+    val tonFunk: Float = 1f,
+    /** Der Melderregler, 0–1. */
+    val tonMelder: Float = 0.9f,
+    /** Alles außer dem Melder stumm. */
+    val stumm: Boolean = false,
 ) {
+    /** Ob an **diesem** Gerät der Einzelruf stattfindet — hier klingelt es, hier ist das Mikrofon. */
+    val einzelrufHier: Boolean get() = istFunkplatz
+
+    val einzelrufe: List<Einzelruf> get() = raum?.einzelrufe.orEmpty()
+
+    /** Klingelt es bei mir? Bei einem Leitstellenruf klingelt es an jedem Leitstellenplatz. */
+    val eingehenderEinzelruf: Einzelruf?
+        get() = einzelrufe.firstOrNull {
+            it.klingelt && (it.zielPlayerId == spielerId || (it.zielPlayerId == null && istLeitstelle))
+        }
+
+    /** Mein eigener Rufversuch, solange die Gegenstelle noch nicht abgenommen hat. */
+    val ausgehenderEinzelruf: Einzelruf?
+        get() = einzelrufe.firstOrNull { it.klingelt && it.vonPlayerId == spielerId }
+
+    /** Das laufende Gespräch, an dem dieser Platz beteiligt ist. */
+    val laufenderEinzelruf: Einzelruf?
+        get() = einzelrufe.firstOrNull {
+            it.laeuft && (it.vonPlayerId == spielerId || it.angenommenVonPlayerId == spielerId)
+        }
+
+    /** Das laufende Gespräch — nur an dem Gerät, an dem der Einzelruf stattfindet. */
+    val eigenerEinzelruf: Einzelruf? get() = if (einzelrufHier) laufenderEinzelruf else null
+
+    /** Der Ruhe-Schalter des Platzes, wie ihn der Server führt. */
+    val einzelrufZulassen: Boolean get() = spieler?.einzelrufZulassen ?: true
+
+    /** Der Melderregler als Lautstärke des Tongebers, 0–100. */
+    val melderpegel: Int get() = (tonMelder * 100).toInt().coerceIn(0, 100)
+
     val spieler get() = raum?.players?.firstOrNull { it.id == spielerId }
 
     val istLeitstelle: Boolean get() = spieler?.istLeitstelle == true
@@ -614,23 +892,36 @@ data class Begleiterstand(
  * am Rechner auch für ein Handy ohne App gedacht ist. Ein getippter oder
  * geteilter Token allein geht ebenso.
  *
- * <b>Geprüft wird nur die Form</b> — 64 Hexzeichen, wie sie
- * `BegleiterVerbindungen.Erzeugen` vergibt. Ob der Token gilt, weiß allein der
- * Server; hier geht es darum, einen versehentlich gescannten fremden QR-Code
- * (WLAN, Paketaufkleber) nicht als Kopplungsversuch an den Hub zu schicken.
+ * <b>Geprüft wird nur die Form</b> — dieselbe wie in `BegleiterScanView.vue`:
+ * mindestens sechzehn Hexzeichen, groß oder klein, hinter `/funk/`. Ob der
+ * Token gilt, weiß allein der Server; hier geht es darum, einen versehentlich
+ * gescannten fremden QR-Code (WLAN, Paketaufkleber) nicht als Kopplungsversuch
+ * an den Hub zu schicken. Bis hierher verlangte die App genau 64 Zeichen in
+ * Kleinschrift — ein von Hand gekürzter oder groß getippter Link, den das Web
+ * annahm, scheiterte am Handy.
  */
 fun tokenAus(eingabe: String): String? {
     val roh = eingabe.trim()
     if (roh.isEmpty()) return null
 
-    val stueck = roh
-        .substringBefore('?')
-        .substringBefore('#')
-        .trimEnd('/')
-        .substringAfterLast('/')
+    FUNKPFAD.find(roh)?.let { return it.groupValues[1] }
 
-    return stueck.takeIf { it.length == 64 && it.all { z -> z.isDigit() || z in 'a'..'f' } }
+    // Ein nackter Token, ohne Adresse davor.
+    return roh.takeIf { NACKTER_TOKEN.matches(it) }
 }
+
+private val FUNKPFAD = Regex("/funk/([0-9a-fA-F]{16,})")
+private val NACKTER_TOKEN = Regex("[0-9a-fA-F]{16,}")
+
+/**
+ * Den Begleiter über eine Adresse öffnen — `…/mobile/funk/<token>` oder den Token
+ * allein.
+ *
+ * Das ist die Stelle, an der ein Deep Link ankommt (siehe den Weg `funk/{token}`
+ * in `ExtrasWege`): Sie nimmt, was das System übergibt, und koppelt — mit
+ * denselben Prüfungen wie der Scanner.
+ */
+fun Begleiter.linkOeffnen(adresse: String) = koppeln(adresse)
 
 /**
  * Zu welchem Server der gescannte Code gehört — `null` bei einem nackten Token.
@@ -674,3 +965,20 @@ private fun kurz(adresse: String): String = adresse.substringAfter("://").trimEn
  * Dienst, aus demselben Grund.
  */
 private const val FUNKZEILEN_BEGLEITER = 200
+
+/**
+ * Die Griffe des Begleiters, die über Funk, Melder und Kopplung hinausgehen —
+ * Einzelruf und Tonregler —, gebündelt für die Ansicht.
+ */
+fun Begleiter.griffe(): de.pagerspass.pagerspass.ansichten.BegleiterGriffe =
+    de.pagerspass.pagerspass.ansichten.BegleiterGriffe(
+        einzelrufStarten = { einzelrufStarten(it) },
+        einzelrufAnnehmen = { einzelrufAnnehmen(it) },
+        einzelrufAbweisen = { einzelrufAbweisen(it) },
+        einzelrufBeenden = { einzelrufBeenden(it) },
+        einzelrufSagen = { ruf, text -> einzelrufSagen(ruf, text) },
+        einzelrufSprechenStarten = { einzelrufSprechenStarten() },
+        einzelrufSprechenBeenden = { einzelrufSprechenBeenden(it) },
+        einzelrufZulassen = { einzelrufZulassen(it) },
+        tonSetzen = { funk, melder, stumm -> tonSetzen(funk, melder, stumm) },
+    )

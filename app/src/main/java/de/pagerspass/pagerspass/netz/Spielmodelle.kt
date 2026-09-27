@@ -91,6 +91,8 @@ data class Fahrzeugvorlage(
     val besatzung: String = "",
     val kategorie: String = "",
     val kennzahl: String = "",
+    // Übungen: die Fähigkeiten — die ersten drei stehen auf der Fahrzeugkarte.
+    val faehigkeiten: List<String> = emptyList(),
 )
 
 // ------------------------------------------------------------------------ Shop
@@ -268,6 +270,8 @@ data class Katalog(
     val stichworte: List<Stichwort> = emptyList(),
     val fmsStatus: List<FmsTaste> = emptyList(),
     val meldende: List<String> = emptyList(),
+    // Übungen: alle Fähigkeiten, die irgendein Fahrzeug mitbringt (Alarm- und Ausrückeordnung).
+    val faehigkeiten: List<String> = emptyList(),
 )
 
 /**
@@ -328,6 +332,8 @@ data class Landkreis(
     val maxSpieler: Int = 0,
     val bundesland: String = "",
     val art: String = "",
+    // Übungen: die Träger mit Wachen im Kreis — leer heißt „alle" (siehe traegerImKreis).
+    val hiOrgs: List<String> = emptyList(),
 ) {
     /**
      * Wie der Kreis in der Liste steht.

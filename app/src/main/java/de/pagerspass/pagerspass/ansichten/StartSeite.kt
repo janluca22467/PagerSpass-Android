@@ -104,6 +104,9 @@ fun StartSeite(
     beiLink: (String) -> Unit = {},
     /** Freunde (Sozial-Port): die Einladung abhaken, ohne beizutreten. */
     beiEinladungAblehnen: (de.pagerspass.pagerspass.netz.Einladung) -> Unit = {},
+    // Übungen und Lehrgang: in der App (mobil/ExtrasWege.kt).
+    beiLehrgang: () -> Unit = {},
+    beiUebungen: () -> Unit = {},
 ) {
     LaunchedEffect(Unit) {
         beiKatalog()
@@ -285,6 +288,8 @@ fun StartSeite(
                         Startweg.Ausbildung -> beiAusbildung()
                         Startweg.Tagesschicht -> beiTagesschicht()
                         Startweg.OeffentlicheRunden -> beiOeffentlicheRunden()
+                        Startweg.Lehrgang -> beiLehrgang()
+                        Startweg.Uebungen -> beiUebungen()
                         else -> beiImWeb()
                     }
                 },
@@ -622,14 +627,15 @@ enum class Startweg {
          * Das Menü — die Wege, die keine Frage stellen.
          *
          * <b>Solange die Einweisungspflicht aussteht, bleibt alles weg außer der
-         * Ausbildung</b> — nicht ausgegraut: Ein Weg, der sichtbar dasteht und
-         * nur nicht gedrückt werden kann, müsste erklären warum, und genau das
-         * tut die Pflicht-Karte darüber schon.
+         * Ausbildung und dem Lehrgang</b> — nicht ausgegraut: Ein Weg, der
+         * sichtbar dasteht und nur nicht gedrückt werden kann, müsste erklären
+         * warum, und genau das tut die Pflicht-Karte darüber schon. Der Lehrgang
+         * bleibt wie im Web: Er ist Lesestoff, keine Runde, und seine Lektion ist
+         * genau die Ausbildungsschicht.
          *
-         * <b>Alles außer der Ausbildung führt bisher ins Web.</b> Die Ansichten
-         * dahinter (Lehrgang, World, Übungen, Leitstellenbau) sind in der App
-         * noch nicht gebaut; die Unterzeile sagt das, statt es den Nutzer beim
-         * Antippen herausfinden zu lassen.
+         * <b>Der Leitstellenbau steht hier nicht</b> — wie im mobilen Web, wo die
+         * Kachel am Handy ausgeblendet ist: Gebaut wird am Rechner (siehe
+         * `LeitstellenbauSeite`).
          */
         fun menue(einweisungPflicht: Boolean, premium: Boolean): List<Eintrag> {
             val ausbildung = Eintrag(
@@ -638,7 +644,13 @@ enum class Startweg {
                 unterzeile = "Melder, FMS, Notruf und Funk — allein, ohne Wertung",
                 zeichen = Zeichen.Lehrgang,
             )
-            if (einweisungPflicht) return listOf(ausbildung)
+            val lehrgang = Eintrag(
+                weg = Lehrgang,
+                titel = "Lehrgang",
+                unterzeile = "Lesen, üben, prüfen — mit Zeugnis am Ende",
+                zeichen = Zeichen.Wiki,
+            )
+            if (einweisungPflicht) return listOf(ausbildung, lehrgang)
 
             return listOf(
                 ausbildung,
@@ -654,12 +666,7 @@ enum class Startweg {
                     unterzeile = "Wo gerade jemand Verstärkung sucht",
                     zeichen = Zeichen.Gemeinschaft,
                 ),
-                Eintrag(
-                    weg = Lehrgang,
-                    titel = "Lehrgang",
-                    unterzeile = "Lesen, üben, prüfen — im Browser",
-                    zeichen = Zeichen.Wiki,
-                ),
+                lehrgang,
                 Eintrag(
                     weg = Welt,
                     titel = "World",
@@ -670,14 +677,8 @@ enum class Startweg {
                 Eintrag(
                     weg = Uebungen,
                     titel = "Übungen",
-                    unterzeile = "Eine Lage vorher bauen und mehrmals fahren — im Browser",
+                    unterzeile = "Eine Lage vorher bauen und mehrmals fahren",
                     zeichen = Zeichen.Lage,
-                ),
-                Eintrag(
-                    weg = Leitstellenbau,
-                    titel = "Leitstellenbau",
-                    unterzeile = "Eigene Wachen, Plätze und Rufnamen — im Browser",
-                    zeichen = Zeichen.Karte,
                 ),
             )
         }

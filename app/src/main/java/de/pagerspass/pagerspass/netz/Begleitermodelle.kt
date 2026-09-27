@@ -40,6 +40,21 @@ data class Begleitergeraete(
      * zeigten.
      */
     val bauart: String? = null,
+    /**
+     * Was der Begleiter zeigt — jedes Gerät einzeln abwählbar (Vorgabe: alle).
+     *
+     * `null` heißt „keine Angabe" und lässt stehen, was am Handy gilt: Der Wert
+     * kommt dann von einem Rechner, der die Wahl noch nicht kannte.
+     */
+    val zeigtMelder: Boolean? = null,
+    val zeigtFunkgeraet: Boolean? = null,
+    val zeigtFunkchat: Boolean? = null,
+    /**
+     * Ob der Rechner seinen Funk an das Handy abgegeben hat (Haken im
+     * Begleiterdialog). Dann klingelt der Einzelruf am Handy, und Funk und Töne
+     * laufen dort statt am Rechner. `null`: Das Handy bleibt der Funkplatz.
+     */
+    val funkAusgelagert: Boolean? = null,
 ) {
     /** Ob der Melder als Alarm-App auftritt statt als Piepser. */
     val alsApp: Boolean get() = bauart == "app"
@@ -57,12 +72,14 @@ data class Begleitergeraete(
     val ohneGehaeuse: Boolean get() = alsApp || imFunk
 
     /**
-     * Ob das Gehäuse quer steht.
+     * Ob das Gehäuse quer steht — `QUERFORMAT` in `BegleiterView.vue`.
      *
-     * Wachalarm und Alarmmonitor sind keine Handgeräte — der eine hängt an der
-     * Wand, der andere im Flur. Sie dürfen die ganze Breite haben.
+     * Der Alarmmonitor ist kein Handgerät und darf die ganze Breite haben;
+     * Quermelder und Leuchtmelder sind zwar Handgeräte, aber liegende — sie am
+     * Handy hochkant zu quetschen, bräche die Zeilen, für die sie gebaut sind.
+     * (Der Wachalarm steht seit 5.0.0.36 nicht mehr in der Liste der Gehäuse.)
      */
-    val querformat: Boolean get() = bauform == "wand" || bauform == "monitor"
+    val querformat: Boolean get() = bauform == "monitor" || bauform == "quad" || bauform == "leucht"
 
     /** Wie das Gehäuse heißt, wenn ein Mensch es liest. */
     val bauformName: String
@@ -70,6 +87,10 @@ data class Begleitergeraete(
             "klassik" -> "Klassik-Melder"
             "farbe" -> "Farbmelder"
             "fax" -> "Alarmfax"
+            "quad" -> "Quermelder"
+            "lamellen" -> "Lamellenmelder"
+            "leucht" -> "Leuchtmelder"
+            "bogen" -> "Bogenmelder"
             "uhr" -> "Einsatzuhr"
             "wand" -> "Wachalarm"
             "monitor" -> "Alarmmonitor"
