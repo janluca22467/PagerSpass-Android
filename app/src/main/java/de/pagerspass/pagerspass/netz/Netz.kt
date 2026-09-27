@@ -4,9 +4,13 @@ import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.decodeFromJsonElement
+import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.BufferedReader
 import java.net.HttpURLConnection
 import java.net.URL
@@ -205,7 +209,61 @@ class Netz(private val ablage: Ablage) {
         }
 
         val satz = runCatching { koerper?.get("fehler")?.jsonPrimitive?.content }.getOrNull()
-        return Netzfehler(satz ?: "Die Leitstelle antwortet nicht ($stand).", stand)
+
+        // World: die beiden Felder, an denen die Anzeige mehr tun muss als den Satz
+        // zeigen — `auswahlNeu` (Fahrzeugauswahl neu holen) und `retryNach` (in wie
+        // vielen Sekunden es wieder geht). Dasselbe wie `Antwortfehler` in rest.ts.
+        val auswahlNeu = runCatching {
+            koerper?.get("auswahlNeu")?.jsonPrimitive?.booleanOrNull
+        }.getOrNull() == true
+        val retryNach = runCatching {
+            koerper?.get("retryNach")?.jsonPrimitive?.doubleOrNull?.toInt()
+        }.getOrNull()
+
+        return Netzfehler(
+            satz ?: "Die Leitstelle antwortet nicht ($stand).",
+            stand,
+            auswahlNeu = auswahlNeu,
+            retryNach = retryNach,
+        )
+    }
+
+    // ------------------------------------------------------ World: PATCH
+    //
+    // `HttpURLConnection` kennt kein PATCH — `requestMethod = "PATCH"` wirft eine
+    // `ProtocolException`. Der eine Weg der API, der es braucht (`PATCH
+    // /api/welt/pois/{id}`), geht deshalb über OkHttp, das ohnehin für den Hub
+    // mitkommt. Fehlerrumpf und Sonderfälle laufen durch dasselbe `ausFehler`.
+
+    private val patchKlient by lazy {
+        okhttp3.OkHttpClient.Builder()
+            .connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
+            .build()
+    }
+
+    /** Eine PATCH-Anfrage mit JSON-Rumpf — gibt den Rumpf der Antwort zurück oder `null`. */
+    suspend fun patch(pfad: String, rumpf: String): String? = withContext(Dispatchers.IO) {
+        val merkmal = ablage.merkmal()
+        val anfrage = okhttp3.Request.Builder()
+            .url("${ablage.server()}$pfad")
+            .header("Accept", "application/json")
+            .patch(rumpf.toRequestBody("application/json; charset=utf-8".toMediaType()))
+            .apply { if (merkmal != null) header("Authorization", "Bearer $merkmal") }
+            .build()
+
+        try {
+            patchKlient.newCall(anfrage).execute().use { antwort ->
+                val text = antwort.body?.string()
+                if (antwort.isSuccessful) return@withContext text?.ifBlank { null }
+                throw ausFehler(antwort.code, text)
+            }
+        } catch (fehler: Netzfehler) {
+            throw fehler
+        } catch (fehler: Exception) {
+            Log.w("Netz", "PATCH $pfad", fehler)
+            throw Netzfehler("Die Leitstelle antwortet nicht.", ursache = fehler)
+        }
     }
 
     companion object {
@@ -238,4 +296,8 @@ class Netzfehler(
     meldung: String,
     val stand: Int = 0,
     ursache: Throwable? = null,
+    /** World: Die Fahrzeugauswahl ist nicht mehr gültig und muss neu geholt werden. */
+    val auswahlNeu: Boolean = false,
+    /** World: In wie vielen Sekunden es wieder geht — `null`, wenn es keine Drosselung war. */
+    val retryNach: Int? = null,
 ) : Exception(meldung, ursache)
