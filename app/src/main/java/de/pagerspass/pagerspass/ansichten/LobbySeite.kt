@@ -387,7 +387,7 @@ private fun ColumnScope.TeilRunde(raum: Raumzustand) {
     Zeile("Höchstens", "${raum.maxSpieler} Spieler")
     Zeile("Öffentlich", if (raum.settings.oeffentlich) "ja" else "nein")
     Zeile("Gewertet", if (raum.settings.sandkasten) "nein" else "ja")
-    raum.settings.modus?.let { Zeile("Modus", it) }
+    Zeile("Modus", raum.settings.mode)
 
     if (raum.settings.sandkasten) {
         SehrLeise(
@@ -461,16 +461,16 @@ private fun ColumnScope.TeilChat(
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text(
-                        text = if (zeile.istSystem) "»" else zeile.absender,
+                        text = zeile.vonName,
                         style = Schrift.MonoKlein,
-                        color = if (zeile.istSystem) Farben.TextSehrLeise else Farben.AmberHell,
+                        color = Farben.AmberHell,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
                         text = zeile.text,
                         style = Schrift.Klein,
-                        color = if (zeile.istSystem) Farben.TextSehrLeise else Farben.Text,
+                        color = Farben.Text,
                         modifier = Modifier.weight(1f),
                     )
                 }
