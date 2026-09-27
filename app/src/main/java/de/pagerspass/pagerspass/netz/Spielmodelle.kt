@@ -91,6 +91,9 @@ data class Fahrzeugvorlage(
     val besatzung: String = "",
     val kategorie: String = "",
     val kennzahl: String = "",
+    // World: Was das Fahrzeug kann — daran hängt, ob es auf eine Wache darf
+    // (Luftrettung, siehe `ansichten/welt/WeltRegeln.kt`) und was ein Zug verlangt.
+    val faehigkeiten: List<String> = emptyList(),
 )
 
 // ------------------------------------------------------------------------ Shop

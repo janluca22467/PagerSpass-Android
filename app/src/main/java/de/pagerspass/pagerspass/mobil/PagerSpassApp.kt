@@ -70,6 +70,10 @@ import de.pagerspass.pagerspass.ansichten.WachenGriffe
 import de.pagerspass.pagerspass.ansichten.BrettTeil
 import de.pagerspass.pagerspass.ansichten.EintragSeite
 import de.pagerspass.pagerspass.ansichten.GespraechSeite
+// World
+import de.pagerspass.pagerspass.ansichten.welt.WEG_WELT
+import de.pagerspass.pagerspass.ansichten.welt.istWeltweg
+import de.pagerspass.pagerspass.ansichten.welt.weltSeiten
 import de.pagerspass.pagerspass.netz.Rechtsstand
 import de.pagerspass.pagerspass.netz.Server
 import de.pagerspass.pagerspass.ui.theme.Abstand
@@ -538,6 +542,11 @@ private fun Angemeldet(
                         browser.openUri(Rechtsstand.adresse(Server.BETRIEB, seite))
                     },
                     beiImWeb = { imWeb("") },
+                    // World: mit Premium in die Welt, sonst in den Laden.
+                    beiWelt = {
+                        if (stand.konto?.premiumAktiv == true) steuerung.navigate(WEG_WELT)
+                        else zurWahl(steuerung, Weg.Shop)
+                    },
                 )
             }
 
@@ -799,17 +808,30 @@ private fun Angemeldet(
                     beiZurueck = { steuerung.popBackStack() },
                 )
             }
+
+            // World: Gründung und Arbeitsplatz (ansichten/welt/WeltSeiten.kt).
+            weltSeiten(
+                sitzung = sitzung,
+                steuerung = steuerung,
+                beiShop = { zurWahl(steuerung, Weg.Shop) },
+                beiStart = { zurWahl(steuerung, Weg.Dienst) },
+                beiProfil = { name -> imWeb("freunde/profil/${android.net.Uri.encode(name)}") },
+                beiImWeb = { seite -> imWeb(seite) },
+            )
         }
 
-        Tableiste(
-            // Auf einer Unterseite bleibt der Weg markiert, aus dem sie kommt —
-            // die Garage gehört zum Buch. Ohne das stünde die Leiste dort ohne
-            // jede Markierung, und man wüsste nicht mehr, wo man ist.
-            hier = hier ?: unterseitenweg(eintrag?.destination?.route),
-            marken = marken(daten),
-            beiWahl = { weg -> zurWahl(steuerung, weg) },
-            modifier = Modifier.align(Alignment.BottomCenter),
-        )
+        // World: Die Welt trägt ihre eigene Leiste unten (ansichten/welt/WeltSeiten.kt).
+        if (!istWeltweg(eintrag?.destination?.route)) {
+            Tableiste(
+                // Auf einer Unterseite bleibt der Weg markiert, aus dem sie kommt —
+                // die Garage gehört zum Buch. Ohne das stünde die Leiste dort ohne
+                // jede Markierung, und man wüsste nicht mehr, wo man ist.
+                hier = hier ?: unterseitenweg(eintrag?.destination?.route),
+                marken = marken(daten),
+                beiWahl = { weg -> zurWahl(steuerung, weg) },
+                modifier = Modifier.align(Alignment.BottomCenter),
+            )
+        }
     }
 
     if (loeschenOffen) {
