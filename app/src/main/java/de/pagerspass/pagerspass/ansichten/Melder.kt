@@ -58,10 +58,14 @@ fun Melderblende(
     alarm: Alarmmeldung,
     beiQuittieren: () -> Unit,
     beiWegtippen: () -> Unit,
+    // Begleiter (Tonregler): der Melderregler, 0–100 — wie bisher 90, wenn keiner dreht.
+    lautstaerke: Int = 90,
 ) {
     // Der Piepton, bis jemand reagiert.
-    LaunchedEffect(alarm.incidentId) {
-        val ton = runCatching { ToneGenerator(AudioManager.STREAM_ALARM, 90) }.getOrNull()
+    LaunchedEffect(alarm.incidentId, lautstaerke) {
+        val ton = runCatching {
+            ToneGenerator(AudioManager.STREAM_ALARM, lautstaerke.coerceIn(0, ToneGenerator.MAX_VOLUME))
+        }.getOrNull()
         try {
             while (isActive) {
                 repeat(5) {

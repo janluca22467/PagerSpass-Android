@@ -450,6 +450,8 @@ private fun Begleiterrahmen(stand: Begleiterstand, begleiter: Begleiter) {
         beiFunkgruppe = { begleiter.funkgruppeSchalten(it) },
         beiWachhalten = { wachhalten = it },
         beiTrennen = { begleiter.trennen() },
+        // Begleiter: Einzelruf und Tonregler.
+        griffe = begleiter.griffe(),
     )
 
     // Der Melder über allem — dieselbe Blende wie im Dienst, mit Ton, bis
@@ -460,6 +462,8 @@ private fun Begleiterrahmen(stand: Begleiterstand, begleiter: Begleiter) {
             alarm = alarm,
             beiQuittieren = { begleiter.alarmQuittieren() },
             beiWegtippen = { begleiter.alarmWegtippen() },
+            // Begleiter: der Melderregler des Tonreglers.
+            lautstaerke = stand.melderpegel,
         )
     }
 }
@@ -538,6 +542,9 @@ private fun Angemeldet(
                         browser.openUri(Rechtsstand.adresse(Server.BETRIEB, seite))
                     },
                     beiImWeb = { imWeb("") },
+                    // Übungen und Lehrgang: in der App statt im Browser.
+                    beiLehrgang = { steuerung.navigate(Extraswege.LEHRGANG) },
+                    beiUebungen = { steuerung.navigate(Extraswege.UEBUNGEN) },
                 )
             }
 
@@ -663,6 +670,9 @@ private fun Angemeldet(
                     fehler = begleiterstand.fehler,
                     beiKoppeln = { begleiter.koppeln(it) },
                     beiZurueck = { steuerung.popBackStack() },
+                    // Begleiter: Koppeln nur mit Premium, wie `/scan` im Web.
+                    premium = stand.konto?.premiumAktiv == true,
+                    beiShop = { zurWahl(steuerung, Weg.Shop) },
                 )
             }
 
@@ -799,6 +809,20 @@ private fun Angemeldet(
                     beiZurueck = { steuerung.popBackStack() },
                 )
             }
+
+            // Extras: Übungen, Lehrgang, Leitstellenbau, World-Icons, Begleiter-Link
+            // (mobil/ExtrasWege.kt).
+            extrasWege(
+                steuerung = steuerung,
+                unterrand = platz,
+                sitzung = sitzung,
+                runde = runde,
+                begleiter = begleiter,
+                zumShop = { zurWahl(steuerung, Weg.Shop) },
+                zumStart = { zurWahl(steuerung, Weg.Dienst) },
+                zurWelt = { steuerung.popBackStack() },
+                zumDienstbuch = { zurWahl(steuerung, Weg.Dienstbuch) },
+            )
         }
 
         Tableiste(
@@ -880,7 +904,8 @@ private fun unterseitenweg(route: String?): Weg? = when (route) {
     else -> when {
         route?.startsWith(UNTERSEITE_GESPRAECH) == true -> Weg.Freunde
         route?.startsWith(UNTERSEITE_EINTRAG) == true -> Weg.Freunde
-        else -> null
+        // Extras: Übungen, Lehrgang, Icons … gehören zum Dienst.
+        else -> Extraswege.weg(route)
     }
 }
 

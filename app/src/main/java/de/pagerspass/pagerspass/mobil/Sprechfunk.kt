@@ -153,6 +153,17 @@ class Lautsprecher {
 
     private var spur: AudioTrack? = null
 
+    // Begleiter (Tonregler): die eigene Lautstärke dieses Lautsprechers, 0–1 — sie
+    // gilt auch für eine Spur, die erst nach dem Drehen am Regler entsteht.
+    @Volatile
+    private var pegel: Float = 1f
+
+    /** Lauter, leiser, still — der Funkregler des Begleiters. */
+    fun lautstaerke(wert: Float) {
+        pegel = wert.coerceIn(0f, 1f)
+        spur?.let { runCatching { it.setVolume(pegel) } }
+    }
+
     private fun sicherstellen(): AudioTrack {
         spur?.let { if (it.state == AudioTrack.STATE_INITIALIZED) return it }
 
@@ -177,6 +188,7 @@ class Lautsprecher {
             AudioTrack.MODE_STREAM,
             android.media.AudioManager.AUDIO_SESSION_ID_GENERATE,
         )
+        neu.setVolume(pegel)
         neu.play()
         spur = neu
         return neu

@@ -103,8 +103,35 @@ fun BegleiterSeite(
     beiFunkgruppe: (String?) -> Unit = {},
     beiWachhalten: (Boolean) -> Unit = {},
     beiTrennen: () -> Unit = {},
+    griffe: BegleiterGriffe = BegleiterGriffe(),
 ) {
     var reiter by remember { mutableStateOf(Begleiterteil.Funkgeraet) }
+    var tonOffen by remember { mutableStateOf(false) }
+
+    /*
+     * Welche Geräte dieser Begleiter zeigt — die Wahl vom Rechner.
+     *
+     * Ist alles abgewählt (ein Stand, den der Rechner gar nicht senden kann), gilt
+     * alles als an. Bei der Bauart „Im Funk" gibt es keinen Melder — der Alarm
+     * steht auf dem Gerät nebenan; ein Reiter, hinter dem nur eine Erklärung
+     * stünde, wäre einer zu viel.
+     */
+    val gewaehlt = Begleiterteil.entries.filter {
+        when (it) {
+            Begleiterteil.Funkgeraet -> stand.zeigtFunkgeraet
+            Begleiterteil.Funkchat -> stand.zeigtFunkchat
+            Begleiterteil.Melder -> stand.zeigtMelder
+        }
+    }
+    val sichtbar = (gewaehlt.ifEmpty { Begleiterteil.entries })
+        .filter { !(stand.geraete.imFunk && it == Begleiterteil.Melder) }
+        .ifEmpty { listOf(Begleiterteil.Funkgeraet) }
+
+    // Verschwindet das Gerät, das gerade vorn liegt, springt die Ansicht auf das
+    // erste sichtbare — sonst stünde man vor einer leeren Fläche.
+    LaunchedEffect(sichtbar) {
+        if (reiter !in sichtbar) reiter = sichtbar.first()
+    }
 
     /*
      * Die Lesestände für die Zahlen an der Leiste.
@@ -145,7 +172,7 @@ fun BegleiterSeite(
             .drawBehind { drawRect(Brush.verticalGradient(listOf(Farben.Bg, Farben.BgTief))) }
             .raster(),
     ) {
-        Begleiterkopf(stand, oben, beiTrennen)
+        Begleiterkopf(stand, oben, beiTrennen, beiTon = { tonOffen = true })
 
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             when {
@@ -175,6 +202,7 @@ fun BegleiterSeite(
                         beiSprechstart = beiSprechstart,
                         beiSprechende = beiSprechende,
                         beiFunkgruppe = beiFunkgruppe,
+                        beiEinzelruf = griffe.einzelrufStarten,
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(Abstand.Gross)
@@ -217,16 +245,44 @@ fun BegleiterSeite(
                     }
                 }
             }
+
+            // Der Einzelruf schwebt über allem, auch über einem anderen Reiter:
+            // Wer gerade im Funkchat liest, muss das Klingeln trotzdem annehmen
+            // können. Nur, solange das Handy der Funkplatz ist.
+            if (stand.gekoppelt && !stand.beendet && stand.einzelrufHier) {
+                Einzelrufleiste(
+                    stand = stand,
+                    griffe = griffe,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(Abstand.Normal),
+                )
+            }
         }
 
-        Teilleiste(
-            teile = Begleiterteil.entries.map { Teil(it.name, it.titel, it.zeichen) },
-            offen = reiter.name,
-            marken = ungelesen,
-            // Ein offener Alarm ruft nach dem Melder — dort steht, worum es geht.
-            ruft = if (stand.alarm != null) setOf(Begleiterteil.Melder.name) else emptySet(),
-            beiWahl = { id -> reiter = Begleiterteil.valueOf(id) },
-        )
+        // Bei einem einzigen Gerät trägt die Leiste nichts mehr aus und fällt weg.
+        if (sichtbar.size > 1) {
+            Teilleiste(
+                teile = sichtbar.map { Teil(it.name, it.titel, it.zeichen) },
+                offen = reiter.name,
+                marken = ungelesen,
+                // Ein offener Alarm ruft nach dem Melder — dort steht, worum es
+                // geht. Bei der Bauart „Im Funk" gibt es keinen Melder-Reiter: Dann
+                // trägt das Funkgerät den Ruf, sonst sähe man den Alarm auf dem Gerät
+                // nebenan nicht, während man im Funkchat liest.
+                ruft = buildSet {
+                    if (stand.alarm != null && Begleiterteil.Melder in sichtbar) add(Begleiterteil.Melder.name)
+                    if (stand.alarm != null && stand.geraete.imFunk && reiter != Begleiterteil.Funkgeraet) {
+                        add(Begleiterteil.Funkgeraet.name)
+                    }
+                },
+                beiWahl = { id -> reiter = Begleiterteil.valueOf(id) },
+            )
+        }
+    }
+
+    if (tonOffen) {
+        Tonreglerblende(stand = stand, griffe = griffe, beiSchliessen = { tonOffen = false })
     }
 }
 
@@ -251,6 +307,7 @@ private fun Begleiterkopf(
     stand: Begleiterstand,
     oben: Dp,
     beiTrennen: () -> Unit,
+    beiTon: () -> Unit,
 ) {
     Row(
         horizontalArrangement = Arrangement.spacedBy(Abstand.Normal),
@@ -288,6 +345,11 @@ private fun Begleiterkopf(
                 ).joinToString(" · ").ifBlank { "…" },
                 mono = true,
             )
+        }
+
+        // Der Tonregler — derselbe wie im Fahrzeug: lauter, leiser, still.
+        if (stand.gekoppelt) {
+            Knopf(if (stand.stumm) "Stumm" else "Ton", beiTon, art = Knopfart.Leise, kompakt = true)
         }
 
         Lagepille(stand.lage, stand.gekoppelt)
@@ -375,8 +437,12 @@ private fun Handfunkgeraet(
     beiSprechstart: () -> Unit,
     beiSprechende: () -> Unit,
     beiFunkgruppe: (String?) -> Unit,
+    beiEinzelruf: (String?) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var einzelrufwahl by remember { mutableStateOf(false) }
+    val mitMikrofon = rememberMikrofonfrage()
+
     val rufgruppe = when {
         !stand.funkgruppenGetrennt -> stand.meinRufname.ifBlank { "FUNK" }
         else -> stand.funkgruppeVon(stand.sendegruppe)?.marke ?: "RUNDRUF"
@@ -519,6 +585,26 @@ private fun Handfunkgeraet(
                     Kanalwahl(stand, beiFunkgruppe)
                 }
 
+                // Die Raute des Geräts: der Einzelruf — nur, wo er stattfindet
+                // (`einzelrufHier`), sonst klingelte es am falschen Gerät.
+                if (stand.einzelrufHier) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(Abstand.Winzig),
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = Abstand.Klein),
+                    ) {
+                        Kanaltaste(
+                            marke = "# Einzelruf",
+                            an = stand.laufenderEinzelruf != null,
+                            leise = false,
+                            beiDruck = {
+                                val frei = stand.laufenderEinzelruf == null &&
+                                    stand.ausgehenderEinzelruf == null
+                                if (frei) einzelrufwahl = true
+                            },
+                        )
+                    }
+                }
+
                 Sprechtaste(
                     sendet = stand.sendet,
                     wirdVerstanden = stand.wirdVerstanden,
@@ -540,6 +626,35 @@ private fun Handfunkgeraet(
             )
         }
     }
+
+    if (einzelrufwahl) {
+        Wahlblende(
+            titel = "Einzelruf wählen",
+            gruppen = listOf(null to einzelrufziele(stand)),
+            aufschrift = { it.second },
+            beiWahl = { ziel ->
+                einzelrufwahl = false
+                mitMikrofon { beiEinzelruf(ziel.first) }
+            },
+            beiSchliessen = { einzelrufwahl = false },
+            suchbar = einzelrufziele(stand).size > 8,
+        )
+    }
+}
+
+/**
+ * Die Ziele des Einzelrufs: zuerst die Leitstelle, darunter jedes Fahrzeug mit
+ * einer Besatzung — auch einer Bot-Besatzung: Sie nimmt ab und antwortet.
+ *
+ * @return Paare aus Fahrzeug-Id (`null` = Leitstelle) und Aufschrift.
+ */
+private fun einzelrufziele(stand: Begleiterstand): List<Pair<String?, String>> {
+    val raum = stand.raum
+    val fahrzeuge = raum?.vehicles.orEmpty()
+        .filter { v -> v.playerId != null && v.playerId != stand.spielerId }
+        .filter { v -> raum?.players.orEmpty().any { it.id == v.playerId } }
+        .map { v -> v.id to v.funkrufname.ifBlank { v.kurzname.ifBlank { v.typ } } }
+    return listOf<Pair<String?, String>>(null to "Leitstelle") + fahrzeuge
 }
 
 /** Antenne und Drehknopf — sie wachsen aus der Kante des Gehäuses heraus. */

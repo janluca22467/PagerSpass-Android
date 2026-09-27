@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -73,8 +74,34 @@ fun BegleiterKopplung(
     fehler: String? = null,
     beiKoppeln: (String) -> Unit = {},
     beiZurueck: () -> Unit = {},
+    /**
+     * Ob das Konto Premium hat. Ohne Abo führt der Weg in den Shop — dieselbe
+     * Regel wie am Weg `/scan` im Web (`meta.premium`) und derselbe Grund: Den
+     * QR-Code erzeugen kann ohnehin nur ein Konto mit Premium.
+     */
+    premium: Boolean = true,
+    beiShop: () -> Unit = {},
 ) {
     val zusammenhang = LocalContext.current
+
+    LaunchedEffect(premium) { if (!premium) beiShop() }
+    if (!premium) {
+        Seite(modifier = modifier, unterrand = unterrand) {
+            Seitenkopf(
+                titel = "Mobiler Begleiter",
+                unterzeile = "Funkgerät und Melder auf diesem Gerät",
+                knoepfe = { Knopf("Zurück", beiZurueck, art = Knopfart.Leise, kompakt = true) },
+            )
+            Karte(
+                titel = "Ein Weg mit Premium",
+                zeichen = Zeichen.Handy,
+                text = "Den Begleiter koppelt ein Konto mit Premium — die Übersicht im Shop " +
+                    "erklärt das Abo.",
+                knoepfe = { Knopf("Zum Shop", beiShop, art = Knopfart.Haupt) },
+            )
+        }
+        return
+    }
 
     var erlaubt by remember {
         mutableStateOf(

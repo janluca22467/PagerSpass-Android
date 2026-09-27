@@ -67,6 +67,8 @@ data class Raumzustand(
     val sendegruppe: String? = null,
     /** Der Übungsstand — nur im Szenario-Modus gefüllt. */
     val uebung: Uebungsstand? = null,
+    // Begleiter (Einzelruf): klingelnde und laufende Einzelrufe — siehe Einzelrufmodelle.kt.
+    val einzelrufe: List<Einzelruf> = emptyList(),
 ) {
     val inLobby: Boolean get() = state == "Lobby"
     val laeuft: Boolean get() = state == "Laeuft"
@@ -173,6 +175,8 @@ data class Spieler(
     val rang: String = "",
     val premium: Boolean = false,
     val teammitglied: Boolean = false,
+    // Begleiter (Einzelruf): der Ruhe-Schalter des Platzes — die Leitstelle kommt immer durch.
+    val einzelrufZulassen: Boolean = true,
 ) {
     val istLeitstelle: Boolean get() = role == "Leitstelle"
     val istBesatzung: Boolean get() = role == "Fahrzeugbesatzung"
