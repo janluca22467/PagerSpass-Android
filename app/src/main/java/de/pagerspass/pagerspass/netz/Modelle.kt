@@ -75,6 +75,9 @@ data class Konto(
     val merkmal: String? = null,
     /** Nur bei der Kontoanlage — und nur dieses eine Mal. */
     val wiederherstellungscode: String? = null,
+    // --- Runde, Teil 1: Rangschranken (Leitstelle in öffentlichen Runden, Leitstellenbau).
+    /** Was ab welchem Rang offensteht — die Lobby sperrt danach die Leitstelle. */
+    val freischaltungen: List<Freischaltungsinfo> = emptyList(),
 ) {
     /**
      * Wie weit die aktuelle Stufe gefüllt ist, zwischen 0 und 1.
@@ -131,6 +134,27 @@ data class Wartungsstand(
     val titel: String? = null,
     val text: String? = null,
     val bis: String? = null,
+    // --- Runde, Teil 1: die Felder, die der Server wirklich schickt (`Wartungswache.Auskunft`).
+    val begruendung: String? = null,
+    val beginnUm: String? = null,
+    val endeUm: String? = null,
+    /** Vom Server gerechnet — nicht gegen die Uhr des Handys. */
+    val verbleibendSekunden: Int = 0,
+)
+
+/**
+ * Eine Rangschranke — Spiegel von `FreischaltungInfo`.
+ *
+ * `was` ist `Leitstelle`, `EigeneAao` oder `Sandkasten`; `offen` sagt, ob sie
+ * für dieses Konto schon gefallen ist.
+ */
+@Serializable
+data class Freischaltungsinfo(
+    val was: String = "",
+    val bezeichnung: String = "",
+    val abLevel: Int = 0,
+    val abRang: String = "",
+    val offen: Boolean = false,
 )
 
 /** Die laufende Fassung des Servers — für den Fuß des Startbildschirms. */

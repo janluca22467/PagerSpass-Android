@@ -192,6 +192,28 @@ class Sozial(anwendung: Application) : AndroidViewModel(anwendung) {
             }
         }
 
+    // --- Runde, Teil 1 (A9) — BEGINN ------------------------------------------
+    //
+    // Falls der Bereich Freunde dieselbe Funktion anlegt: Diesen Block streichen,
+    // die Signatur `einladungBeantworten(nr: Long, annehmen: Boolean)` ist die,
+    // die der Startbildschirm ruft.
+
+    /**
+     * Eine Rundeneinladung beantworten — abhaken, bevor man beitritt, oder
+     * ablehnen. Der Rückweg ist derselbe Hub wie beim Einladen; eine Absage des
+     * Servers („Diese Einladung gibt es nicht mehr") steht danach in `meldung`.
+     */
+    fun einladungBeantworten(nr: Long, annehmen: Boolean) = viewModelScope.launch {
+        val antwort = runCatching {
+            draht.frage("EinladungBeantworten", JsonPrimitive(nr), wert(annehmen))
+        }.getOrNull()
+        val fehler = (antwort as? JsonPrimitive)?.takeUnless { it is JsonNull }?.content
+        if (!fehler.isNullOrBlank()) _stand.update { it.copy(meldung = fehler) }
+        beiEinladungen?.invoke()
+    }
+
+    // --- Runde, Teil 1 (A9) — ENDE --------------------------------------------
+
     // ------------------------------------------------------------ Wachenchat
 
     fun wachenchatOeffnen(id: String) = viewModelScope.launch {

@@ -91,6 +91,9 @@ data class Fahrzeugvorlage(
     val besatzung: String = "",
     val kategorie: String = "",
     val kennzahl: String = "",
+    // --- Runde, Teil 1: für Suche und Alarmierung.
+    val faehigkeiten: List<String> = emptyList(),
+    val schleifen: List<String> = emptyList(),
 )
 
 // ------------------------------------------------------------------------ Shop
@@ -257,6 +260,10 @@ data class Katalog(
     val stichworte: List<Stichwort> = emptyList(),
     val fmsStatus: List<FmsTaste> = emptyList(),
     val meldende: List<String> = emptyList(),
+    // --- Runde, Teil 1: die echten Leitstellen und ihr Gebiet (Startbildschirm, Lobby).
+    val leitstellen: List<Leitstelle> = emptyList(),
+    /** Alle Fähigkeiten, die irgendein Fahrzeug mitbringt. */
+    val faehigkeiten: List<String> = emptyList(),
 )
 
 /**
@@ -317,6 +324,10 @@ data class Landkreis(
     val maxSpieler: Int = 0,
     val bundesland: String = "",
     val art: String = "",
+    // --- Runde, Teil 1: Träger im Kreis (Hervorhebung in der Lobby) und die Mitte.
+    val hiOrgs: List<String> = emptyList(),
+    val lat: Double? = null,
+    val lon: Double? = null,
 ) {
     /**
      * Wie der Kreis in der Liste steht.
@@ -778,6 +789,8 @@ data class OeffentlicheRunde(
     val leitstelleBesetzt: Boolean = false,
     /** Ein selbst gebauter Ausrückebereich — die Runde ist nicht gewertet. */
     val sandkasten: Boolean = false,
+    // --- Runde, Teil 1: Diese Runde wird übertragen — beim Beitreten wird gefragt.
+    val streamermodus: Boolean = false,
 )
 
 /** Ein Platz auf der Tagesliste der Schicht des Tages. */
