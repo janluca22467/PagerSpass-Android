@@ -53,11 +53,82 @@
             android:exported="true"
             android:label="@string/app_name"
             android:theme="@style/Theme.PagerSpass"
+            android:launchMode="singleTask"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!--
+                Bereich Konto: die App-Links. Wer auf pagerspass.de einen Link zu einer
+                Seite des Spiels antippt — aus einer E-Mail (Newsletter abmelden), aus
+                Discord (Verknüpfung), von Stripe (Rückkehr von Kasse und Abo-Verwaltung),
+                aus einem Video (Creator-Code) oder von einem Freund (Raum, Funkplatz) —,
+                landet in der App statt im Browser. Übersetzt wird der Pfad an genau
+                einer Stelle: `mobil/Einsprung.kt`.
+
+                `autoVerify` braucht auf dem Server `/.well-known/assetlinks.json` mit dem
+                Signaturabdruck der App. Fehlt die Datei, fragt Android beim Öffnen, ob die
+                App oder der Browser den Link nehmen soll — der Weg geht trotzdem.
+
+                Nur Pfade des Spiels, nicht die Startseite `/`: Wer die Website öffnen
+                will, soll die Website bekommen.
+            -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data android:scheme="https" />
+                <data android:host="pagerspass.de" />
+                <data android:host="www.pagerspass.de" />
+
+                <data android:pathPrefix="/play" />
+                <data android:pathPrefix="/code/" />
+                <data android:pathPrefix="/newsletter/abmelden" />
+                <data android:pathPrefix="/discord/verknuepfen" />
+                <data android:pathPrefix="/vertrag-kuendigen" />
+                <data android:pathPrefix="/vertrag-widerrufen" />
+                <data android:pathPrefix="/konto" />
+                <data android:pathPrefix="/recht/" />
+                <data android:pathPrefix="/raum/" />
+                <data android:pathPrefix="/funk/" />
+                <data android:pathPrefix="/freunde" />
+                <data android:pathPrefix="/gemeinschaft" />
+                <data android:pathPrefix="/dienstbuch" />
+                <data android:pathPrefix="/shop" />
+                <data android:pathPrefix="/welt" />
+                <data android:pathPrefix="/world" />
+                <data android:pathPrefix="/uebungen" />
+                <data android:pathPrefix="/lehrgang" />
+                <data android:pathPrefix="/scan" />
+            </intent-filter>
+
+            <!--
+                Der Vorabstand — dieselben Pfade, ohne `autoVerify`: Er ist ein
+                Testserver, und ein Link dorthin soll im Zweifel fragen dürfen.
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data android:scheme="https" />
+                <data android:host="beta.pagerspass.de" />
+                <data android:pathPrefix="/play" />
+                <data android:pathPrefix="/code/" />
+                <data android:pathPrefix="/newsletter/abmelden" />
+                <data android:pathPrefix="/discord/verknuepfen" />
+                <data android:pathPrefix="/vertrag-kuendigen" />
+                <data android:pathPrefix="/vertrag-widerrufen" />
+                <data android:pathPrefix="/konto" />
+                <data android:pathPrefix="/recht/" />
+                <data android:pathPrefix="/raum/" />
+                <data android:pathPrefix="/funk/" />
             </intent-filter>
         </activity>
     </application>

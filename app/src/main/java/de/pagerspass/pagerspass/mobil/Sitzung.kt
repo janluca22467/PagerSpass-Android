@@ -7,6 +7,7 @@ import de.pagerspass.pagerspass.netz.Ablage
 import de.pagerspass.pagerspass.netz.Anmeldeergebnis
 import de.pagerspass.pagerspass.netz.Konten
 import de.pagerspass.pagerspass.netz.Konto
+import de.pagerspass.pagerspass.netz.Kontowege
 import de.pagerspass.pagerspass.netz.Netz
 import de.pagerspass.pagerspass.netz.Privatsphaere
 import de.pagerspass.pagerspass.netz.Profilaenderung
@@ -106,8 +107,8 @@ class Sitzung(anwendung: Application) : AndroidViewModel(anwendung) {
      * genau dieser einen Antwort steht und in keiner weiteren. Die Anmeldeseite
      * zeigt ihn danach; wer ihn hier fallen lässt, lässt ihn endgültig fallen.
      */
-    fun kontoAnlegen(benutzername: String, anzeigename: String, passwort: String) = arbeiten {
-        val konto = konten.anlegen(benutzername.trim(), anzeigename.trim(), passwort)
+    fun kontoAnlegen(benutzername: String, anzeigename: String, passwort: String, email: String) = arbeiten {
+        val konto = konten.anlegen(benutzername.trim(), anzeigename.trim(), passwort, email.trim())
 
         // Auf der Beta ist das Konto jetzt da, aber noch zu: Das Team schaltet es
         // frei, beantragt wird das im Discord. Nichts übernehmen — die Netzschicht hat
@@ -704,6 +705,85 @@ class Sitzung(anwendung: Application) : AndroidViewModel(anwendung) {
     )
 
     fun raumcodeWegnehmen() = _stand.update { it.copy(raumcode = null) }
+
+    // ------------------------------------- Bereich Konto: Konto, Recht, E-Mail-Pflicht
+    //
+    // Die Wege des Kontobereichs stehen in `netz/Kontowege.kt`; die Seiten rufen sie
+    // selbst (siehe `mobil/Kontobereich.kt`). Hier steht nur, was am Konto selbst
+    // hängt und deshalb durch die Sitzung muss.
+
+    val kontowege = Kontowege(netz)
+
+    /** Die Ablage dieses Geräts — für „Deine Bedienung" und „Dieses Gerät". */
+    val geraeteablage: Ablage get() = ablage
+
+    private val _emailBestaetigungOffen = MutableStateFlow(false)
+
+    /**
+     * Ob die Pflichtblende nach dem Eintragen der Adresse für den Code stehen
+     * bleibt. Mit dem Eintragen fällt `emailFehlt` — der Code ist aber gerade erst
+     * unterwegs, und das Feld dafür soll nicht verschwinden.
+     */
+    val emailBestaetigungOffen: StateFlow<Boolean> = _emailBestaetigungOffen.asStateFlow()
+
+    /** Ein neuer Stand des Kontos, wie ihn ein Weg des Kontobereichs zurückgab. */
+    fun kontoUebernehmen(konto: Konto) = _stand.update { it.copy(konto = konto) }
+
+    /** Ein Feld am Konto nachziehen — Premium, Credits, Analysezustimmung. */
+    fun kontoAendern(aenderung: (Konto) -> Konto) =
+        _stand.update { s -> s.copy(konto = s.konto?.let(aenderung)) }
+
+    /** Das Konto frisch holen — nach Benutzername, Premium, E-Mail. Scheitert still. */
+    fun kontoNachladen() = viewModelScope.launch {
+        val kennung = _stand.value.konto?.kennung ?: return@launch
+        runCatching { konten.laden(kennung) }
+            .onSuccess { neu -> _stand.update { it.copy(konto = neu) } }
+    }
+
+    /**
+     * Die Antwort auf die Frage nach der Aufzeichnung. Ein „nein" löscht
+     * serverseitig auch das bereits Aufgezeichnete.
+     */
+    suspend fun analyseBeantworten(zugestimmt: Boolean) {
+        val kennung = kennung()
+        val stand = kontowege.analyseSpeichern(kennung, zugestimmt)
+        kontoAendern { it.copy(analyseZustimmung = stand.zugestimmt ?: zugestimmt) }
+    }
+
+    /** Trägt die Pflicht-Adresse ein; der Server schickt dabei den Bestätigungscode. */
+    suspend fun emailHinterlegen(email: String, passwort: String) {
+        val kennung = kennung()
+        kontowege.emailSetzen(kennung, email, passwort)
+        _emailBestaetigungOffen.value = true
+        runCatching { konten.laden(kennung) }
+            .onSuccess { neu -> _stand.update { it.copy(konto = neu) } }
+            .onFailure { kontoAendern { it.copy(emailFehlt = false) } }
+    }
+
+    suspend fun emailCodeBestaetigen(code: String) {
+        kontowege.emailBestaetigen(kennung(), code)
+        _emailBestaetigungOffen.value = false
+    }
+
+    suspend fun emailCodeNeu() = kontowege.emailCodeNeu(kennung())
+
+    /** „Später" — die Pflicht ist erfüllt, bestätigt wird in den Kontoeinstellungen. */
+    fun emailBestaetigungSpaeter() {
+        _emailBestaetigungOffen.value = false
+    }
+
+    /**
+     * Meldet ab und leert alles, was dieses Gerät für PagerSpass aufbewahrt —
+     * „Dieses Gerät → Löschen" in der Privatsphäre. Abgemeldet wird zuerst, solange
+     * das Merkmal noch da ist: So endet auch die Sitzung am Server.
+     */
+    fun geraetLeeren() = viewModelScope.launch {
+        konten.abmelden()
+        runCatching { ablage.allesVergessen() }
+        _emailBestaetigungOffen.value = false
+        _stand.update { Sitzungsstand(server = ablage.server(), geprueft = true) }
+        _daten.value = Seitenstand()
+    }
 
     private fun kennung(): String =
         _stand.value.konto?.kennung ?: throw IllegalStateException("Kein Konto angemeldet.")

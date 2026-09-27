@@ -12,13 +12,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import de.pagerspass.pagerspass.netz.Gluecksradfeld
-import de.pagerspass.pagerspass.netz.Rechtsstand
 import de.pagerspass.pagerspass.ui.bausteine.Blende
 import androidx.compose.ui.text.input.ImeAction
 import de.pagerspass.pagerspass.ui.bausteine.Dialogbreite
@@ -91,64 +89,9 @@ fun Wiederherstellungscode(code: String, beiVerstanden: () -> Unit) {
     }
 }
 
-/**
- * Die Zustimmung zu einer neuen Fassung der Rechtstexte.
- *
- * <b>Zwei Antworten, und sie stehen untereinander.</b> Nebeneinander stünden
- * dort zwei gleich aussehende Knöpfe mit gegenteiliger Bedeutung — deshalb die
- * Spaltenfassung des Dialogfußes. Wer nicht zustimmen will, wird abgemeldet;
- * das ist keine Drohung, sondern die einzige ehrliche Alternative, denn ohne
- * Zustimmung gibt es keine Grundlage für den Betrieb des Kontos.
- *
- * <b>Sie lässt sich nicht wegtippen.</b> Eine Zustimmung, die man durch einen
- * Druck daneben umgeht, ist keine.
- */
-@Composable
-fun RechtsstandBlende(beiZustimmen: () -> Unit, beiAbmelden: () -> Unit) {
-    val browser = LocalUriHandler.current
-
-    Blende(
-        titel = "Unsere Bedingungen haben sich geändert",
-        beiSchliessen = {},
-        breite = Dialogbreite.Normal,
-        schliessenMoeglich = false,
-        fussAlsSpalte = true,
-        fuss = {
-            Knopf("Zustimmen und weiter", beiZustimmen, art = Knopfart.Haupt, breit = true)
-            Knopf("Ablehnen und abmelden", beiAbmelden, art = Knopfart.Gefahr, breit = true)
-        },
-    ) {
-        Text(
-            text = "Um weiterzuspielen, musst du der neuen Fassung zustimmen. " +
-                "Lies sie dir bitte durch — sie öffnet sich im Browser.",
-            style = Schrift.Normal,
-            color = Farben.TextLeise,
-        )
-
-        Textweg("Nutzungsbedingungen", {
-            browser.openUri(Rechtsstand.adresse(SERVERWEG, Rechtsstand.NUTZUNGSBEDINGUNGEN))
-        })
-        Textweg("Allgemeine Geschäftsbedingungen", {
-            browser.openUri(Rechtsstand.adresse(SERVERWEG, Rechtsstand.AGB))
-        })
-        Textweg("Datenschutzerklärung", {
-            browser.openUri(Rechtsstand.adresse(SERVERWEG, Rechtsstand.DATENSCHUTZ))
-        })
-
-        Text(text = Rechtsstand.ANSAGE, style = Schrift.Winzig, color = Farben.TextSehrLeise)
-    }
-}
-
-/**
- * Wo die Rechtstexte zu lesen sind.
- *
- * <b>Ausdrücklich der Betrieb und nicht der eingestellte Server.</b> Wer beim
- * Entwickeln gegen `localhost` arbeitet, hat dort keine Rechtstexte liegen —
- * und ein toter Link ist an dieser Stelle schlechter als ein Link, der auf die
- * gültige Fassung zeigt. Sobald die App die Texte selbst zeigt (offener Punkt
- * vor der Veröffentlichung), entfällt diese Zeile.
- */
-private const val SERVERWEG = de.pagerspass.pagerspass.netz.Server.BETRIEB
+// Die Zustimmung zu einer neuen Fassung der Rechtstexte steht seit dem
+// Kontobereich in `ansichten/RechtSeiten.kt` (`Rechtsstandblende`) — dort schlagen
+// sich die Texte in der App auf, statt in den Browser zu führen.
 
 /**
  * Konto löschen — die Rückfrage mit dem Passwort.

@@ -85,6 +85,10 @@ class Netz(private val ablage: Ablage) {
                 // die API es so erwartet (siehe `json()` in rest.ts).
                 ablage.merkmal()?.let { setRequestProperty("Authorization", "Bearer $it") }
 
+                // Die Gerätekennung (Bereich Konto) — an jeder Anfrage, nicht nur an
+                // der Anmeldung, wie im Web (`X-PagerSpass-Geraet` in rest.ts).
+                geraetekopf()?.let { setRequestProperty(GERAETEKOPF, it) }
+
                 if (rumpf != null) {
                     doOutput = true
                     outputStream.use { it.write(rumpf.toByteArray(Charsets.UTF_8)) }
@@ -165,6 +169,7 @@ class Netz(private val ablage: Ablage) {
                 setRequestProperty("Accept", "application/json")
                 setRequestProperty("Content-Type", inhaltstyp)
                 ablage.merkmal()?.let { setRequestProperty("Authorization", "Bearer $it") }
+                geraetekopf()?.let { setRequestProperty(GERAETEKOPF, it) }
                 doOutput = true
                 setFixedLengthStreamingMode(daten.size)
                 outputStream.use { it.write(daten) }
@@ -188,6 +193,14 @@ class Netz(private val ablage: Ablage) {
             }
         }
 
+    /**
+     * Die Gerätekennung für die Kopfzeile (Bereich Konto) — oder nichts, wenn die
+     * Ablage gerade nicht lesbar ist. Die Sperre greift dann weiter über die
+     * Herkunft, und der Server kommt ohne diese Zeile aus.
+     */
+    private suspend fun geraetekopf(): String? =
+        runCatching { ablage.geraetekennung() }.getOrNull()?.takeIf { it.isNotEmpty() }
+
     /** Aus einem Fehlerrumpf einen Fehler machen, den man anzeigen kann. */
     suspend fun ausFehler(stand: Int, text: String?): Netzfehler {
         val koerper = runCatching { text?.let { abgabe.parseToJsonElement(it).jsonObject } }.getOrNull()
@@ -209,6 +222,9 @@ class Netz(private val ablage: Ablage) {
     }
 
     companion object {
+        /** Die Kopfzeile der Gerätekennung — zeichengleich die aus `rest.ts`. */
+        const val GERAETEKOPF = "X-PagerSpass-Geraet"
+
         /**
          * Der Umgang mit JSON.
          *

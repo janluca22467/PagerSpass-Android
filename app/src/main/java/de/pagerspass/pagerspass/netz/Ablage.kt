@@ -4,7 +4,9 @@ import android.content.Context
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 
 /**
  * Was zwischen zwei Starts liegen bleibt: das Sitzungsmerkmal, die Kennung und
@@ -157,6 +159,156 @@ class Ablage(private val zusammenhang: Context) {
             if (merkmal != null) stand[merkmalSchluessel] = merkmal else stand.remove(merkmalSchluessel)
             if (kennung != null) stand[kennungSchluessel] = kennung else stand.remove(kennungSchluessel)
         }
+    }
+
+    // ------------------------------------------ Gerät und Bedienung (Bereich Konto)
+    //
+    // Was nur für dieses Gerät gilt und nie zum Server geht: die Gerätekennung für
+    // die Kopfzeile `X-PagerSpass-Geraet` und die Einstellungen aus „Deine
+    // Bedienung" und dem Melder-Reiter des Profileditors. Im Web sind es
+    // `localStorage`-Einträge; die Werte sind zeichengleich dieselben.
+
+    private val geraetSchluessel = stringPreferencesKey("geraet")
+    private val eingabewegSchluessel = stringPreferencesKey("notrufEingabeweg")
+    private val kennungsformSchluessel = stringPreferencesKey("kennungsform")
+    private val bauformSchluessel = stringPreferencesKey("melderBauform")
+    private val meldertonSchluessel = stringPreferencesKey("melderTon")
+    private val alarmierungSchluessel = stringPreferencesKey("melderAlarmierung")
+    private val melderprofilSchluessel = stringPreferencesKey("melderprofil")
+
+    /**
+     * Die Gerätekennung dieses Geräts — eine Zufallszahl, sonst nichts.
+     *
+     * <b>Wozu.</b> Eine dauerhafte Sperre hängt an der Herkunft der Verbindung, und
+     * die wechselt beim Schritt vom WLAN ins Mobilfunknetz. Diese Kennung ist das
+     * zweite Merkmal: Sie überlebt den Netzwechsel. <b>Kein Fingerabdruck</b> —
+     * hier wird nichts vermessen; wer die App-Daten löscht, hat eine neue.
+     *
+     * Sie entsteht in einer Schreibtransaktion: Zwei Anfragen, die gleichzeitig
+     * die erste Kennung wollen, bekommen dieselbe.
+     */
+    suspend fun geraetekennung(): String {
+        geraetZwischenstand?.let { return it }
+        var ergebnis = ""
+        zusammenhang.ablage.edit { stand ->
+            val vorhanden = stand[geraetSchluessel]
+            ergebnis = if (vorhanden != null && vorhanden.length >= 16) {
+                vorhanden
+            } else {
+                java.util.UUID.randomUUID().toString().replace("-", "").also {
+                    stand[geraetSchluessel] = it
+                }
+            }
+        }
+        geraetZwischenstand = ergebnis
+        return ergebnis
+    }
+
+    /**
+     * Der Eingabeweg am Notruftelefon: `fragen`, `tippen` oder `sprechen`.
+     * Vorgabe `fragen` — wie `useEingabeweg` im Web.
+     */
+    fun eingabewegFluss(): Flow<String> = zusammenhang.ablage.data.map {
+        auswahl(it[eingabewegSchluessel], EINGABEWEGE)
+    }
+
+    suspend fun eingabewegSetzen(wert: String) = setzen(eingabewegSchluessel, wert, EINGABEWEGE)
+
+    /**
+     * Wie Fahrzeuge in den Listen heißen: `kennzahl`, `typ` oder `orga`.
+     * Vorgabe `kennzahl` — wie `useFahrzeugkennung` im Web.
+     */
+    fun kennungsformFluss(): Flow<String> = zusammenhang.ablage.data.map {
+        auswahl(it[kennungsformSchluessel], KENNUNGSFORMEN)
+    }
+
+    suspend fun kennungsformSetzen(wert: String) = setzen(kennungsformSchluessel, wert, KENNUNGSFORMEN)
+
+    /** Die Melder-Bauform dieses Geräts (Id aus `MELDER_BAUFORMEN`), Vorgabe `dienst`. */
+    fun melderBauformFluss(): Flow<String> = zusammenhang.ablage.data.map {
+        it[bauformSchluessel] ?: "dienst"
+    }
+
+    suspend fun melderBauformSetzen(wert: String) {
+        zusammenhang.ablage.edit { it[bauformSchluessel] = wert }
+    }
+
+    /** Der Alarmton dieses Geräts (Id aus `MELDER_TOENE`), Vorgabe `zweiklang`. */
+    fun melderTonFluss(): Flow<String> = zusammenhang.ablage.data.map {
+        it[meldertonSchluessel] ?: "zweiklang"
+    }
+
+    suspend fun melderTonSetzen(wert: String) {
+        zusammenhang.ablage.edit { it[meldertonSchluessel] = wert }
+    }
+
+    /** Wie der Melder ankündigt: `voll`, `ton`, `vibration` oder `stumm`. */
+    fun alarmierungsartFluss(): Flow<String> = zusammenhang.ablage.data.map {
+        auswahl(it[alarmierungSchluessel], ALARMIERUNGSARTEN)
+    }
+
+    /** Das Melderprofil (Id aus `MELDERPROFILE`), Vorgabe `vollalarm`. */
+    fun melderprofilFluss(): Flow<String> = zusammenhang.ablage.data.map {
+        it[melderprofilSchluessel] ?: "vollalarm"
+    }
+
+    /**
+     * Setzt die Alarmierungsart von Hand. Das Profil bleibt dabei stehen — im Web
+     * genauso: Das Profil ist ein Voreinstellungsknopf, kein Zustand, der jede
+     * spätere Änderung sperrt.
+     */
+    suspend fun alarmierungsartSetzen(wert: String) =
+        setzen(alarmierungSchluessel, wert, ALARMIERUNGSARTEN)
+
+    /** Ein Profil setzt Alarmierungsart und Profil gemeinsam — `melderprofilSetzen` im Web. */
+    suspend fun melderprofilSetzen(id: String, art: String) {
+        zusammenhang.ablage.edit {
+            it[melderprofilSchluessel] = id
+            it[alarmierungSchluessel] = auswahl(art, ALARMIERUNGSARTEN)
+        }
+    }
+
+    /** Wie viele Einträge dieses Gerät für PagerSpass aufbewahrt. */
+    suspend fun eintragszahl(): Int = zusammenhang.ablage.data.first().asMap().size
+
+    /**
+     * Vergisst alles, was dieses Gerät für PagerSpass aufbewahrt — Anmeldung,
+     * Kartenfreigabe, Bedienung, Melder. Der Server bleibt stehen; wer ihn geändert
+     * hatte, soll nicht versehentlich mit dem Betrieb reden.
+     */
+    suspend fun allesVergessen() {
+        val server = lesen(serverSchluessel)
+        zusammenhang.ablage.edit { stand ->
+            stand.clear()
+            if (server != null) stand[serverSchluessel] = server
+        }
+        geraetZwischenstand = null
+    }
+
+    private suspend fun setzen(
+        schluessel: androidx.datastore.preferences.core.Preferences.Key<String>,
+        wert: String,
+        erlaubt: List<String>,
+    ) {
+        zusammenhang.ablage.edit { it[schluessel] = auswahl(wert, erlaubt) }
+    }
+
+    private fun auswahl(wert: String?, erlaubt: List<String>): String =
+        wert?.takeIf { it in erlaubt } ?: erlaubt.first()
+
+    companion object {
+        /** Die drei Eingabewege — der erste ist die Vorgabe. */
+        val EINGABEWEGE = listOf("fragen", "tippen", "sprechen")
+
+        /** Die drei Kennungsformen — die erste ist die Vorgabe. */
+        val KENNUNGSFORMEN = listOf("kennzahl", "typ", "orga")
+
+        /** Die vier Alarmierungsarten — die erste ist die Vorgabe. */
+        val ALARMIERUNGSARTEN = listOf("voll", "ton", "vibration", "stumm")
+
+        /** Die Gerätekennung, einmal gelesen — sie steht an jeder Anfrage. */
+        @Volatile
+        private var geraetZwischenstand: String? = null
     }
 
     private suspend fun lesen(schluessel: androidx.datastore.preferences.core.Preferences.Key<String>) =

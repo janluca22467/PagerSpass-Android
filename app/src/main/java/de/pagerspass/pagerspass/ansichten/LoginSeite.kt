@@ -2,7 +2,7 @@ package de.pagerspass.pagerspass.ansichten
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
@@ -10,10 +10,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.input.ImeAction
@@ -23,6 +24,7 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.em
+import de.pagerspass.pagerspass.netz.Kontowege
 import de.pagerspass.pagerspass.netz.Rechtsstand
 import de.pagerspass.pagerspass.netz.Server
 import de.pagerspass.pagerspass.ui.bausteine.Codefeld
@@ -39,6 +41,8 @@ import de.pagerspass.pagerspass.ui.theme.Farben
 import de.pagerspass.pagerspass.ui.theme.PagerSpassTheme
 import de.pagerspass.pagerspass.ui.theme.Schrift
 import de.pagerspass.pagerspass.ui.theme.flaeche
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 
 /**
  * Die Anmeldung — das Gegenstück zu `web/src/views/LoginView.vue`.
@@ -62,6 +66,8 @@ import de.pagerspass.pagerspass.ui.theme.flaeche
 @Composable
 fun LoginSeite(
     modifier: Modifier = Modifier,
+    /** Die Wege ohne Anmeldung — „Passwort vergessen" (Bereich Konto). */
+    wege: Kontowege? = null,
     laeuft: Boolean = false,
     fehler: String? = null,
     /** Die freundliche Auskunft unter dem Formular — „dein Konto wartet auf die Freischaltung". */
@@ -70,28 +76,103 @@ fun LoginSeite(
     kontofreischaltung: Boolean = false,
     server: String = Server.VORGABE,
     beiAnmelden: (String, String) -> Unit = { _, _ -> },
-    beiKontoAnlegen: (String, String, String) -> Unit = { _, _, _ -> },
+    /** Benutzername, Anzeigename, Passwort, E-Mail-Adresse. */
+    beiKontoAnlegen: (String, String, String, String) -> Unit = { _, _, _, _ -> },
     beiZweiFaktor: (String) -> Unit = {},
+    beiZweiFaktorAbbrechen: () -> Unit = {},
     beiServerWechsel: (String) -> Unit = {},
+    /** Eine Seite ohne Anmeldung öffnen — `"recht/impressum"`, `"vertrag/kuendigen"`. */
+    beiSeite: (String) -> Unit = {},
     zweiFaktorZiel: String? = null,
 ) {
-    var modus by remember { mutableStateOf(Anmeldeart.Anmelden) }
-    var benutzername by remember { mutableStateOf("") }
-    var anzeigename by remember { mutableStateOf("") }
+    val bereich = rememberCoroutineScope()
+    var modus by rememberSaveable { mutableStateOf(Anmeldeart.Anmelden) }
+    // Vier Zustände desselben Formulars und keine vier Seiten: Die Eingaben —
+    // allen voran der Benutzername — sollen dabei stehen bleiben.
+    var schritt by rememberSaveable { mutableStateOf("formular") }
+    var benutzername by rememberSaveable { mutableStateOf("") }
+    var email by rememberSaveable { mutableStateOf("") }
+    var anzeigename by rememberSaveable { mutableStateOf("") }
     var passwort by remember { mutableStateOf("") }
     var code by remember { mutableStateOf("") }
-    var agb by remember { mutableStateOf(false) }
-    var nutzung by remember { mutableStateOf(false) }
-    var datenschutz by remember { mutableStateOf(false) }
+    var vergessenName by rememberSaveable { mutableStateOf("") }
+    var neuesPasswort by remember { mutableStateOf("") }
+    var agb by rememberSaveable { mutableStateOf(false) }
+    var nutzung by rememberSaveable { mutableStateOf(false) }
+    var datenschutz by rememberSaveable { mutableStateOf(false) }
+    // Volljährig — oder mit dem Einverständnis der Eltern. Ein Konto ist ein
+    // Vertrag, und den schließt ein Minderjähriger nur mit Einwilligung seiner
+    // Erziehungsberechtigten (§§ 107, 108 BGB). Nicht vorausgewählt.
+    var alter by rememberSaveable { mutableStateOf(false) }
+    var textOffen by rememberSaveable { mutableStateOf<String?>(null) }
 
-    val zustimmungVollstaendig = agb && nutzung && datenschutz
-    val browser = LocalUriHandler.current
+    // Die eigene Meldung (Prüfung, Passwort vergessen) und die grüne Auskunft.
+    var meldung by remember { mutableStateOf<String?>(null) }
+    var bestaetigung by remember { mutableStateOf<String?>(null) }
+    var eigenesLaeuft by remember { mutableStateOf(false) }
+
+    val zustimmungVollstaendig = agb && nutzung && datenschutz && alter
+    val emailSiehtGutAus = EMAIL_FORM.matches(email.trim())
+    val sperrt = laeuft || eigenesLaeuft
+
+    fun modusWechseln(neu: Anmeldeart) {
+        modus = neu
+        meldung = null
+        bestaetigung = null
+    }
+
+    fun zurueck() {
+        schritt = "formular"
+        meldung = null
+        bestaetigung = null
+        code = ""
+        neuesPasswort = ""
+    }
+
+    fun absenden() {
+        meldung = null
+        bestaetigung = null
+        if (modus == Anmeldeart.Anmelden) {
+            beiAnmelden(benutzername, passwort)
+            return
+        }
+        val grund = when {
+            !emailSiehtGutAus ->
+                "Bitte gib eine gültige E-Mail-Adresse an — sie ist dein Weg zurück, falls du dein " +
+                    "Passwort vergisst."
+            anzeigename.trim().length < 2 -> "Bitte einen Anzeigenamen mit mindestens zwei Zeichen eingeben."
+            !zustimmungVollstaendig ->
+                "Bitte bestätige AGB, Nutzungsbedingungen, die Kenntnisnahme der Datenschutzerklärung " +
+                    "und dass du volljährig bist oder deine Erziehungsberechtigten einverstanden sind."
+            else -> null
+        }
+        meldung = grund
+        if (grund == null) beiKontoAnlegen(benutzername, anzeigename, passwort, email.trim())
+    }
+
+    /** Ein Weg ohne Anmeldung — mit eigener Sperre, denn die Sitzung weiß nichts davon. */
+    fun ohneAnmeldung(tat: suspend () -> Unit) {
+        if (eigenesLaeuft) return
+        eigenesLaeuft = true
+        meldung = null
+        bereich.launch {
+            try {
+                tat()
+            } catch (abbruch: CancellationException) {
+                throw abbruch
+            } catch (e: Exception) {
+                meldung = e.message ?: "Das hat nicht geklappt."
+            } finally {
+                eigenesLaeuft = false
+            }
+        }
+    }
 
     Seite(modifier = modifier, abstand = Abstand.Gross) {
         Empfangskopf()
 
-        if (zweiFaktorZiel != null) {
-            Formular("Anmeldeschutz") {
+        when {
+            zweiFaktorZiel != null -> Formular("Anmeldeschutz") {
                 Text(
                     text = "Wir haben einen sechsstelligen Code an $zweiFaktorZiel geschickt.",
                     style = Schrift.Klein,
@@ -102,31 +183,108 @@ fun LoginSeite(
                     aufschrift = "Anmelden",
                     beiDruck = { beiZweiFaktor(code) },
                     art = Knopfart.Haupt,
-                    aktiv = !laeuft && code.length == 6,
+                    aktiv = !sperrt && code.length == 6,
+                    breit = true,
+                )
+                Knopf(
+                    aufschrift = "Abbrechen",
+                    beiDruck = {
+                        code = ""
+                        beiZweiFaktorAbbrechen()
+                    },
+                    aktiv = !sperrt,
                     breit = true,
                 )
                 if (fehler != null) Meldung(fehler)
             }
-        } else {
-            Formular {
+
+            // Passwort vergessen, Schritt 1: wer bist du?
+            schritt == "vergessen" -> Formular("Passwort vergessen") {
+                Text(
+                    text = "Gib deinen Benutzernamen oder deine hinterlegte E-Mail-Adresse an. Wenn dazu " +
+                        "ein Konto mit bestätigter Adresse gehört, schicken wir einen Code.",
+                    style = Schrift.Klein,
+                    color = Farben.TextSehrLeise,
+                )
+                Feld(
+                    wert = vergessenName,
+                    beiAenderung = { vergessenName = it.take(254) },
+                    etikett = "Benutzername oder E-Mail",
+                    weiterTaste = ImeAction.Done,
+                )
+                Knopf(
+                    aufschrift = "Code anfordern",
+                    beiDruck = {
+                        if (vergessenName.isBlank()) {
+                            meldung = "Bitte deinen Benutzernamen oder deine E-Mail-Adresse angeben."
+                        } else if (wege != null) {
+                            // Auch wenn es das Konto nicht gibt, geht es weiter: Der Server
+                            // antwortet in jedem Fall gleich, und ein Formular, das bei einem
+                            // unbekannten Namen stehen bliebe, machte diese Zusage zunichte.
+                            ohneAnmeldung {
+                                val antwort = wege.passwortVergessen(vergessenName.trim())
+                                bestaetigung = antwort.meldung
+                                schritt = "neuesPasswort"
+                            }
+                        }
+                    },
+                    art = Knopfart.Haupt,
+                    aktiv = !sperrt,
+                    breit = true,
+                )
+                Knopf("Zurück", { zurueck() }, aktiv = !sperrt, breit = true)
+                meldung?.let { Meldung(it) }
+            }
+
+            // Passwort vergessen, Schritt 2: Code und neues Passwort.
+            schritt == "neuesPasswort" -> Formular("Neues Passwort") {
+                bestaetigung?.let { Hinweis(it) }
+                Codefeld(wert = code, beiAenderung = { code = it }, etikett = "Code aus der E-Mail")
+                Feld(
+                    wert = neuesPasswort,
+                    beiAenderung = { neuesPasswort = it },
+                    etikett = "Neues Passwort",
+                    geheim = true,
+                    weiterTaste = ImeAction.Done,
+                )
+                Text("Mindestens 8 Zeichen.", style = Schrift.Klein, color = Farben.TextSehrLeise)
+                Knopf(
+                    aufschrift = "Passwort setzen",
+                    beiDruck = {
+                        if (wege != null) {
+                            ohneAnmeldung {
+                                wege.passwortNeuSetzen(vergessenName.trim(), code, neuesPasswort)
+                                // Zurück ins Anmeldeformular, mit dem Namen schon eingetragen.
+                                // Automatisch angemeldet wird bewusst nicht — der Server hat
+                                // gerade alle Sitzungen dieses Kontos beendet.
+                                benutzername = vergessenName.trim()
+                                passwort = ""
+                                code = ""
+                                neuesPasswort = ""
+                                schritt = "formular"
+                                modus = Anmeldeart.Anmelden
+                                bestaetigung = "Dein neues Passwort steht. Melde dich jetzt damit an."
+                            }
+                        }
+                    },
+                    art = Knopfart.Haupt,
+                    aktiv = !sperrt,
+                    breit = true,
+                )
+                Knopf("Abbrechen", { zurueck() }, aktiv = !sperrt, breit = true)
+                meldung?.let { Meldung(it) }
+            }
+
+            else -> Formular {
                 Segment(
                     seiten = Anmeldeart.entries,
                     gewaehlt = modus,
-                    beiWahl = { modus = it },
+                    beiWahl = { modusWechseln(it) },
                     aufschrift = { it.aufschrift },
                     modifier = Modifier.fillMaxWidth(),
                 )
 
-                Feld(
-                    wert = benutzername,
-                    beiAenderung = { benutzername = it.take(32) },
-                    etikett = "Benutzername",
-                    platzhalter = "z. B. kim112",
-                )
-
                 // Die Regel der Beta, bevor jemand ein Konto anlegt — nicht erst danach.
-                // Der Server sagt sie mit der Version; auf pagerspass.de steht der
-                // Absatz nie.
                 if (modus == Anmeldeart.Registrieren && kontofreischaltung) {
                     Text(
                         text = "Auf der Beta wird jedes neue Konto vom Team freigeschaltet: Leg " +
@@ -138,7 +296,30 @@ fun LoginSeite(
                     )
                 }
 
-                if (modus == Anmeldeart.Registrieren) {
+                // Beim Anmelden geht beides: der Benutzername oder die hinterlegte Adresse.
+                // Der Server unterscheidet am „@" (ein Benutzername enthält nie eins).
+                val anmelden = modus == Anmeldeart.Anmelden
+                Feld(
+                    wert = benutzername,
+                    beiAenderung = { benutzername = it.take(if (anmelden) 254 else 32) },
+                    etikett = if (anmelden) "Benutzername oder E-Mail" else "Benutzername",
+                    platzhalter = if (anmelden) "kim112 oder kim@beispiel.de" else "z. B. kim112",
+                )
+
+                if (!anmelden) {
+                    Feld(
+                        wert = email,
+                        beiAenderung = { email = it.take(254) },
+                        etikett = "E-Mail-Adresse",
+                        platzhalter = "kim@beispiel.de",
+                        tastatur = KeyboardType.Email,
+                    )
+                    Text(
+                        text = "Für „Passwort vergessen“ und — nur wenn du ihn bestellst — den " +
+                            "Newsletter. Du bekommst einen Code zur Bestätigung.",
+                        style = Schrift.Klein,
+                        color = Farben.TextSehrLeise,
+                    )
                     Feld(
                         wert = anzeigename,
                         beiAenderung = { anzeigename = it.take(24) },
@@ -155,7 +336,7 @@ fun LoginSeite(
                     weiterTaste = ImeAction.Done,
                 )
 
-                if (modus == Anmeldeart.Registrieren) {
+                if (!anmelden) {
                     Text(
                         text = "Mindestens 8 Zeichen. Dein Passwort wird nicht im Klartext gespeichert.",
                         style = Schrift.Klein,
@@ -166,41 +347,61 @@ fun LoginSeite(
                         agb = agb,
                         nutzung = nutzung,
                         datenschutz = datenschutz,
+                        alter = alter,
                         beiAgb = { agb = it },
                         beiNutzung = { nutzung = it },
                         beiDatenschutz = { datenschutz = it },
-                        beiText = { seite -> browser.openUri(Rechtsstand.adresse(server, seite)) },
+                        beiAlter = { alter = it },
+                        beiText = { seite -> textOffen = seite },
                     )
                 }
 
                 Knopf(
                     aufschrift = modus.knopf,
-                    beiDruck = {
-                        if (modus == Anmeldeart.Anmelden) {
-                            beiAnmelden(benutzername, passwort)
-                        } else {
-                            beiKontoAnlegen(benutzername, anzeigename, passwort)
-                        }
-                    },
+                    beiDruck = { absenden() },
                     art = Knopfart.Haupt,
                     breit = true,
-                    aktiv = !laeuft &&
+                    aktiv = !sperrt &&
                         benutzername.isNotBlank() &&
-                        passwort.length >= 8 &&
-                        (modus == Anmeldeart.Anmelden ||
-                            (anzeigename.isNotBlank() && zustimmungVollstaendig)),
+                        passwort.isNotEmpty() &&
+                        (anmelden || (zustimmungVollstaendig && emailSiehtGutAus && passwort.length >= 8)),
                 )
 
+                // Nur beim Anmelden: Im Registrierformular wäre „Passwort vergessen"
+                // die Frage nach einem Passwort, das es noch gar nicht gibt.
+                if (anmelden) {
+                    Textweg(
+                        "Passwort vergessen?",
+                        {
+                            vergessenName = benutzername
+                            schritt = "vergessen"
+                            meldung = null
+                            bestaetigung = null
+                        },
+                        aktiv = !sperrt,
+                        farbe = Farben.TextLeise,
+                    )
+                }
+
+                bestaetigung?.let { Hinweis(it) }
                 if (hinweis != null) Hinweis(hinweis)
-                if (fehler != null) Meldung(fehler)
+                (meldung ?: fehler)?.let { Meldung(it) }
             }
         }
 
-        Fusszeile(server = server, beiServerWechsel = beiServerWechsel, beiText = { seite ->
-            browser.openUri(Rechtsstand.adresse(server, seite))
-        })
+        Fusszeile(
+            server = server,
+            beiServerWechsel = beiServerWechsel,
+            beiSeite = beiSeite,
+        )
     }
+
+    // Die Texte schlagen sich über dem Formular auf — die Eingaben bleiben stehen.
+    textOffen?.let { seite -> Rechtstextblende(seite, { textOffen = null }) }
 }
+
+/** Die grobe Form einer Adresse; die genaue Regel kommt vom Server. */
+private val EMAIL_FORM = Regex("""^[^@\s]+@[^@\s]+\.[^@\s]+$""")
 
 /** Die zwei Zustände desselben Formulars. */
 enum class Anmeldeart(val aufschrift: String, val knopf: String) {
@@ -253,25 +454,26 @@ private fun Formular(
 }
 
 /**
- * Die drei Zustimmungen vor der Kontoanlage.
+ * Die vier Zustimmungen vor der Kontoanlage.
  *
- * <b>Drei Haken und nicht einer.</b> AGB, Nutzungsbedingungen und Datenschutz
- * sind drei Erklärungen mit drei verschiedenen Rechtsfolgen; ein
- * Sammelhäkchen („Ich akzeptiere alles") wäre bequemer und als Einwilligung
- * angreifbar. Der dritte ist bewusst anders formuliert — die
- * Datenschutzerklärung wird zur Kenntnis genommen, nicht akzeptiert.
+ * <b>Vier Haken und nicht einer.</b> AGB, Nutzungsbedingungen und Datenschutz
+ * sind drei Erklärungen mit drei verschiedenen Rechtsfolgen; die Datenschutz-
+ * erklärung wird zur Kenntnis genommen, nicht akzeptiert. Der vierte stellt die
+ * Altersfrage dort, wo der Vertrag geschlossen wird.
  *
- * Die verlinkten Wörter öffnen den Text im Browser. Dass die App sie noch nicht
- * selbst zeigt, ist eine der offenen Aufgaben vor der Veröffentlichung.
+ * Die Texte öffnen sich in einer Blende über dem Formular — die Eingaben bleiben
+ * stehen, wie im Web der neue Tab.
  */
 @Composable
 private fun Zustimmungen(
     agb: Boolean,
     nutzung: Boolean,
     datenschutz: Boolean,
+    alter: Boolean,
     beiAgb: (Boolean) -> Unit,
     beiNutzung: (Boolean) -> Unit,
     beiDatenschutz: (Boolean) -> Unit,
+    beiAlter: (Boolean) -> Unit,
     beiText: (String) -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(Abstand.Winzig)) {
@@ -297,6 +499,13 @@ private fun Zustimmungen(
             beiWechsel = beiDatenschutz,
         )
         Textweg("Datenschutzerklärung lesen", { beiText(Rechtsstand.DATENSCHUTZ) })
+
+        Hakenzeile(
+            text = "Ich bin volljährig — oder meine Erziehungsberechtigten sind mit meiner Nutzung " +
+                "von PagerSpass einverstanden.",
+            an = alter,
+            beiWechsel = beiAlter,
+        )
     }
 }
 
@@ -344,7 +553,7 @@ private fun Hinweis(text: String) {
 private fun Fusszeile(
     server: String,
     beiServerWechsel: (String) -> Unit,
-    beiText: (String) -> Unit,
+    beiSeite: (String) -> Unit,
 ) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -358,9 +567,15 @@ private fun Fusszeile(
             textAlign = TextAlign.Center,
         )
 
-        Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Normal)) {
-            Textweg("Impressum", { beiText(Rechtsstand.IMPRESSUM) })
-            Textweg("Datenschutz", { beiText(Rechtsstand.DATENSCHUTZ) })
+        // § 312k und § 356a BGB: beide Vertragswege ohne Anmeldung, also genau hier.
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(Abstand.Normal, Alignment.CenterHorizontally),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Textweg("Impressum", { beiSeite("recht/${Rechtsstand.IMPRESSUM}") })
+            Textweg("Datenschutz", { beiSeite("recht/${Rechtsstand.DATENSCHUTZ}") })
+            Textweg("Verträge hier kündigen", { beiSeite("vertrag/kuendigen") })
+            Textweg("Vertrag widerrufen", { beiSeite("vertrag/widerrufen") })
         }
 
         Etikett("Server")

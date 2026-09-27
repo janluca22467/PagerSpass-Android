@@ -317,6 +317,9 @@ data class Landkreis(
     val maxSpieler: Int = 0,
     val bundesland: String = "",
     val art: String = "",
+    // Bereich Konto: der Kreisort, für „Zu einem Kreis springen" in der Kartenwahl.
+    val lat: Double = 0.0,
+    val lon: Double = 0.0,
 ) {
     /**
      * Wie der Kreis in der Liste steht.
@@ -416,6 +419,11 @@ data class Profil(
     val kopfmuster: String = "keines",
     val profilbild: String? = null,
     val titel: String? = null,
+    // ------------------------------------------------------ Bereich Konto
+    /** Nur im eigenen Profil: womit das Verfassen-Feld am Brett startet. */
+    val standardsichtbarkeit: String? = null,
+    /** Der Ausschnitt fürs Abo-Muster „Eigene Lage" — am eigenen Profil immer mit. */
+    val kartenausschnitt: Kartenausschnitt? = null,
 )
 
 /**
@@ -436,6 +444,11 @@ data class Profilaenderung(
     val profilrahmen: String? = null,
     val kopfmuster: String? = null,
     val titel: String? = null,
+    // ------------------------------------------------------ Bereich Konto
+    /** `Freunde`, `Wache` oder `Oeffentlich`. */
+    val standardsichtbarkeit: String? = null,
+    /** Nur mitschicken, wenn das Kartenmuster gewählt ist — sonst weist der Server ab. */
+    val kartenausschnitt: Kartenausschnitt? = null,
 )
 
 /**

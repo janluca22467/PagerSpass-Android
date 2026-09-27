@@ -60,7 +60,6 @@ import de.pagerspass.pagerspass.ansichten.LeitstelleSeite
 import de.pagerspass.pagerspass.ansichten.LobbySeite
 import de.pagerspass.pagerspass.ansichten.Melderblende
 import de.pagerspass.pagerspass.ansichten.LoginSeite
-import de.pagerspass.pagerspass.ansichten.PostfachSeite
 import de.pagerspass.pagerspass.ansichten.PrivatsphaereSeite
 import de.pagerspass.pagerspass.ansichten.ProfilSeite
 import de.pagerspass.pagerspass.ansichten.ShopSeite
@@ -135,25 +134,37 @@ fun PagerSpassApp(
             // Noch nichts wissen ist ein eigener Zustand — siehe oben.
             !stand.geprueft -> Unit
 
-            !stand.angemeldet -> LoginSeite(
-                laeuft = stand.laeuft,
-                fehler = stand.fehler,
-                hinweis = stand.hinweis,
-                kontofreischaltung = stand.kontofreischaltung,
-                server = stand.server,
-                zweiFaktorZiel = zweiFaktor?.second,
-                beiAnmelden = { name, wort ->
-                    sitzung.anmelden(name, wort) { anfrage, ziel -> zweiFaktor = anfrage to ziel }
-                },
-                beiKontoAnlegen = sitzung::kontoAnlegen,
-                beiZweiFaktor = { code ->
-                    zweiFaktor?.let { (anfrage, _) -> sitzung.zweiFaktorBestaetigen(anfrage, code) }
-                },
-                beiServerWechsel = { adresse ->
-                    zweiFaktor = null
-                    sitzung.serverWechseln(adresse)
-                },
-            )
+            // Bereich Konto: Die Anmeldeseite steht in `Draussen` — mit den Seiten, die
+            // ohne Konto erreichbar sein müssen (Rechtstexte, Verträge, Newsletter, Code).
+            !stand.angemeldet -> Draussen(sitzung) { beiSeite ->
+                LoginSeite(
+                    wege = sitzung.kontowege,
+                    laeuft = stand.laeuft,
+                    fehler = stand.fehler,
+                    hinweis = stand.hinweis,
+                    kontofreischaltung = stand.kontofreischaltung,
+                    server = stand.server,
+                    zweiFaktorZiel = zweiFaktor?.second,
+                    beiAnmelden = { name, wort ->
+                        sitzung.anmelden(name, wort) { anfrage, ziel -> zweiFaktor = anfrage to ziel }
+                    },
+                    beiKontoAnlegen = { name, anzeige, wort, email ->
+                        sitzung.kontoAnlegen(name, anzeige, wort, email)
+                    },
+                    beiZweiFaktor = { code ->
+                        zweiFaktor?.let { (anfrage, _) -> sitzung.zweiFaktorBestaetigen(anfrage, code) }
+                    },
+                    beiZweiFaktorAbbrechen = {
+                        zweiFaktor = null
+                        sitzung.fehlerWegnehmen()
+                    },
+                    beiServerWechsel = { adresse ->
+                        zweiFaktor = null
+                        sitzung.serverWechseln(adresse)
+                    },
+                    beiSeite = beiSeite,
+                )
+            }
 
             // <b>Die Runde verdrängt alles.</b> Wer in einer Lobby oder im Dienst
             // steht, sieht keine Tableiste und keine sechs Wege — im Raum hat
@@ -198,12 +209,10 @@ fun PagerSpassApp(
         Wiederherstellungscode(code, sitzung::wiederherstellungscodeWegnehmen)
     }
 
-    if (stand.rechtsstandOffen && stand.wiederherstellungscode == null) {
-        RechtsstandBlende(
-            beiZustimmen = sitzung::rechtsstandZustimmen,
-            beiAbmelden = sitzung::abmelden,
-        )
-    }
+    // Bereich Konto: Analyse → Rechtsstand → E-Mail-Pflicht, nie zwei übereinander
+    // (siehe `mobil/Kontobereich.kt`). Nicht am gekoppelten Begleiter — dort ist
+    // kein Konto am Werk, sondern ein Funkplatz.
+    if (!begleiterstand.gekoppelt) KontoBlenden(sitzung)
 }
 
 /**
@@ -534,9 +543,8 @@ private fun Angemeldet(
                     beiLink = { browser.openUri(it) },
                     beiTagesschicht = { steuerung.navigate(UNTERSEITE_TAGESSCHICHT) },
                     beiOeffentlicheRunden = { steuerung.navigate(UNTERSEITE_OEFFENTLICH) },
-                    beiRechtstext = { seite ->
-                        browser.openUri(Rechtsstand.adresse(Server.BETRIEB, seite))
-                    },
+                    // Bereich Konto: Die Rechtstexte stehen in der App.
+                    beiRechtstext = { seite -> navigieren(steuerung, "${Kontorouten.RECHT}/$seite") },
                     beiImWeb = { imWeb("") },
                 )
             }
@@ -635,26 +643,9 @@ private fun Angemeldet(
                 )
             }
 
-            composable(Weg.Konto.adresse) {
-                KontoSeite(
-                    unterrand = platz,
-                    konto = stand.konto,
-                    profil = daten.profil,
-                    server = stand.server,
-                    postfachFrei = stand.postfachFrei,
-                    beiProfilLaden = { sitzung.profilLaden() },
-                    beiAbmelden = { sitzung.abmelden() },
-                    beiLoeschen = { loeschenOffen = true },
-                    beiRechtstext = { seite ->
-                        browser.openUri(Rechtsstand.adresse(Server.BETRIEB, seite))
-                    },
-                    beiProfil = { steuerung.navigate(UNTERSEITE_PROFIL) },
-                    beiPrivatsphaere = { steuerung.navigate(UNTERSEITE_PRIVATSPHAERE) },
-                    beiPostfach = { steuerung.navigate(UNTERSEITE_POSTFACH) },
-                    beiMitteilungen = { steuerung.navigate(UNTERSEITE_MITTEILUNGEN) },
-                    beiBegleiter = { steuerung.navigate(UNTERSEITE_BEGLEITER) },
-                )
-            }
+            // Bereich Konto: Kontozentrale, Profileditor, Privatsphäre, Mitteilungen,
+            // Mitteilungen vom Betrieb, Discord, Code, Rechtstexte, Newsletter, Verträge.
+            kontobereich(sitzung, steuerung, platz)
 
             composable(UNTERSEITE_BEGLEITER) {
                 de.pagerspass.pagerspass.ansichten.BegleiterKopplung(
@@ -722,64 +713,6 @@ private fun Angemeldet(
                 )
             }
 
-            composable(UNTERSEITE_MITTEILUNGEN) {
-                de.pagerspass.pagerspass.ansichten.MitteilungenSeite(
-                    unterrand = platz,
-                    stand = daten.mitteilungsschalter,
-                    beiLaden = { sitzung.mitteilungsschalterLaden() },
-                    beiSetzen = { sitzung.mitteilungsschalterSetzen(it) },
-                    beiZurueck = { steuerung.popBackStack() },
-                )
-            }
-
-            composable(UNTERSEITE_PROFIL) {
-                // Der Shop sagt, was gekauft ist — und nur Gekauftes lässt sich
-                // tragen. Deshalb lädt die Profilseite ihn mit, obwohl sie ihn
-                // nicht zeigt: Ohne den Besitzstand stünde jedes gekaufte Stück
-                // gesperrt da, auch das, was man längst hat.
-                LaunchedEffect(Unit) { sitzung.shopLaden() }
-
-                ProfilSeite(
-                    unterrand = platz,
-                    konto = stand.konto,
-                    profil = daten.profil,
-                    server = stand.server,
-                    besitzt = daten.shop.inhalt?.imBesitz.orEmpty()
-                        .map { it.stueckId }
-                        .toSet(),
-                    profilbild = daten.profilbild,
-                    laeuft = stand.laeuft,
-                    beiLaden = { sitzung.profilLaden() },
-                    beiAendern = { sitzung.profilAendern(it) },
-                    beiBildLaden = { sitzung.profilbildLaden() },
-                    beiBildEinreichen = { name, typ, daten ->
-                        sitzung.profilbildEinreichen(name, typ, daten)
-                    },
-                    beiBildEntfernen = { sitzung.profilbildEntfernen() },
-                    beiZurueck = { steuerung.popBackStack() },
-                )
-            }
-
-            composable(UNTERSEITE_PRIVATSPHAERE) {
-                PrivatsphaereSeite(
-                    unterrand = platz,
-                    stand = daten.privatsphaere,
-                    beiLaden = { sitzung.privatsphaereLaden() },
-                    beiSetzen = { sitzung.privatsphaereSetzen(it) },
-                    beiZurueck = { steuerung.popBackStack() },
-                )
-            }
-
-            composable(UNTERSEITE_POSTFACH) {
-                PostfachSeite(
-                    unterrand = platz,
-                    mitteilungen = daten.mitteilungen,
-                    postfachFrei = stand.postfachFrei,
-                    beiLaden = { sitzung.mitteilungenLaden() },
-                    beiZurueck = { steuerung.popBackStack() },
-                )
-            }
-
             composable(UNTERSEITE_GARAGE) {
                 GarageSeite(
                     unterrand = platz,
@@ -801,11 +734,19 @@ private fun Angemeldet(
             }
         }
 
+        // Bereich Konto: App-Links und Systemmeldungen (siehe `mobil/Einsprung.kt`).
+        EinsprungFolgen(
+            steuerung = steuerung,
+            beiRaum = { code -> runde.beitreten(code, stand.konto?.anzeigename.orEmpty()) },
+            beiFunk = { token -> begleiter.koppeln(token) },
+        )
+
         Tableiste(
             // Auf einer Unterseite bleibt der Weg markiert, aus dem sie kommt —
             // die Garage gehört zum Buch. Ohne das stünde die Leiste dort ohne
             // jede Markierung, und man wüsste nicht mehr, wo man ist.
-            hier = hier ?: unterseitenweg(eintrag?.destination?.route),
+            hier = hier ?: unterseitenweg(eintrag?.destination?.route)
+                ?: kontobereichWeg(eintrag?.destination?.route),
             marken = marken(daten),
             beiWahl = { weg -> zurWahl(steuerung, weg) },
             modifier = Modifier.align(Alignment.BottomCenter),

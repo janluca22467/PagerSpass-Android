@@ -1,5 +1,6 @@
 package de.pagerspass.pagerspass
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
@@ -7,6 +8,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.ui.graphics.toArgb
+import de.pagerspass.pagerspass.mobil.Einsprung
 import de.pagerspass.pagerspass.mobil.Meldermeldung
 import de.pagerspass.pagerspass.mobil.PagerSpassApp
 import de.pagerspass.pagerspass.mobil.Runde
@@ -63,6 +65,11 @@ class MainActivity : ComponentActivity() {
         // Viertelstunde, plus die Tageserinnerung um zwölf.
         de.pagerspass.pagerspass.mobil.Mitteilungsabruf.einrichten(this)
 
+        // Bereich Konto: App-Link oder Systemmeldung — wohin die App gleich will
+        // (siehe `mobil/Einsprung.kt`). Nur beim ersten Start, nicht nach dem Drehen:
+        // Der Einsprung wäre sonst ein zweites Mal da.
+        if (savedInstanceState == null) Einsprung.aufnehmen(intent)
+
         val dunkel = SystemBarStyle.dark(Farben.Bg.toArgb())
         enableEdgeToEdge(statusBarStyle = dunkel, navigationBarStyle = dunkel)
         super.onCreate(savedInstanceState)
@@ -77,5 +84,15 @@ class MainActivity : ComponentActivity() {
                 )
             }
         }
+    }
+
+    /**
+     * Ein App-Link, während die App schon läuft (`launchMode="singleTask"` im
+     * Manifest) — oder der Tipp auf eine Systemmeldung.
+     */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        Einsprung.aufnehmen(intent)
     }
 }

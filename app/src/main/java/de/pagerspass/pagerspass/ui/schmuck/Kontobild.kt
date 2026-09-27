@@ -163,6 +163,40 @@ private val WAPPENZEICHEN: Map<String, ImageVector> = mapOf(
             "m3-3.5 1.4-1.7 3.3 2.8-1.4 1.7Zm3-3.5 1.4-1.7 3.3 2.8-1.5 1.7Zm3-3.5L17.4 4l3.3 2.8" +
             "-1.4 1.7Z",
     ),
+    // Bereich Konto: die übrigen Zeichen aus `Kontobild.vue` — Laufbahn und Abo.
+    "Rth" to flaechenzeichen(
+        "rth",
+        "M3 4.5h18v1.7H3Zm8 1.7h2V8.5h-2ZM7.5 8.5h6.2c2.1 0 3.8 1.6 3.8 3.6 0 2-1.7 3.4-3.8 3.4" +
+            "H9.5L6 13.3c-1-.6-1.2-2.1-.4-3 .5-.5 1.2-.8 1.9-.8Zm9.8 1.2 3.7-1v4.6l-3.5-1ZM6.5 17h11" +
+            "v1.6h-11Zm2-1.5h1.6V17H8.5Zm6 0h1.6V17h-1.6Z",
+    ),
+    "Boot" to flaechenzeichen(
+        "boot",
+        "M3 13h18l-2.6 4.4a2 2 0 0 1-1.7 1H7.3a2 2 0 0 1-1.7-1Zm8-7.5 6.5 6H11ZM9.5 7v4.5H6.8Z",
+    ),
+    "Funkmast" to flaechenzeichen(
+        "funkmast",
+        "M11.1 8.8h1.8L15.6 21h-2l-.5-2.6h-2.2L10.4 21h-2Zm.2 7.6h1.4L12 12.9ZM12 5.2a1.9 1.9 0 1 1" +
+            " 0 3.8 1.9 1.9 0 0 1 0-3.8ZM7.2 3.4l1.2 1.2a5.2 5.2 0 0 0 0 5l-1.2 1.2a6.9 6.9 0 0 1 0" +
+            "-7.4Zm9.6 0a6.9 6.9 0 0 1 0 7.4l-1.2-1.2a5.2 5.2 0 0 0 0-5Z",
+    ),
+    "Leitstelle" to flaechenzeichen(
+        "leitstelle",
+        "M4 6h16a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-6.2l.6 2H16v1.6H8V19h1.6l.6-2H4a1 1 0 0 1-1-1V7a1" +
+            " 1 0 0 1 1-1Zm2.6 2.4v6.2h1.7v-2.1h2.1v2.1h1.7V8.4h-1.7v2.4h-2.1V8.4Zm7.6 0v6.2h4.2v-1.6" +
+            "h-2.5V8.4Z",
+    ),
+    "Bergwacht" to flaechenzeichen(
+        "bergwacht",
+        "M9.4 4.6 14 12.2l1.6-2.4L21 19H3ZM9.4 8l-1.9 3.1h3.8Z",
+    ),
+    "Wasserrettung" to flaechenzeichen(
+        "wasserrettung",
+        "M12 3.4a6 6 0 1 1 0 12 6 6 0 0 1 0-12Zm0 2.2a3.8 3.8 0 1 0 0 7.6 3.8 3.8 0 0 0 0-7.6ZM3" +
+            " 17.6c1.6 0 1.6 1.5 3.2 1.5s1.6-1.5 3.2-1.5 1.6 1.5 3.2 1.5 1.6-1.5 3.2-1.5 1.6 1.5 3.2" +
+            " 1.5V21c-1.6 0-1.6-1.4-3.2-1.4s-1.6 1.4-3.2 1.4-1.6-1.4-3.2-1.4-1.6 1.4-3.2 1.4S4.6 19.6" +
+            " 3 19.6Z",
+    ),
 )
 
 private fun flaechenzeichen(name: String, pfad: String): ImageVector =

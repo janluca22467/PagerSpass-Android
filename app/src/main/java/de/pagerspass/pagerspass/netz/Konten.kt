@@ -31,7 +31,12 @@ class Konten(private val netz: Netz, private val ablage: Ablage) {
      * Es ist angelegt, aber erst das Team schaltet es frei. Dann wird hier nichts
      * gemerkt — die Ablage bleibt leer, und die Sitzung zeigt den Hinweis.
      */
-    suspend fun anlegen(benutzername: String, anzeigename: String, passwort: String): Konto {
+    suspend fun anlegen(
+        benutzername: String,
+        anzeigename: String,
+        passwort: String,
+        email: String,
+    ): Konto {
         val konto: Konto = netz.hole(
             "/api/konto",
             "POST",
@@ -39,6 +44,8 @@ class Konten(private val netz: Netz, private val ablage: Ablage) {
                 put("benutzername", benutzername)
                 put("anzeigename", anzeigename)
                 put("passwort", passwort)
+                // Seit 5.0.0.58 Pflicht — der Weg zurück bei vergessenem Passwort.
+                put("email", email)
                 put("rechtsstand", Rechtsstand.AKTUELL)
             }.toString(),
         )
