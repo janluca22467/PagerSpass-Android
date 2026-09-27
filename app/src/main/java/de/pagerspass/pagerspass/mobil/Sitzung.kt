@@ -664,6 +664,26 @@ class Sitzung(anwendung: Application) : AndroidViewModel(anwendung) {
         freundeLaden(neu = true)
     }
 
+    // Freunde (Sozial-Port) ----------------------------------------------------
+
+    /**
+     * Eine Freundschaftsanfrage stellen — der öffentliche Weg für jeden
+     * „+ Freund"-Knopf außerhalb des Freundebereichs (Lobby, Dienstbuch,
+     * Nachbesprechung). Hatte der andere schon gefragt, sind beide sofort
+     * verbunden. Eine Ablehnung des Servers steht danach als Fehler da.
+     *
+     * @param wen Die Kennung des anderen Kontos, nicht sein Benutzername.
+     * @param beiErfolg Bekommt den neuen Stand — `Angefragt` oder `Bestaetigt`.
+     */
+    fun freundAnfragen(wen: String, beiErfolg: (String) -> Unit = {}) = viewModelScope.launch {
+        runCatching { de.pagerspass.pagerspass.netz.Freundewege(netz).anfragen(kennung(), wen) }
+            .onSuccess { antwort ->
+                freundeLaden(neu = true)
+                beiErfolg(antwort.stand)
+            }
+            .onFailure { f -> _stand.update { it.copy(fehler = f.message) } }
+    }
+
     /**
      * Eine Runde eröffnen — und den Raumcode melden.
      *

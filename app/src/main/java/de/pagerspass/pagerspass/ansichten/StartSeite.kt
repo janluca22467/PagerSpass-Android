@@ -102,6 +102,8 @@ fun StartSeite(
     beiGelesen: (String) -> Unit = {},
     beiEinladung: (de.pagerspass.pagerspass.netz.Einladung) -> Unit = {},
     beiLink: (String) -> Unit = {},
+    /** Freunde (Sozial-Port): die Einladung abhaken, ohne beizutreten. */
+    beiEinladungAblehnen: (de.pagerspass.pagerspass.netz.Einladung) -> Unit = {},
 ) {
     LaunchedEffect(Unit) {
         beiKatalog()
@@ -165,6 +167,13 @@ fun StartSeite(
                         aufschrift = if (e.alsZuschauer) "Zusehen" else "Beitreten",
                         beiDruck = { beiEinladung(e) },
                         aktiv = e.annehmbar && !laeuft,
+                        kompakt = true,
+                    )
+                    // Freunde (Sozial-Port): ablehnen bzw. wegräumen, wie in den Kontakten.
+                    Knopf(
+                        aufschrift = if (e.annehmbar) "Ablehnen" else "Wegräumen",
+                        beiDruck = { beiEinladungAblehnen(e) },
+                        art = Knopfart.Leise,
                         kompakt = true,
                     )
                 },

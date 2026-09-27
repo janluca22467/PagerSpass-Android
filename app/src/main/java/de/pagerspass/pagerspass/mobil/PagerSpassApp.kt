@@ -40,7 +40,6 @@ import androidx.navigation.compose.rememberNavController
 import de.pagerspass.pagerspass.ansichten.BestenlisteSeite
 import de.pagerspass.pagerspass.ansichten.DienstbuchSeite
 import de.pagerspass.pagerspass.ansichten.GarageSeite
-import de.pagerspass.pagerspass.ansichten.FreundeSeite
 import de.pagerspass.pagerspass.ansichten.KontoSeite
 import android.Manifest
 import android.os.Build
@@ -67,9 +66,6 @@ import de.pagerspass.pagerspass.ansichten.ShopSeite
 import de.pagerspass.pagerspass.ansichten.StartSeite
 import de.pagerspass.pagerspass.ansichten.WachenSeite
 import de.pagerspass.pagerspass.ansichten.WachenGriffe
-import de.pagerspass.pagerspass.ansichten.BrettTeil
-import de.pagerspass.pagerspass.ansichten.EintragSeite
-import de.pagerspass.pagerspass.ansichten.GespraechSeite
 import de.pagerspass.pagerspass.netz.Rechtsstand
 import de.pagerspass.pagerspass.netz.Server
 import de.pagerspass.pagerspass.ui.theme.Abstand
@@ -110,7 +106,12 @@ fun PagerSpassApp(
 
     // Zurück in die Runde, die vor einem Prozesstod lief — einmal je Konto.
     LaunchedEffect(stand.konto?.kennung) {
-        val konto = stand.konto ?: return@LaunchedEffect
+        // Freunde (Sozial-Port): ohne Konto wird die Sozialleitung gekappt und ihr
+        // Stand weggeworfen — beim Abmelden wie beim Kontowechsel.
+        val konto = stand.konto ?: run {
+            sozial.trennen()
+            return@LaunchedEffect
+        }
         runde.wiederAufnehmen(konto.anzeigename)
         // Und zurück an den Funkplatz, an dem das Gerät vorher hing — aus
         // demselben Grund wie die Runde, nur noch dringender: Der Begleiter ist
@@ -121,9 +122,16 @@ fun PagerSpassApp(
         sozial.beiFreundesliste = { sitzung.freundeLaden(neu = true) }
         sozial.beiEinladungen = { sitzung.einladungenLaden(neu = true) }
         sozial.beiGemeinschaft = { sitzung.wacheLaden(neu = true) }
-        sozial.beiBrett = { sitzung.brettLaden(neu = true) }
+        // Freunde (Sozial-Port): Das Brett hält die Sozialschicht jetzt selbst und
+        // live; die Verwaltung meldet sich über den Hub; der Wachenchat nennt in
+        // seiner Mitteilung den Namen der Wache.
+        sozial.beiAdminNachricht = { sitzung.hinweiseLaden() }
+        sozial.wachenname = { id -> sitzung.daten.value.wache.inhalt?.eigene?.takeIf { it.id == id }?.name }
         sozial.verbinden(konto.kennung)
     }
+
+    // Freunde (Sozial-Port): vorn oder weggelegt — Leitung prüfen, Mitteilungen schalten.
+    SozialLebenslauf(sozial)
 
     // Der Zwischenschritt der Anmeldung. Er gehört dem Rahmen und nicht der
     // Sitzung: Er überlebt das Drehen des Geräts, aber nicht das Beenden der
@@ -480,6 +488,8 @@ private fun Angemeldet(
     val hier = Weg.entries.firstOrNull { it.adresse == eintrag?.destination?.route }
     val browser = LocalUriHandler.current
     var loeschenOffen by remember { mutableStateOf(false) }
+    // Freunde (Sozial-Port): die Zahlen für die Marke an „Freunde".
+    val kreisstand by sozial.kreis.stand.collectAsStateWithLifecycle()
 
     // Die Leiste steht auch auf den Unterseiten (Garage, Bestenliste) — sie sind
     // Teil des Buchs, kein eigener Zweig. Sie fiele erst weg, wenn eine Ansicht
@@ -524,13 +534,19 @@ private fun Angemeldet(
                         sitzung.hinweiseLaden()
                     },
                     beiGelesen = { sitzung.mitteilungGelesen(it) },
+                    // Freunde (Sozial-Port): erst den Zettel abhaken, dann beitreten —
+                    // sonst blieb jede Einladung liegen.
                     beiEinladung = { e ->
-                        if (e.alsZuschauer) {
-                            runde.zuschauen(e.roomCode, stand.konto?.anzeigename.orEmpty())
-                        } else {
-                            runde.beitreten(e.roomCode, stand.konto?.anzeigename.orEmpty())
+                        sozial.einladungBeantworten(e.nr, true) { ok ->
+                            if (!ok) return@einladungBeantworten
+                            if (e.alsZuschauer) {
+                                runde.zuschauen(e.roomCode, stand.konto?.anzeigename.orEmpty())
+                            } else {
+                                runde.beitreten(e.roomCode, stand.konto?.anzeigename.orEmpty())
+                            }
                         }
                     },
+                    beiEinladungAblehnen = { e -> sozial.einladungBeantworten(e.nr, false) },
                     beiLink = { browser.openUri(it) },
                     beiTagesschicht = { steuerung.navigate(UNTERSEITE_TAGESSCHICHT) },
                     beiOeffentlicheRunden = { steuerung.navigate(UNTERSEITE_OEFFENTLICH) },
@@ -595,34 +611,18 @@ private fun Angemeldet(
                 )
             }
 
-            composable(Weg.Freunde.adresse) {
-                FreundeSeite(
-                    unterrand = platz,
-                    freunde = daten.freunde,
-                    server = stand.server,
-                    beiLaden = { sitzung.freundeLaden() },
-                    beiAntwort = { wen, annehmen -> sitzung.freundAntworten(wen, annehmen) },
-                    beiGespraech = { freund ->
-                        steuerung.navigate(
-                            "$UNTERSEITE_GESPRAECH/${freund.kennung}/${freund.anzeigename.ifBlank { freund.benutzername }}",
-                        )
-                    },
-                    brett = {
-                        BrettTeil(
-                            brett = daten.brett,
-                            reiter = daten.brettReiter,
-                            hatWache = daten.wache.inhalt?.eigene != null,
-                            darfOeffentlich = (daten.buch.inhalt?.schichten?.size ?: 1) > 0,
-                            beiReiter = { sitzung.brettLaden(reiter = it) },
-                            beiLaden = { sitzung.brettLaden() },
-                            beiMehr = { sitzung.brettMehr() },
-                            beiSchreiben = { text, sicht -> sitzung.brettSchreiben(text, sicht) },
-                            beiQuittieren = { sitzung.brettQuittieren(it) },
-                            beiOeffnen = { steuerung.navigate("$UNTERSEITE_EINTRAG/$it") },
-                        )
-                    },
-                )
-            }
+            // Freunde (Sozial-Port): Brett, Liste, Nachrichten, Kontakte, Eintrag,
+            // Profil und Gespräch — alle Wege des Bereichs stehen in `FreundeWege.kt`.
+            freundeWege(
+                steuerung = steuerung,
+                sitzung = sitzung,
+                sozial = sozial,
+                runde = runde,
+                unterrand = platz,
+                zurWahl = { weg -> zurWahl(steuerung, weg) },
+                beiEigenemProfil = { steuerung.navigate(UNTERSEITE_PROFIL) },
+                beiLink = { browser.openUri(it) },
+            )
 
             composable(Weg.Shop.adresse) {
                 ShopSeite(
@@ -662,35 +662,6 @@ private fun Angemeldet(
                     laeuft = begleiterstand.laeuft,
                     fehler = begleiterstand.fehler,
                     beiKoppeln = { begleiter.koppeln(it) },
-                    beiZurueck = { steuerung.popBackStack() },
-                )
-            }
-
-            composable("$UNTERSEITE_GESPRAECH/{kennung}/{name}") { eintrag ->
-                val sozialstand by sozial.stand.collectAsStateWithLifecycle()
-                GespraechSeite(
-                    unterrand = platz,
-                    partnerKennung = eintrag.arguments?.getString("kennung").orEmpty(),
-                    partnerName = eintrag.arguments?.getString("name").orEmpty(),
-                    sozial = sozialstand,
-                    meineKennung = stand.konto?.kennung.orEmpty(),
-                    beiOeffnen = { sozial.gespraechOeffnen(it) },
-                    beiSchliessen = { sozial.gespraechSchliessen() },
-                    beiSenden = { an, text -> sozial.senden(an, text) },
-                    beiTermin = { nr, zusagen -> sozial.terminBeantworten(nr, zusagen) },
-                    beiZurueck = { steuerung.popBackStack() },
-                )
-            }
-
-            composable("$UNTERSEITE_EINTRAG/{nr}") { eintrag ->
-                EintragSeite(
-                    unterrand = platz,
-                    nr = eintrag.arguments?.getString("nr")?.toLongOrNull() ?: 0L,
-                    eintrag = daten.brettEintrag,
-                    kommentare = daten.brettKommentare,
-                    beiLaden = { sitzung.brettEintragLaden(it) },
-                    beiQuittieren = { sitzung.brettQuittieren(it) },
-                    beiKommentieren = { nr, text -> sitzung.brettKommentieren(nr, text) },
                     beiZurueck = { steuerung.popBackStack() },
                 )
             }
@@ -806,10 +777,16 @@ private fun Angemeldet(
             // die Garage gehört zum Buch. Ohne das stünde die Leiste dort ohne
             // jede Markierung, und man wüsste nicht mehr, wo man ist.
             hier = hier ?: unterseitenweg(eintrag?.destination?.route),
-            marken = marken(daten),
+            marken = marken(daten, kreisstand),
             beiWahl = { weg -> zurWahl(steuerung, weg) },
             modifier = Modifier.align(Alignment.BottomCenter),
         )
+    }
+
+    // Freunde (Sozial-Port): ein Tipp auf eine Sozialmeldung führt an ihr Ziel.
+    SozialzielFolgen { weg ->
+        val tab = Weg.entries.firstOrNull { it.adresse == weg }
+        if (tab != null) zurWahl(steuerung, tab) else steuerung.navigate(weg)
     }
 
     if (loeschenOffen) {
@@ -867,8 +844,6 @@ private const val UNTERSEITE_MITTEILUNGEN = "mitteilungen"
 private const val UNTERSEITE_BEGLEITER = "begleiter"
 private const val UNTERSEITE_OEFFENTLICH = "oeffentlicheRunden"
 private const val UNTERSEITE_TAGESSCHICHT = "tagesschicht"
-private const val UNTERSEITE_GESPRAECH = "gespraech"
-private const val UNTERSEITE_EINTRAG = "eintrag"
 
 /** Zu welchem Weg der Leiste eine Unterseite gehört. */
 private fun unterseitenweg(route: String?): Weg? = when (route) {
@@ -877,11 +852,8 @@ private fun unterseitenweg(route: String?): Weg? = when (route) {
     UNTERSEITE_MITTEILUNGEN, UNTERSEITE_BEGLEITER,
     -> Weg.Konto
     UNTERSEITE_OEFFENTLICH, UNTERSEITE_TAGESSCHICHT -> Weg.Dienst
-    else -> when {
-        route?.startsWith(UNTERSEITE_GESPRAECH) == true -> Weg.Freunde
-        route?.startsWith(UNTERSEITE_EINTRAG) == true -> Weg.Freunde
-        else -> null
-    }
+    // Freunde (Sozial-Port): alle Unterseiten unter `freunde/…`.
+    else -> if (FreundeWeg.gehoertDazu(route)) Weg.Freunde else null
 }
 
 /**
@@ -892,9 +864,15 @@ private fun unterseitenweg(route: String?): Weg? = when (route) {
  * Liste darunter. Solange ein Bereich nicht geladen ist, steht dort keine Zahl —
  * eine Null ist keine Auskunft, sondern eine Behauptung.
  */
-private fun marken(daten: Seitenstand): Map<Weg, Int> = buildMap {
-    daten.freunde.inhalt?.let { liste ->
-        put(Weg.Freunde, liste.count { it.angefragt && !it.vonMir })
+private fun marken(daten: Seitenstand, kreis: Kreisstand): Map<Weg, Int> = buildMap {
+    // Freunde (Sozial-Port): ungelesen + offene Anfragen + Rundeneinladungen — wie
+    // `offenesGesamt` im Web. Solange der Kreis nicht geladen ist, die alte Zählung.
+    if (kreis.geladen) {
+        put(Weg.Freunde, kreis.offenesGesamt)
+    } else {
+        daten.freunde.inhalt?.let { liste ->
+            put(Weg.Freunde, liste.count { it.angefragt && !it.vonMir })
+        }
     }
     daten.garage.inhalt?.let { put(Weg.Shop, it.stand.offeneWahlen) }
 }
