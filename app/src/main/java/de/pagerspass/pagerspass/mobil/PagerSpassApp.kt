@@ -65,8 +65,6 @@ import de.pagerspass.pagerspass.ansichten.PrivatsphaereSeite
 import de.pagerspass.pagerspass.ansichten.ProfilSeite
 import de.pagerspass.pagerspass.ansichten.ShopSeite
 import de.pagerspass.pagerspass.ansichten.StartSeite
-import de.pagerspass.pagerspass.ansichten.WachenSeite
-import de.pagerspass.pagerspass.ansichten.WachenGriffe
 import de.pagerspass.pagerspass.ansichten.BrettTeil
 import de.pagerspass.pagerspass.ansichten.EintragSeite
 import de.pagerspass.pagerspass.ansichten.GespraechSeite
@@ -120,7 +118,10 @@ fun PagerSpassApp(
         // auf Nachrichten, Brett und Wache, solange die App lebt.
         sozial.beiFreundesliste = { sitzung.freundeLaden(neu = true) }
         sozial.beiEinladungen = { sitzung.einladungenLaden(neu = true) }
-        sozial.beiGemeinschaft = { sitzung.wacheLaden(neu = true) }
+        // Bereich Wachengemeinschaft: Kurzform, Anträge und — ist die Seite offen —
+        // das Detail; beim Anmelden gleich, damit die Marke der Leiste stimmt.
+        sozial.beiGemeinschaft = { sitzung.wachen.anstoss() }
+        sitzung.wachen.anmelden()
         sozial.beiBrett = { sitzung.brettLaden(neu = true) }
         sozial.verbinden(konto.kennung)
     }
@@ -553,47 +554,16 @@ private fun Angemeldet(
                 )
             }
 
-            composable(Weg.Wache.adresse) {
-                val sozialstand by sozial.stand.collectAsStateWithLifecycle()
-                WachenSeite(
-                    unterrand = platz,
-                    wache = daten.wache,
-                    detail = daten.wacheDetail,
-                    antraege = daten.wachenantraege,
-                    sozial = sozialstand,
-                    meineKennung = stand.konto?.kennung.orEmpty(),
-                    beiLaden = { sitzung.wacheLaden() },
-                    beiDetail = { sitzung.wacheDetailLaden(it) },
-                    beiChatOeffnen = { sozial.wachenchatOeffnen(it) },
-                    beiAntraege = { sitzung.wachenantraegeLaden() },
-                    griffe = WachenGriffe(
-                        chatSenden = { id, text -> sozial.wachenchatSenden(id, text) },
-                        antragEntscheiden = { id, nr, ok -> sitzung.antragEntscheiden(id, nr, ok) },
-                        rolleSetzen = { id, wen, rolle -> sitzung.rolleSetzen(id, wen, rolle) },
-                        leitungUebergeben = { id, an -> sitzung.leitungUebergeben(id, an) },
-                        mitgliedEntfernen = { id, wen -> sitzung.mitgliedEntfernen(id, wen) },
-                        austreten = { sitzung.austreten(it) },
-                        einladen = { id, wen -> sitzung.wacheEinladen(id, wen) },
-                        pinnwand = { id, text -> sitzung.pinnwandSetzen(id, text) },
-                        terminAnlegen = { id, titel, wann ->
-                            sitzung.terminAnlegen(id, titel, wann)
-                        },
-                        terminAntworten = { id, nr, antwort ->
-                            sitzung.terminAntworten(id, nr, antwort)
-                        },
-                        terminAbsagen = { id, nr -> sitzung.terminAbsagen(id, nr) },
-                        zeileMelden = { id, nr, grund -> sitzung.zeileMelden(id, nr, grund) },
-                        zeileEntfernen = { id, nr -> sitzung.zeileEntfernen(id, nr) },
-                        meldungErledigt = { id, nr -> sitzung.meldungErledigt(id, nr) },
-                        clanrunde = { sitzung.clanrundeStarten(it) },
-                        beitreten = { sitzung.beitrittMitCode(it) },
-                        gruenden = { name, text -> sitzung.gruenden(name, text) },
-                        bewerben = { id, text -> sitzung.bewerben(id, text) },
-                        bewerbungZurueckziehen = { sitzung.bewerbungZurueckziehen(it) },
-                        einladungAnnehmen = { sitzung.einladungAnnehmen(it) },
-                    ),
-                )
-            }
+            // Bereich Wachengemeinschaft: Wache, Rangliste, Shop, Beitrittslink —
+            // alle Wege in `mobil/Wachenrouten.kt`.
+            wachenWege(
+                sitzung = sitzung,
+                sozial = sozial,
+                steuerung = steuerung,
+                unterrand = platz,
+                beiRunde = { code -> runde.beitreten(code, stand.konto?.anzeigename.orEmpty()) },
+                beiWache = { zurWahl(steuerung, Weg.Wache) },
+            )
 
             composable(Weg.Freunde.adresse) {
                 FreundeSeite(
@@ -880,6 +850,8 @@ private fun unterseitenweg(route: String?): Weg? = when (route) {
     else -> when {
         route?.startsWith(UNTERSEITE_GESPRAECH) == true -> Weg.Freunde
         route?.startsWith(UNTERSEITE_EINTRAG) == true -> Weg.Freunde
+        // Bereich Wachengemeinschaft: Rangliste, Shop, Beitrittslink.
+        istWachenweg(route) -> Weg.Wache
         else -> null
     }
 }
@@ -897,6 +869,8 @@ private fun marken(daten: Seitenstand): Map<Weg, Int> = buildMap {
         put(Weg.Freunde, liste.count { it.angefragt && !it.vonMir })
     }
     daten.garage.inhalt?.let { put(Weg.Shop, it.stand.offeneWahlen) }
+    // Bereich Wachengemeinschaft: Ungelesenes, Einladungen, Anträge, Meldungen.
+    wachenmarke(daten)?.let { put(Weg.Wache, it) }
 }
 
 /**

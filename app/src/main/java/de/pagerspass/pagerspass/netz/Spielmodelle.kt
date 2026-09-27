@@ -233,6 +233,11 @@ data class Gemeinschaft(
     /** Nur für Entscheider gefüllt, sonst 0. */
     val offeneAntraege: Int = 0,
     val offeneMeldungen: Int = 0,
+    // Bereich Wachengemeinschaft: Tag und die letzte Clanrunde.
+    /** Der Wachentag, leer heißt keiner — ab Stufe 40 (`Wachenregeln.TAG_AB_STUFE`). */
+    val tag: String = "",
+    val letzteRundeUm: String? = null,
+    val letzteRundeCode: String? = null,
 ) {
     val istLeitung: Boolean get() = eigeneRolle == "Leitung"
     val darfFuehren: Boolean get() = eigeneRolle == "Leitung" || eigeneRolle == "Zugfuehrer"
@@ -684,6 +689,9 @@ data class Gemeinschaftsantrag(
     val nachricht: String? = null,
     val erstelltUm: String = "",
     val benutzername: String? = null,
+    // Bereich Wachengemeinschaft: Stern und Haken des Antragstellers.
+    val premium: Boolean = false,
+    val teammitglied: Boolean = false,
 )
 
 /** Eine Zeile im Wachenchat — Text, System oder Clanrunden-Kachel. */
@@ -748,6 +756,16 @@ data class Wachenstatistik(
     val einsaetze: Int = 0,
     val maxMitglieder: Int = 0,
     val maxTermine: Int = 0,
+    // Bereich Wachengemeinschaft: was die Stufe sonst noch hergibt.
+    /** Der Mittelwert über alle Schichten — gebrochen, deshalb `Double`. */
+    val hilfsfristSekunden: Double? = null,
+    val aktivitaetPunkte: Int = 0,
+    val aktivitaetSchichten: Int = 0,
+    val letzteSchicht: String? = null,
+    val clanrundenSperreMinuten: Int = 0,
+    val naechsteFreischaltung: String? = null,
+    val clanrundenCoins: Int = 0,
+    val stufenstuecke: Int = 0,
 )
 
 /** Der volle Blick auf die eigene Gemeinschaft — Anträge nur für Entscheider. */
@@ -759,6 +777,11 @@ data class GemeinschaftDetail(
     val statistik: Wachenstatistik = Wachenstatistik(),
     val termine: List<Wachentermin> = emptyList(),
     val meldungen: List<Gemeinschaftsmeldung> = emptyList(),
+    // Bereich Wachengemeinschaft: interne Rangliste, Logbuch, Kasse — `Wachenmodelle.kt`.
+    val beitraege: List<Wachenbeitrag> = emptyList(),
+    val logbuch: List<Wachenrunde> = emptyList(),
+    /** Kasse und Shop — nur für Mitglieder, von außen `null`. */
+    val schatz: Wachenschatz? = null,
 )
 
 /** Eine Runde, die gerade Verstärkung sucht — die öffentliche Liste. */

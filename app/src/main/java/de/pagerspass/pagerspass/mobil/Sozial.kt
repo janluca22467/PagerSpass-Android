@@ -44,6 +44,9 @@ class Sozial(anwendung: Application) : AndroidViewModel(anwendung) {
     var beiGemeinschaft: (() -> Unit)? = null
     var beiBrett: (() -> Unit)? = null
 
+    /** Bereich Wachengemeinschaft: ob die Wachenseite gerade zu sehen ist (siehe oben). */
+    var wachenseiteOffen: Boolean = false
+
     private var kennung: String = ""
     private var angemeldet = false
 
@@ -112,8 +115,13 @@ class Sozial(anwendung: Application) : AndroidViewModel(anwendung) {
                 val ohne = alt.wachenchat.filter { it.nr != zeile.nr }
                 alt.copy(wachenchat = (ohne + zeile).sortedBy { it.nr }.takeLast(200))
             }
-            if (_stand.value.wachenchatId == zeile.gemeinschaftId) {
+            // Bereich Wachengemeinschaft: Gelesen ist eine Zeile nur, solange die
+            // Wachenseite offen ist. Sonst — und für jede andere Wache — holt der
+            // Anstoß die Kurzform samt Ungelesen-Marke für die Tableiste.
+            if (wachenseiteOffen && _stand.value.wachenchatId == zeile.gemeinschaftId) {
                 draht.rufen("GemeinschaftGelesen", wert(zeile.gemeinschaftId))
+            } else {
+                beiGemeinschaft?.invoke()
             }
         }
 

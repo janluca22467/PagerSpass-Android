@@ -47,6 +47,25 @@ class Sitzung(anwendung: Application) : AndroidViewModel(anwendung) {
     private val _daten = MutableStateFlow(Seitenstand())
     val daten: StateFlow<Seitenstand> = _daten.asStateFlow()
 
+    // ------------------------------------------- Bereich Wachengemeinschaft
+    /**
+     * Der Speicher der Wachenseiten (`mobil/Wachen.kt`). Er schreibt in denselben
+     * `Seitenstand` — die Tableiste liest ihre Marke daraus.
+     */
+    val wachen = Wachenspeicher(
+        wege = de.pagerspass.pagerspass.netz.Wachenwege(netz),
+        umfang = viewModelScope,
+        kennung = { _stand.value.konto?.kennung },
+        daten = _daten,
+        kontoAuffrischen = {
+            viewModelScope.launch {
+                val kennung = _stand.value.konto?.kennung ?: return@launch
+                runCatching { konten.laden(kennung) }
+                    .onSuccess { konto -> _stand.update { it.copy(konto = konto) } }
+            }
+        },
+    )
+
     init {
         // Die beiden Ereignisse, die nicht Antwort auf eine Anfrage sind. Sie
         // gehören dem Rahmen, nicht der Stelle, die zufällig gerade lud.
