@@ -38,8 +38,6 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import de.pagerspass.pagerspass.ansichten.BestenlisteSeite
-import de.pagerspass.pagerspass.ansichten.DienstbuchSeite
-import de.pagerspass.pagerspass.ansichten.GarageSeite
 import de.pagerspass.pagerspass.ansichten.KontoSeite
 import android.Manifest
 import android.os.Build
@@ -62,7 +60,6 @@ import de.pagerspass.pagerspass.ansichten.LoginSeite
 import de.pagerspass.pagerspass.ansichten.PostfachSeite
 import de.pagerspass.pagerspass.ansichten.PrivatsphaereSeite
 import de.pagerspass.pagerspass.ansichten.ProfilSeite
-import de.pagerspass.pagerspass.ansichten.ShopSeite
 import de.pagerspass.pagerspass.ansichten.StartSeite
 import de.pagerspass.pagerspass.netz.Rechtsstand
 import de.pagerspass.pagerspass.netz.Server
@@ -566,17 +563,9 @@ private fun Angemeldet(
                 )
             }
 
-            composable(Weg.Dienstbuch.adresse) {
-                DienstbuchSeite(
-                    unterrand = platz,
-                    konto = stand.konto,
-                    buch = daten.buch,
-                    beiLaden = { sitzung.buchLaden() },
-                    beiGarage = { steuerung.navigate(UNTERSEITE_GARAGE) },
-                    beiBestenliste = { steuerung.navigate(UNTERSEITE_BESTENLISTE) },
-                    beiDienst = { zurWahl(steuerung, Weg.Dienst) },
-                )
-            }
+            // Dienstbuch und Shop: sechs Seiten Buch samt Nachbesprechung aus dem
+            // Archiv, fünf Bereiche Laden — alle in DienstbuchUndShopWege.kt.
+            dienstbuchUndShopWege(sitzung, steuerung, platz)
 
             // Bereich Wachengemeinschaft: Wache, Rangliste, Shop, Beitrittslink —
             // alle Wege in `mobil/Wachenrouten.kt`.
@@ -602,17 +591,6 @@ private fun Angemeldet(
                 beiEigenemProfil = { steuerung.navigate(UNTERSEITE_PROFIL) },
                 beiLink = { browser.openUri(it) },
             )
-
-            composable(Weg.Shop.adresse) {
-                ShopSeite(
-                    unterrand = platz,
-                    shop = daten.shop,
-                    laeuft = stand.laeuft,
-                    beiLaden = { sitzung.shopLaden() },
-                    beiKauf = { sitzung.artikelKaufen(it) },
-                    beiTagesbonus = { sitzung.tagesbonusHolen() },
-                )
-            }
 
             composable(Weg.Konto.adresse) {
                 KontoSeite(
@@ -733,17 +711,6 @@ private fun Angemeldet(
                 )
             }
 
-            composable(UNTERSEITE_GARAGE) {
-                GarageSeite(
-                    unterrand = platz,
-                    garage = daten.garage,
-                    laeuft = stand.laeuft,
-                    beiLaden = { sitzung.garageLaden() },
-                    beiHolen = { vorlage, kaufen -> sitzung.fahrzeugHolen(vorlage, kaufen) },
-                    beiZurueck = { steuerung.popBackStack() },
-                )
-            }
-
             composable(UNTERSEITE_BESTENLISTE) {
                 BestenlisteSeite(
                     unterrand = platz,
@@ -831,7 +798,6 @@ private fun Angemeldet(
     }
 }
 
-private const val UNTERSEITE_GARAGE = "garage"
 private const val UNTERSEITE_BESTENLISTE = "bestenliste"
 private const val UNTERSEITE_PROFIL = "profil"
 private const val UNTERSEITE_PRIVATSPHAERE = "privatsphaere"
@@ -843,7 +809,7 @@ private const val UNTERSEITE_TAGESSCHICHT = "tagesschicht"
 
 /** Zu welchem Weg der Leiste eine Unterseite gehört. */
 private fun unterseitenweg(route: String?): Weg? = when (route) {
-    UNTERSEITE_GARAGE, UNTERSEITE_BESTENLISTE -> Weg.Dienstbuch
+    UNTERSEITE_BESTENLISTE -> Weg.Dienstbuch
     UNTERSEITE_PROFIL, UNTERSEITE_PRIVATSPHAERE, UNTERSEITE_POSTFACH,
     UNTERSEITE_MITTEILUNGEN, UNTERSEITE_BEGLEITER,
     -> Weg.Konto
@@ -854,7 +820,7 @@ private fun unterseitenweg(route: String?): Weg? = when (route) {
         // Bereich Wachengemeinschaft: Rangliste, Shop, Beitrittslink.
         istWachenweg(route) -> Weg.Wache
         // Extras: Übungen, Lehrgang, Icons … gehören zum Dienst.
-        else -> Extraswege.weg(route)
+        else -> Extraswege.weg(route) ?: dienstbuchOderShopWeg(route)
     }
 }
 

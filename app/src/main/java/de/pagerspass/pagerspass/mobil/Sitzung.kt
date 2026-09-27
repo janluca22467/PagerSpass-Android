@@ -66,6 +66,24 @@ class Sitzung(anwendung: Application) : AndroidViewModel(anwendung) {
         },
     )
 
+    // ------------------------------------------------ Dienstbuch und Shop
+    /**
+     * Dienstbuch (sechs Seiten, Nachbesprechung aus dem Archiv) und Shop (fünf
+     * Bereiche) — ein eigener Speicher, siehe `Dienstbuchstelle`. Er meldet
+     * Kontostand, Shop und Garage hierher zurück, damit Leiste, Ausweis und Laden
+     * dieselbe Zahl zeigen.
+     */
+    val dienstbuch = Dienstbuchstelle(
+        netz = netz,
+        bereich = viewModelScope,
+        konto = { _stand.value.konto },
+        kontoGesetzt = { frisch -> _stand.update { it.copy(konto = frisch) } },
+        creditsGesetzt = { c -> _stand.update { it.copy(konto = it.konto?.copy(credits = c)) } },
+        shopGesetzt = { shop -> _daten.update { d -> d.copy(shop = Bereich(shop, geladen = true)) } },
+        garageNeu = { garageLaden(neu = true) },
+    )
+    // ------------------------------------------------ Ende Dienstbuch und Shop
+
     init {
         // Die beiden Ereignisse, die nicht Antwort auf eine Anfrage sind. Sie
         // gehören dem Rahmen, nicht der Stelle, die zufällig gerade lud.
