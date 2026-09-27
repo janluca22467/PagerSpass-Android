@@ -239,7 +239,6 @@ fun NavGraphBuilder.extrasWege(
     composable(Extraswege.FUNK) { eintrag ->
         val token = eintrag.arguments?.getString("token").orEmpty()
         val begleiterstand by begleiter.stand.collectAsStateWithLifecycle()
-        val sitzungsstand by sitzung.stand.collectAsStateWithLifecycle()
 
         LaunchedEffect(token) { if (token.isNotBlank()) begleiter.linkOeffnen(token) }
 
@@ -249,8 +248,10 @@ fun NavGraphBuilder.extrasWege(
             fehler = begleiterstand.fehler,
             beiKoppeln = { begleiter.koppeln(it) },
             beiZurueck = { steuerung.popBackStack() },
-            premium = sitzungsstand.konto?.premiumAktiv == true,
-            beiShop = zumShop,
+            // Der Link selbst braucht kein Premium — im Web nicht einmal ein Konto:
+            // Der Token gehört einem Platz, den ein Premium-Konto freigegeben hat.
+            // Die Schranke steht nur vor dem Scanner (Konto → Begleiter).
+            premium = true,
         )
     }
 }
