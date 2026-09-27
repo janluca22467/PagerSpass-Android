@@ -78,6 +78,8 @@ data class Garage(
     val preise: Map<String, Int> = emptyMap(),
     val tagesangebot: String? = null,
     val tagesangebotRegulaer: Int? = null,
+    // Dienstbuch/Shop: die Erfahrung je Organisation — Balken der Übersicht, Tore der Garage.
+    val proOrganisation: List<Organisationsfortschritt> = emptyList(),
 )
 
 /** Ein Fahrzeugbauplan aus dem Katalog. */
@@ -91,6 +93,9 @@ data class Fahrzeugvorlage(
     val besatzung: String = "",
     val kategorie: String = "",
     val kennzahl: String = "",
+    // Dienstbuch/Shop: was das Fahrzeug kann und auf welchen Schleifen es hört — Garage und Autohaus.
+    val faehigkeiten: List<String> = emptyList(),
+    val schleifen: List<String> = emptyList(),
 )
 
 // ------------------------------------------------------------------------ Shop
@@ -102,6 +107,11 @@ data class Shop(
     val naechsterWechsel: String = "",
     val imBesitz: List<Shopartikel> = emptyList(),
     val tagesbonus: Tagesbonus = Tagesbonus(),
+    // Dienstbuch/Shop: Fahrzeug des Tages, Dienstaufträge, Wochendeckel, Auszug (Shopmodelle.kt).
+    val tagesangebot: Tagesangebot? = null,
+    val auftraege: List<Auftrag> = emptyList(),
+    val zulagen: Zulagen = Zulagen(),
+    val auszug: List<Creditposten> = emptyList(),
 )
 
 @Serializable
@@ -124,6 +134,8 @@ data class Shopartikel(
 data class Tagesbonus(
     val verfuegbar: Boolean = false,
     val serie: Int = 0,
+    // Dienstbuch/Shop: die Felder des Glücksrads samt Gewicht (= Chance in Prozent).
+    val felder: List<Gluecksradfeld> = emptyList(),
 )
 
 // --------------------------------------------------------------------- Freunde
@@ -481,6 +493,8 @@ data class Gluecksradfeld(
     val art: String = "",
     val betrag: Int = 0,
     val text: String = "",
+    // Dienstbuch/Shop: der Anteil am Rad — die Feldbreite und die Chance in der Legende.
+    val gewicht: Int = 0,
 )
 
 // ------------------------------------------------------------- Mitteilungen
