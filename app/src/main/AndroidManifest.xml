@@ -23,6 +23,10 @@
     -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
+    <!-- Runde, Teil 1: Erwähnung im Lobbychat, Warn-App und Melderprobe
+         vibrieren (mobil/Rundentoene.kt). Normale Berechtigung, keine Frage. -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+
     <!--
         Der QR-Code des mobilen Begleiters. Die Kopplungsseite holt die
         Laufzeit-Berechtigung beim ersten Öffnen des Suchers; wer sie ablehnt,
