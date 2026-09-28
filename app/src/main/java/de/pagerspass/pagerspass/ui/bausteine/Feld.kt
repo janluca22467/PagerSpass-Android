@@ -85,6 +85,8 @@ fun Feld(
         label = "feld-rand",
     )
 
+    val schein = if (imFokus) Farben.Amber.copy(alpha = 0.18f) else Color.Transparent
+
     Column(
         verticalArrangement = Arrangement.spacedBy(Abstand.Klein),
         modifier = modifier.fillMaxWidth(),
@@ -99,15 +101,16 @@ fun Feld(
                 // Der Schein: drei Punkte Amber bei 18 Prozent, außerhalb des
                 // Rahmens. Im Web ein `box-shadow`, hier ein zweiter Rand mit
                 // Abstand — Compose kennt keinen Schatten ohne Weichzeichnung.
-                .then(
-                    if (imFokus) {
-                        Modifier
-                            .border(3.dp, Farben.Amber.copy(alpha = 0.18f), Rundung.Klein)
-                            .padding(3.dp)
-                    } else {
-                        Modifier.padding(3.dp)
-                    }
-                )
+                //
+                // <b>Der Ring ist immer da, nur ohne Fokus durchsichtig.</b> Früher
+                // kam er per `if (imFokus)` in die Kette und ging wieder heraus.
+                // Beim Wechsel von einem Feld ins nächste bauten damit zwei Felder
+                // im selben Bild ihre Modifier-Kette um — genau während das
+                // Textfeld seine Eingabesitzung umhängt und nach den Koordinaten
+                // seiner Knoten fragt. Das riss die App ab. Eine Kette mit fester
+                // Gestalt ändert nur noch eine Farbe.
+                .border(3.dp, schein, Rundung.Klein)
+                .padding(3.dp)
                 // Dunkler als der Kasten darum — siehe oben. `rgb(5 9 14 / 82%)`
                 // aus mobil.css; auf undurchsichtigem Grund ist das dieser Wert.
                 .background(Farben.BgTief, Rundung.Klein)
