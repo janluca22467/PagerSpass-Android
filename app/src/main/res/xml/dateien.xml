@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Was die App über den FileProvider (`${applicationId}.dateien`) herausgeben darf:
+    nur der Ordner `geteilt/` im Cache. Dort legt `ui/teilen/Dateiteilen.kt` die
+    Schichtkarte und den Schichtenauszug ab, bevor das Teilen-Blatt aufgeht —
+    sonst nichts.
+-->
+<paths>
+    <cache-path
+        name="geteilt"
+        path="geteilt/" />
+</paths>

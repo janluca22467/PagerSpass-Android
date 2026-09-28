@@ -28,6 +28,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -44,6 +45,7 @@ import de.pagerspass.pagerspass.ui.bausteine.Knopf
 import de.pagerspass.pagerspass.ui.bausteine.Knopfart
 import de.pagerspass.pagerspass.ui.bausteine.SehrLeise
 import de.pagerspass.pagerspass.ui.schmuck.Kataloge
+import de.pagerspass.pagerspass.ui.teilen.Dateiteilen
 import de.pagerspass.pagerspass.ui.theme.Abstand
 import de.pagerspass.pagerspass.ui.theme.Farben
 import de.pagerspass.pagerspass.ui.theme.Rundung
@@ -51,6 +53,7 @@ import de.pagerspass.pagerspass.ui.theme.Schrift
 import de.pagerspass.pagerspass.ui.theme.flaeche
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 
@@ -283,6 +286,8 @@ fun Schichtkartenbereich(
     var motto by remember { mutableStateOf((gemerkt(zusammenhang, "motto") ?: "").take(SCHICHTKARTE_MOTTO_MAX)) }
     var vorschau by remember { mutableStateOf<Bitmap?>(null) }
     var fehler by remember { mutableStateOf<String?>(null) }
+    var laeuft by remember { mutableStateOf(false) }
+    val bereich = rememberCoroutineScope()
 
     val gezeichnet = designs.firstOrNull { it.id == design && (!it.premium || premiumAktiv) }?.id ?: "standard"
     val mitMotto = daten.copy(motto = if (premiumAktiv) motto.trim() else "")
@@ -401,14 +406,51 @@ fun Schichtkartenbereich(
             SehrLeise("${motto.length}/$SCHICHTKARTE_MOTTO_MAX", mono = true)
         }
 
-        Row {
+        // Teilen zuerst — die Karte will in den Discord der Wache, und am Handy geht
+        // dafür das Systemblatt auf (`schichtkarteTeilen` im Web). Speichern bleibt
+        // daneben für die, die sie erst ablegen wollen.
+        Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
+            Knopf(
+                aufschrift = if (laeuft) "Wird gezeichnet …" else "Teilen",
+                beiDruck = {
+                    if (laeuft) return@Knopf
+                    fehler = null
+                    laeuft = true
+                    bereich.launch {
+                        val ergebnis = runCatching {
+                            // Die Vorschau steht meist schon und ist dieselbe Karte.
+                            val bild = vorschau ?: withContext(Dispatchers.Default) {
+                                schichtkarteZeichnen(mitMotto, gezeichnet)
+                            }
+                            withContext(Dispatchers.Default) {
+                                ByteArrayOutputStream().also { bild.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                                    .toByteArray()
+                            }
+                        }.mapCatching { png ->
+                            Dateiteilen.teilen(
+                                zusammenhang = zusammenhang,
+                                name = "schichtkarte-${daten.code}.png",
+                                art = "image/png",
+                                titel = "Schicht ${daten.leitstelle}",
+                                inhalt = png,
+                            ).getOrThrow()
+                        }
+                        fehler = ergebnis.exceptionOrNull()
+                            ?.let { it.message ?: "Die Schichtkarte ließ sich nicht erzeugen." }
+                        laeuft = false
+                    }
+                },
+                art = Knopfart.Haupt,
+                aktiv = !laeuft,
+            )
             Knopf(
                 aufschrift = "Bild speichern",
                 beiDruck = {
                     fehler = null
                     speichern.launch("schichtkarte-${daten.code}.png")
                 },
-                art = Knopfart.Haupt,
+                art = Knopfart.Leise,
+                aktiv = !laeuft,
             )
         }
         fehler?.let { Text(it, style = Schrift.MonoKlein, color = Farben.SignalHell) }
