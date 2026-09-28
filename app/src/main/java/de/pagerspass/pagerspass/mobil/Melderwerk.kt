@@ -132,17 +132,36 @@ class Melderwerk(private val zusammenhang: Context) {
 
     @Volatile
     private var horn: AudioTrack? = null
+    private var hornAuftrag: Job? = null
+
+    /** Welcher Hornlauf gerade gilt — ein älterer, der noch rechnet, räumt sich selbst weg. */
+    @Volatile
+    private var hornLauf: Any? = null
+
+    @Volatile
+    private var hornArt: String? = null
 
     /**
      * Das Martinshorn — lokal, wie im Web: Kein Mitspieler hört es, es ist die
      * Bedienung des eigenen Fahrzeugs. `stadt` ist die Folge a′–d″ (440/585 Hz),
      * `land` die tiefere Folge (360/480 Hz); je Ton 0,6 s beziehungsweise 1 s.
+     *
+     * Dieselbe Hornart mit anderem Pegel dreht nur am Regler — sonst begänne die
+     * Folge bei jedem Schritt des Schiebers von vorn.
      */
     fun hornStarten(art: String, pegel: Float) {
+        val laufend = horn
+        if (laufend != null && hornArt == art) {
+            runCatching { laufend.setVolume(pegel.coerceIn(0f, 1f)) }
+            return
+        }
         hornStoppen()
         if (pegel <= 0f) return
+        val lauf = Any()
+        hornLauf = lauf
+        hornArt = art
         val (tief, hoch, dauer) = if (art == "land") Triple(360.0, 480.0, 1.0) else Triple(440.0, 585.0, 0.6)
-        bereich.launch {
+        hornAuftrag = bereich.launch {
             val laenge = (dauer * 2 * Meldertonprobe.RATE).roundToInt()
             val halb = laenge / 2
             var phase = 0.0
@@ -155,11 +174,19 @@ class Melderwerk(private val zusammenhang: Context) {
             }
             val neu = runCatching { schleife(puffer, pegel, AudioAttributes.USAGE_MEDIA) }.getOrNull()
                 ?: return@launch
+            if (hornLauf !== lauf) {
+                freigeben(neu)
+                return@launch
+            }
             horn = neu
         }
     }
 
     fun hornStoppen() {
+        hornLauf = null
+        hornArt = null
+        hornAuftrag?.cancel()
+        hornAuftrag = null
         horn?.let { freigeben(it) }
         horn = null
     }

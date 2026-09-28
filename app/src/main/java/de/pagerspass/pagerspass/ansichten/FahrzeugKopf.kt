@@ -3,6 +3,7 @@ package de.pagerspass.pagerspass.ansichten
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -253,10 +254,12 @@ fun Fahrzeugkopf(
             }
         }
 
+        // Die Schalterreihe rollt, statt umzubrechen: Auf 360 Punkten passen Bauart,
+        // Zuschauer und vier Knöpfe nicht immer nebeneinander.
         Row(
             horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
         ) {
             // Die Melderbauart — bleibt stehen, auch wenn ein Handy gekoppelt ist:
             // Die Wahl wird zum Begleiter gespiegelt, der Schalter ist ihr einziger Weg.
@@ -264,9 +267,10 @@ fun Fahrzeugkopf(
                 seiten = Tonwahl.BAUARTEN,
                 gewaehlt = tonwahl.bauart,
                 beiWahl = { tonwahl.bauartSetzen(it) },
+                // Feste Breite: In der rollenden Reihe hätten die gewichteten Seiten sonst keine.
+                modifier = Modifier.width(216.dp),
                 aufschrift = { if (it == "dme") "DME" else if (it == "app") "App" else "Im Funk" },
             )
-            Box(Modifier.weight(1f))
             Zuschauerzaehler(raum)
             Zeichenknopf(
                 beiDruck = { tonwahl.stummSetzen(!tonwahl.stumm) },
