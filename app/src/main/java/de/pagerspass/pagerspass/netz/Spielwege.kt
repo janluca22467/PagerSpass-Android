@@ -33,15 +33,23 @@ class Spielwege(private val netz: Netz) {
     /**
      * Eröffnet eine Runde und gibt den Raumcode zurück.
      *
-     * `ganzerBereich` heißt: der ganze Kreis statt eines einzelnen Ortes. Das ist
-     * die Vorgabe, wenn jemand nur einen Kreis wählt und sonst nichts.
+     * <b>`ganzerBereich` heißt: auch die Nachbarkreise dieser Leitstelle
+     * mitspielen</b> — nicht „der ganze Kreis". Die Vorgabe ist deshalb `false`,
+     * wie im Web; der Startbildschirm fragt nur dort, wo es mehr als einen Kreis
+     * gibt. `leitstelleId` bleibt fast immer leer: Der Server nimmt dann die eine
+     * Leitstelle des Kreises (Rumpf wie `raumAnlegen` in rest.ts).
      */
-    suspend fun raumAnlegen(landkreisId: String?, ganzerBereich: Boolean = true): Raum =
+    suspend fun raumAnlegen(
+        landkreisId: String?,
+        ganzerBereich: Boolean = false,
+        leitstelleId: String? = null,
+    ): Raum =
         netz.hole(
             "/api/rooms",
             "POST",
             buildJsonObject {
                 if (landkreisId != null) put("landkreisId", landkreisId)
+                if (leitstelleId != null) put("leitstelleId", leitstelleId)
                 put("ganzerBereich", ganzerBereich)
             }.toString(),
         )

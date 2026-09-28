@@ -280,7 +280,9 @@ data class Katalog(
     val stichworte: List<Stichwort> = emptyList(),
     val fmsStatus: List<FmsTaste> = emptyList(),
     val meldende: List<String> = emptyList(),
-    // Übungen: alle Fähigkeiten, die irgendein Fahrzeug mitbringt (Alarm- und Ausrückeordnung).
+    // --- Runde, Teil 1: die echten Leitstellen und ihr Gebiet (Startbildschirm, Lobby).
+    val leitstellen: List<Leitstelle> = emptyList(),
+    /** Alle Fähigkeiten, die irgendein Fahrzeug mitbringt. */
     val faehigkeiten: List<String> = emptyList(),
 )
 
@@ -845,6 +847,8 @@ data class OeffentlicheRunde(
     val leitstelleBesetzt: Boolean = false,
     /** Ein selbst gebauter Ausrückebereich — die Runde ist nicht gewertet. */
     val sandkasten: Boolean = false,
+    // --- Runde, Teil 1: Diese Runde wird übertragen — beim Beitreten wird gefragt.
+    val streamermodus: Boolean = false,
 )
 
 /** Ein Platz auf der Tagesliste der Schicht des Tages. */

@@ -6,11 +6,18 @@ import androidx.lifecycle.viewModelScope
 import de.pagerspass.pagerspass.netz.Ablage
 import de.pagerspass.pagerspass.netz.Alarmmeldung
 import de.pagerspass.pagerspass.netz.Beitrittsergebnis
+import de.pagerspass.pagerspass.netz.Drahtnachricht
 import de.pagerspass.pagerspass.netz.Funkzeile
 import de.pagerspass.pagerspass.netz.Gutschrift
 import de.pagerspass.pagerspass.netz.Funkverbindung
+import de.pagerspass.pagerspass.netz.Lobbynachricht
 import de.pagerspass.pagerspass.netz.Netz
 import de.pagerspass.pagerspass.netz.Raumzustand
+import de.pagerspass.pagerspass.netz.UEBERTRAGUNG_FASSUNG
+import de.pagerspass.pagerspass.netz.UEBERTRAGUNG_MINDESTALTER
+import de.pagerspass.pagerspass.netz.Uebertragungsfrage
+import de.pagerspass.pagerspass.netz.Uebertragungswege
+import de.pagerspass.pagerspass.netz.Uebertragungszusage
 import de.pagerspass.pagerspass.netz.wert
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -18,7 +25,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -38,16 +47,41 @@ import kotlinx.serialization.json.JsonPrimitive
  * <b>Der Server schickt keinen Unterschied, sondern den ganzen Stand.</b> Das
  * ist die einfachste Art, zwei Seiten synchron zu halten — und der Grund, warum
  * hier nichts fortgeschrieben wird: Was ankommt, ersetzt.
+ *
+ * <b>Die Hub-Befehle stehen zum größten Teil nebenan</b>, in `Rundenbefehle.kt`
+ * — als Erweiterungen, die über `senden`/`fragen` gehen. Hier bleibt, was
+ * Zustand braucht: Beitritt, Wiedereintritt, Ereignisse, die Sprechtasten.
  */
 class Runde(anwendung: Application) : AndroidViewModel(anwendung) {
 
     private val ablage = Ablage(anwendung)
     private val draht = Funkverbindung(ablage)
+    private val uebertragung = Uebertragungswege(Netz(ablage))
     private val bereich = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val toene = Rundentoene(anwendung)
 
     private val mikrofon = Mikrofon()
     private val lautsprecher = Lautsprecher()
-    private var funklimit: kotlinx.coroutines.Job? = null
+    private var funklimit: Job? = null
+
+    /*
+     * Die Nebenleitungen haben je einen eigenen Lautsprecher — wie im Web je
+     * einen eigenen Abspielzeiger. Teilten sie sich einen, hingen Draht und
+     * Funk hintereinander statt nebeneinander.
+     */
+    private val drahtLautsprecher = Lautsprecher()
+    private val einsatzstellenLautsprecher = Lautsprecher()
+    private val einzelrufLautsprecher = Lautsprecher()
+    private val telefonLautsprecher = Lautsprecher()
+    private val durchsageLautsprecher = Lautsprecher()
+
+    /**
+     * Das zweite Mikrofon — für alles, was nicht die Sprechtaste des Kreiskanals
+     * ist: Draht, Einsatzstelle, Einzelruf, Notruftelefon, Alarmmeldung. Es
+     * läuft nie gleichzeitig mit dem ersten; das verhindert `nebenleitung`.
+     */
+    private val nebenmikrofon = Mikrofon()
+    private var nebenlimit: Job? = null
 
     private val _stand = MutableStateFlow(Rundenstand())
     val stand: StateFlow<Rundenstand> = _stand.asStateFlow()
@@ -62,22 +96,43 @@ class Runde(anwendung: Application) : AndroidViewModel(anwendung) {
      */
     var beiAlarm: ((Alarmmeldung) -> Unit)? = null
 
+    /**
+     * Wo man zuletzt eingetreten ist — für den Wiedereintritt nach einem Abbruch.
+     *
+     * <b>Erst nach bestätigtem Beitritt gesetzt.</b> Sonst löste ein Wiederaufbau
+     * nach einem abgelehnten Beitritt (Raum voll, beendet) einen neuen, ungültigen
+     * Versuch auf diesen Raum aus — dieselbe Regel wie in `api/signalr.ts`.
+     */
+    @Volatile
+    private var eintritt: Eintritt? = null
+
+    /** Ob die App gerade im Vordergrund steht — geht nach jedem Wiedereintritt mit. */
+    @Volatile
+    private var sichtbar: Boolean = true
+
     init {
         draht.beiLage = { lage -> _stand.update { it.copy(lage = lage) } }
+        draht.beiWiederverbunden = { wiedereintreten() }
 
-        // Der ganze Raumzustand, bei jeder Änderung. Er ist das einzige
-        // Ereignis, das die Lobby braucht — alles andere (Funk, Alarm,
-        // Positionen) gehört zu Ansichten, die noch kommen.
+        // Der ganze Raumzustand, bei jeder Änderung.
         draht.auf("RoomState") { argumente ->
             argumente.firstOrNull()?.let { setzen(it) }
         }
 
         // <b>Eine Absage ist kein Fehler der Verbindung.</b> „Diesen Raum gibt es
         // nicht (mehr)", „Der Raum ist voll" — der Hub schickt sie als eigenes
-        // Ereignis, und sie gehört in die Meldung, nicht ins Protokoll.
+        // Ereignis, und sie gehört in die Meldung, nicht ins Protokoll. Nach vier
+        // Sekunden räumt sie sich selbst weg, wie im Web.
         draht.auf("Rejected") { argumente ->
-            val grund = argumente.firstOrNull()?.let { text(it) }
-            _stand.update { it.copy(fehler = grund ?: "Der Beitritt wurde abgelehnt.", laeuft = false) }
+            val grund = argumente.firstOrNull()?.let { text(it) } ?: "Der Beitritt wurde abgelehnt."
+            _stand.update { it.copy(fehler = grund, laeuft = false) }
+            if (_stand.value.sendet && ("Sendepause" in grund || "Funklimit" in grund)) {
+                sprechenBeenden()
+            }
+            bereich.launch {
+                delay(4_000)
+                _stand.update { if (it.fehler == grund) it.copy(fehler = null) else it }
+            }
         }
 
         // <b>Der Alarm ist ein Ereignis, kein Zustand.</b> Der Raumzustand sagt,
@@ -91,8 +146,26 @@ class Runde(anwendung: Application) : AndroidViewModel(anwendung) {
                 }.getOrNull()
             } ?: return@auf
 
-            _stand.update { it.copy(alarm = alarm) }
+            _stand.update { alt ->
+                alt.copy(
+                    alarm = alarm,
+                    // Der Verlauf hält die letzten dreißig Meldungen; ein zweiter
+                    // Alarm zum selben Einsatz ersetzt den ersten.
+                    melderverlauf = (listOf(alarm) + alt.melderverlauf.filter {
+                        it.incidentId != alarm.incidentId
+                    }).take(MELDERVERLAUF),
+                )
+            }
             beiAlarm?.invoke(alarm)
+        }
+
+        // Die gesprochene Meldung der Leitstelle zu einem Alarm — nur, solange
+        // der Alarm noch im Verlauf steht. Kein Funkverkehr, kein Sprecher.
+        draht.auf("AlarmDurchsage") { argumente ->
+            val einsatz = argumente.getOrNull(0)?.let { text(it) } ?: return@auf
+            val paket = argumente.getOrNull(1)?.let { text(it) } ?: return@auf
+            if (_stand.value.melderverlauf.none { it.incidentId == einsatz }) return@auf
+            durchsageLautsprecher.abspielen(paket)
         }
 
         // Eine Funkzeile zwischen zwei Zustandsständen. Sie wird angehängt und
@@ -111,6 +184,38 @@ class Runde(anwendung: Application) : AndroidViewModel(anwendung) {
             }
         }
 
+        // Eine neue Zeile im Lobby-Chat — und ein kurzer Ton, wenn sie einen
+        // selbst nennt. Welche Ids „erwähnt" heißt, hat der Server entschieden.
+        draht.auf("LobbyChat") { argumente ->
+            val zeile = argumente.firstOrNull()?.let {
+                runCatching {
+                    Netz.abgabe.decodeFromJsonElement(Lobbynachricht.serializer(), it)
+                }.getOrNull()
+            } ?: return@auf
+
+            val ich = _stand.value.eigeneKennung
+            _stand.update { alt ->
+                if (alt.lobbyzeilen.any { it.id == zeile.id }) alt
+                else alt.copy(lobbyzeilen = (alt.lobbyzeilen + zeile).takeLast(LOBBYZEILEN))
+            }
+            if (zeile.vonId != ich && ich in zeile.erwaehnte) toene.erwaehnung()
+        }
+
+        // Ein Teammitglied hat den Lobby-Chat geleert (`/leeren`). Der leere
+        // Verlauf kommt mit dem Raumzustand; hier fallen die örtlichen Zeilen.
+        draht.auf("LobbyChatGeleert") {
+            _stand.update { it.copy(lobbyzeilen = emptyList()) }
+        }
+
+        // Die Bevölkerungswarnung — an alle im Raum, folgenlos fürs Spiel.
+        draht.auf("Bevoelkerungswarnung") { argumente ->
+            val text = argumente.firstOrNull()?.let { text(it) } ?: return@auf
+            _stand.update {
+                it.copy(bevoelkerungswarnung = Bevoelkerungswarnung(text, System.currentTimeMillis()))
+            }
+            toene.warnApp()
+        }
+
         // Nach Dienstende: was die Schicht dem eigenen Konto eingebracht hat.
         draht.auf("Erfahrung") { argumente ->
             val gutschrift = argumente.firstOrNull()?.let {
@@ -122,11 +227,16 @@ class Runde(anwendung: Application) : AndroidViewModel(anwendung) {
             _stand.update { it.copy(gutschrift = gutschrift) }
         }
 
+        // Entfernt — von der Leitstelle, wegen einer Sperre oder weil man in der
+        // Lobby zu lange weg war. Den Wortlaut liefert der Server; die Seite zeigt
+        // ihn mit „Zurück zum Start", statt still auf den Start zu springen.
         draht.auf("KickedFromRoom") { argumente ->
             val grund = argumente.firstOrNull()?.let { text(it) }
-            _stand.update {
-                Rundenstand(fehler = grund ?: "Die Leitstelle hat dich aus dem Raum entfernt.")
-            }
+                ?: "Du wurdest von der Leitstelle aus dem Raum entfernt."
+            eintritt = null
+            abraeumen()
+            _stand.value = Rundenstand(rausGrund = grund, eigeneKennung = _stand.value.eigeneKennung)
+            draht.trennen()
             bereich.launch { ablage.rundeMerken(null) }
         }
 
@@ -194,14 +304,12 @@ class Runde(anwendung: Application) : AndroidViewModel(anwendung) {
         }
 
         // Eine Drahtzeile zwischen zwei Zustandsständen — dieselbe Mechanik
-        // wie `Radio`: anhängen, beim nächsten Vollstand abgleichen.
+        // wie `Radio`: anhängen, beim nächsten Vollstand abgleichen. Bei fremden
+        // Zeilen ein kurzer Ton: Der Draht liegt hinter einem Reiter.
         draht.auf("Draht") { argumente ->
             val zeile = argumente.firstOrNull()?.let {
                 runCatching {
-                    Netz.abgabe.decodeFromJsonElement(
-                        de.pagerspass.pagerspass.netz.Drahtnachricht.serializer(),
-                        it,
-                    )
+                    Netz.abgabe.decodeFromJsonElement(Drahtnachricht.serializer(), it)
                 }.getOrNull()
             } ?: return@auf
 
@@ -209,6 +317,7 @@ class Runde(anwendung: Application) : AndroidViewModel(anwendung) {
                 if (alt.drahtzeilen.any { it.id == zeile.id }) alt
                 else alt.copy(drahtzeilen = (alt.drahtzeilen + zeile).takeLast(200))
             }
+            if (zeile.vonId != _stand.value.eigeneKennung) toene.erwaehnung()
         }
 
         // ------------------------------------------------------- Sprechfunk
@@ -240,6 +349,7 @@ class Runde(anwendung: Application) : AndroidViewModel(anwendung) {
         draht.auf("ChannelBusy") { argumente ->
             val name = argumente.firstOrNull()?.let { text(it) }
             sprechenAbbrechen()
+            toene.belegt()
             _stand.update {
                 it.copy(funkhinweis = "Kanal belegt – ${name ?: "jemand"} spricht.")
             }
@@ -247,14 +357,145 @@ class Runde(anwendung: Application) : AndroidViewModel(anwendung) {
 
         // Der Text, den der Server aus der Durchsage verstanden hat. Er kommt
         // nur zum Sprecher zurück — erst `funken` macht daraus den Spruch, den
-        // alle lesen. `null` heißt: nichts verstanden, der Platzhalter
-        // „🎙️ Sprachdurchsage" steht dann schon im Protokoll.
+        // alle lesen.
         draht.auf("FunkErkannt") { argumente ->
             val erkannt = argumente.firstOrNull()?.let { text(it) }
             _stand.update { it.copy(wirdVerstanden = false) }
-            if (!erkannt.isNullOrBlank()) funken(erkannt)
+            if (erkannt.isNullOrBlank()) {
+                _stand.update {
+                    it.copy(funkhinweis = "Nichts verstanden — der Spruch steht nicht im Protokoll.")
+                }
+            } else {
+                funken(erkannt)
+            }
+        }
+
+        // ------------------------------------------------ Leitstellendraht
+        //
+        // Alle vier kommen nur an den Leitstellenplätzen an — der Server
+        // verschickt sie gezielt. Keine zweite Rollenprüfung hier.
+
+        draht.auf("DrahtSprecher") { argumente ->
+            val wer = argumente.getOrNull(0)?.let { text(it) } ?: return@auf
+            val name = argumente.getOrNull(1)?.let { text(it) } ?: "Unbekannt"
+            _stand.update { it.copy(drahtSprecher = Sprecherangabe(wer, name)) }
+        }
+
+        draht.auf("DrahtSprecherEnde") { argumente ->
+            val wer = argumente.getOrNull(0)?.let { text(it) } ?: return@auf
+            // Nur, wenn wirklich der laufende Sprecher fertig ist — zwei Disponenten
+            // lösen sich schnell ab, und die Ereignisse überholen sich.
+            _stand.update { if (it.drahtSprecher?.playerId == wer) it.copy(drahtSprecher = null) else it }
+        }
+
+        draht.auf("DrahtBelegt") { argumente ->
+            val name = argumente.firstOrNull()?.let { text(it) } ?: "jemand"
+            toene.belegt()
+            _stand.update { it.copy(funkhinweis = "Draht belegt – $name spricht.") }
+            if (_stand.value.nebenleitung == Nebenleitung.Draht) nebenleitungAbbrechen()
+        }
+
+        draht.auf("DrahtAudio") { argumente ->
+            val wer = argumente.getOrNull(0)?.let { text(it) } ?: return@auf
+            val paket = argumente.getOrNull(1)?.let { text(it) } ?: return@auf
+            if (wer != _stand.value.drahtSprecher?.playerId) return@auf
+            drahtLautsprecher.abspielen(paket)
+        }
+
+        // ------------------------------------------- Funk an der Einsatzstelle
+        //
+        // Dieselben vier Handgriffe wie beim Draht. Der Sender ist hier der
+        // Funkrufname: Vor Ort ruft man ein Fahrzeug, keinen Kontonamen.
+
+        draht.auf("EinsatzstelleSprecher") { argumente ->
+            val wer = argumente.getOrNull(0)?.let { text(it) } ?: return@auf
+            val name = argumente.getOrNull(1)?.let { text(it) } ?: "Unbekannt"
+            _stand.update { it.copy(einsatzstellenSprecher = Sprecherangabe(wer, name)) }
+        }
+
+        draht.auf("EinsatzstelleSprecherEnde") { argumente ->
+            val wer = argumente.getOrNull(0)?.let { text(it) } ?: return@auf
+            _stand.update {
+                if (it.einsatzstellenSprecher?.playerId == wer) it.copy(einsatzstellenSprecher = null) else it
+            }
+        }
+
+        draht.auf("EinsatzstelleBelegt") { argumente ->
+            val name = argumente.firstOrNull()?.let { text(it) } ?: "jemand"
+            toene.belegt()
+            _stand.update { it.copy(funkhinweis = "Einsatzstelle belegt – $name spricht.") }
+            if (_stand.value.nebenleitung == Nebenleitung.Einsatzstelle) nebenleitungAbbrechen()
+        }
+
+        draht.auf("EinsatzstelleAudio") { argumente ->
+            val wer = argumente.getOrNull(0)?.let { text(it) } ?: return@auf
+            val paket = argumente.getOrNull(1)?.let { text(it) } ?: return@auf
+            if (wer != _stand.value.einsatzstellenSprecher?.playerId) return@auf
+            einsatzstellenLautsprecher.abspielen(paket)
+        }
+
+        // --------------------------------------------------------- Einzelruf
+
+        // Vollduplex: nur die Gegenstelle des eigenen laufenden Gesprächs kommt
+        // durch — ein spätes Paket eines eben beendeten Rufs soll nicht ins
+        // nächste Gespräch hineinsprechen.
+        draht.auf("EinzelrufAudio") { argumente ->
+            val wer = argumente.getOrNull(0)?.let { text(it) } ?: return@auf
+            val paket = argumente.getOrNull(1)?.let { text(it) } ?: return@auf
+            val ruf = _stand.value.eigenerEinzelruf ?: return@auf
+            val ich = _stand.value.eigeneKennung
+            val gegenstelle = if (ruf.vonPlayerId == ich) ruf.angenommenVonPlayerId else ruf.vonPlayerId
+            if (wer != gegenstelle) return@auf
+            einzelrufLautsprecher.abspielen(paket)
+        }
+
+        // Der erkannte Satz einer Äußerung im Einzelruf mit einer Bot-Besatzung.
+        draht.auf("EinzelrufErkannt") { argumente ->
+            val ruf = argumente.getOrNull(0)?.let { text(it) } ?: return@auf
+            val erkannt = argumente.getOrNull(1)?.let { text(it) }
+            _stand.update { it.copy(einzelrufWirdVerstanden = false) }
+            if (erkannt.isNullOrBlank()) {
+                _stand.update { it.copy(funkhinweis = "Nichts verstanden — der Satz wurde nicht gesagt.") }
+                return@auf
+            }
+            // Wer inzwischen aufgelegt hat, darf seinen Satz nicht im nächsten
+            // Gespräch wiederfinden.
+            if (ruf != _stand.value.eigenerEinzelruf?.id) return@auf
+            draht.rufen("EinzelrufSagen", wert(ruf), wert(erkannt))
+        }
+
+        // ---------------------------------------------------- Notruftelefon
+
+        // Die Stimme des Anrufers — nur an die Leitstelle, eigener Lautsprecher.
+        draht.auf("TelefonAudio") { argumente ->
+            val anruf = argumente.getOrNull(0)?.let { text(it) } ?: return@auf
+            val paket = argumente.getOrNull(1)?.let { text(it) } ?: return@auf
+            if (anruf != _stand.value.aktiverAnruf) return@auf
+            telefonLautsprecher.abspielen(paket)
+        }
+
+        // Die gesprochene Rückfrage am Notruftelefon, vom Server verstanden.
+        draht.auf("NotrufErkannt") { argumente ->
+            val anruf = argumente.getOrNull(0)?.let { text(it) } ?: return@auf
+            val erkannt = argumente.getOrNull(1)?.let { text(it) }
+            _stand.update { it.copy(notrufWirdVerstanden = false) }
+            if (erkannt.isNullOrBlank()) {
+                _stand.update { it.copy(funkhinweis = "Nichts verstanden — die Frage wurde nicht gestellt.") }
+                return@auf
+            }
+            if (anruf != _stand.value.aktiverAnruf) return@auf
+            draht.rufen("AnrufFrage", wert(anruf), JsonNull, wert(erkannt), JsonNull)
+        }
+
+        // Ob am eigenen Platz ein Handy als Funkbegleiter hängt.
+        draht.auf("BegleiterStatus") { argumente ->
+            val wer = argumente.getOrNull(0)?.let { text(it) } ?: return@auf
+            val aktiv = argumente.getOrNull(1)?.let { text(it) } == "true"
+            if (wer == _stand.value.eigeneKennung) _stand.update { it.copy(begleiterGekoppelt = aktiv) }
         }
     }
+
+    // ------------------------------------------------------------ Beitritt
 
     /**
      * Einer Runde beitreten.
@@ -265,33 +506,166 @@ class Runde(anwendung: Application) : AndroidViewModel(anwendung) {
      * die App zeigt „Diesen Raum gibt es nicht (mehr)". Deshalb stehen Verbinden
      * und Beitreten hier in einem Aufruf und nicht in zweien.
      */
-    fun beitreten(code: String, name: String) = arbeiten {
+    fun beitreten(code: String, name: String) = arbeiten { eintreten(code, name, alsZuschauer = false) }
+
+    /**
+     * Als Zuschauer beitreten — kein Platz, keine Rolle, nur die Sicht.
+     *
+     * <b>Der Zuschauer ist kein Spieler.</b> Er steht in `zuschauer`, nicht in
+     * `players`, zählt nicht gegen `maxSpieler` und kann nichts senden — alle
+     * Kommandos weisen ihn strukturell ab. Wer die Übung angelegt hat, bekommt
+     * hier den Regieplatz.
+     */
+    fun zuschauen(code: String, name: String) = arbeiten { eintreten(code, name, alsZuschauer = true) }
+
+    /**
+     * Der gemeinsame Weg in einen Raum — als Spieler oder als Zuschauer.
+     *
+     * <b>Ein Beitritt, der allein an der Übertragungseinwilligung scheitert, ist
+     * eine offene Frage</b> und kein Fehlschlag: Die Frage wird gemerkt
+     * (`einwilligung`), und die Blende darüber stellt sie. Geworfen wird trotzdem
+     * — wer beitreten wollte, ist nicht drin.
+     */
+    private suspend fun eintreten(code: String, name: String, alsZuschauer: Boolean) {
         val sauber = code.trim().uppercase()
-        _stand.update { it.copy(code = sauber) }
+        val kennung = ablage.kennung().orEmpty()
+        _stand.update { it.copy(code = sauber, rausGrund = null, eigeneKennung = kennung) }
 
         draht.verbinden()
 
-        val antwort = draht.frage("Join", wert(sauber), wert(name))
-        val ergebnis = antwort?.let {
+        val ergebnis = beitrittFragen(sauber, name, alsZuschauer)
+            ?: throw IllegalStateException("Die Leitstelle antwortet nicht.")
+        val raum = ergebnis.state
+
+        if (!ergebnis.ok || raum == null) {
+            val frage = ergebnis.einwilligung
+            if (frage != null) {
+                _stand.update {
+                    it.copy(einwilligung = OffeneEinwilligung(frage, sauber, name, alsZuschauer))
+                }
+            } else if (_stand.value.raum == null) {
+                // Draußen und nichts offen: keine Leitung stehen lassen, die beim
+                // nächsten Funkloch einen Raum anruft, in dem man nie war.
+                draht.trennen()
+            }
+            throw Absage(
+                ergebnis.fehler ?: if (alsZuschauer) {
+                    "Zuschauen ist hier gerade nicht möglich."
+                } else {
+                    "Diesen Raum gibt es nicht (mehr)."
+                },
+            )
+        }
+
+        eintritt = Eintritt(sauber, name, alsZuschauer)
+        abraeumen()
+        _stand.update {
+            it.copy(
+                raum = raum,
+                code = sauber,
+                fehler = null,
+                zuschauer = alsZuschauer,
+                einwilligung = null,
+                elternbogenAmPlatz = null,
+                lobbyzeilen = emptyList(),
+                drahtzeilen = emptyList(),
+                funk = raum.funkprotokoll,
+                alarm = null,
+                melderverlauf = emptyList(),
+                gutschrift = null,
+                rausGrund = null,
+            )
+        }
+
+        // Für die Rückkehr nach einem Prozesstod — siehe `wiederAufnehmen`. Mit
+        // Vorzeichen beim Zuschauer: Die Wiederaufnahme muss wissen, als was sie
+        // zurückkommt.
+        ablage.rundeMerken(if (alsZuschauer) "Z:$sauber" else sauber)
+        nachDemEintritt(alsZuschauer)
+    }
+
+    /**
+     * Was nach jedem Eintritt dazugehört — auch nach dem Wiedereintritt.
+     *
+     * <b>Der Server merkt sich beides an der Verbindungskennung</b>, und die ist
+     * nach einem Wiederaufbau eine andere. Deshalb bei jedem Eintritt und nicht
+     * einmal beim Verbinden.
+     */
+    private suspend fun nachDemEintritt(alsZuschauer: Boolean) {
+        // Die App hat keine eigene Spracherkennung — der Server soll Durchsagen
+        // mit Whisper in Text übersetzen (wie Firefox).
+        draht.rufen("FunkerkennungWuenschen", wert(true))
+        draht.rufen("SetzeSichtbarkeit", wert(sichtbar))
+        if (!alsZuschauer) {
+            // Ob schon ein Handy am Platz hängt, weiß nur der Server.
+            val gekoppelt = runCatching { draht.frage("BegleiterGekoppelt") }.getOrNull()
+            _stand.update { it.copy(begleiterGekoppelt = (gekoppelt as? JsonPrimitive)?.content == "true") }
+        }
+    }
+
+    private suspend fun beitrittFragen(code: String, name: String, alsZuschauer: Boolean): Beitrittsergebnis? {
+        val antwort = draht.frage(if (alsZuschauer) "JoinAsSpectator" else "Join", wert(code), wert(name))
+        return antwort?.let {
             runCatching { Netz.abgabe.decodeFromJsonElement(Beitrittsergebnis.serializer(), it) }
                 .getOrNull()
         }
-
-        when {
-            ergebnis == null -> throw IllegalStateException("Die Leitstelle antwortet nicht.")
-            !ergebnis.ok -> throw IllegalStateException(
-                ergebnis.fehler ?: "Diesen Raum gibt es nicht (mehr).",
-            )
-            else -> {
-                _stand.update { it.copy(raum = ergebnis.state, fehler = null) }
-                // Für die Rückkehr nach einem Prozesstod — siehe `wiederAufnehmen`.
-                ablage.rundeMerken(sauber)
-                // Die App hat keine eigene Spracherkennung — der Server soll
-                // Durchsagen mit Whisper in Text übersetzen (wie Firefox).
-                draht.rufen("FunkerkennungWuenschen", wert(true))
-            }
-        }
     }
+
+    /**
+     * Nach einem Abbruch den Raum erneut betreten — der Kontext am Server ist neu.
+     *
+     * `false` heißt: Der Aufruf selbst ist gescheitert — vorübergehend, die
+     * Schleife der `Funkverbindung` versucht es weiter. Nur ein `ok = false` ist
+     * das Nein des Servers (Runde beendet, Platz weg): Dann wird abgeräumt wie
+     * beim Rauswurf, und die Seite sagt, warum. Ohne das stand die alte Lage
+     * weiter da, die Leitung hieß „verbunden", und es kam nie wieder etwas.
+     */
+    private suspend fun wiedereintreten(): Boolean {
+        val ziel = eintritt ?: return true
+
+        val ergebnis = try {
+            beitrittFragen(ziel.code, ziel.name, ziel.alsZuschauer)
+        } catch (e: Exception) {
+            return false
+        } ?: return false
+
+        val raum = ergebnis.state
+        if (!ergebnis.ok || raum == null) {
+            eintritt = null
+            abraeumen()
+            _stand.value = Rundenstand(
+                rausGrund = ergebnis.fehler ?: "Die Verbindung zur Runde ist verloren gegangen.",
+                eigeneKennung = _stand.value.eigeneKennung,
+            )
+            draht.trennen()
+            ablage.rundeMerken(null)
+            return true
+        }
+
+        // Der frische Stand gilt, auch wenn seine Nummer kleiner ist: Nach einem
+        // Neustart des Servers zählt sie von vorn.
+        _stand.update { it.copy(raum = raum, code = raum.code, funk = raum.funkprotokoll) }
+        nachStand(raum)
+
+        // Eine während des Abbruchs noch gedrückte Taste: Hält der Server den
+        // Kanal nicht mehr für diesen Platz, gehört sie losgelassen.
+        val ich = _stand.value.eigeneKennung
+        if (_stand.value.sendet && raum.funkkanal.senderPlayerId != ich) sprechenAbbrechen()
+        val neben = _stand.value.nebenleitung
+        if (neben == Nebenleitung.Draht && raum.drahtkanal.senderPlayerId != ich) nebenleitungAbbrechen()
+        if (neben == Nebenleitung.Einsatzstelle && raum.einsatzstellenkanal.senderPlayerId != ich) {
+            nebenleitungAbbrechen()
+        }
+
+        nachDemEintritt(ziel.alsZuschauer)
+        return true
+    }
+
+    /**
+     * Holt eine aufgegebene Verbindung zurück — beim Zurückkommen in die App oder
+     * auf „Neu verbinden" im Verbindungsband.
+     */
+    fun wiederaufnehmen() = draht.wiederaufnehmen()
 
     /**
      * Zurück in die Runde, die vor einem Prozesstod lief.
@@ -308,71 +682,87 @@ class Runde(anwendung: Application) : AndroidViewModel(anwendung) {
         val alsZuschauer = gemerkt.startsWith("Z:")
         val code = gemerkt.removePrefix("Z:")
 
-        runCatching {
-            draht.verbinden()
-            val antwort = draht.frage(
-                if (alsZuschauer) "JoinAsSpectator" else "Join",
-                wert(code),
-                wert(name),
-            )
-            val ergebnis = antwort?.let {
-                runCatching {
-                    Netz.abgabe.decodeFromJsonElement(Beitrittsergebnis.serializer(), it)
-                }.getOrNull()
+        runCatching { eintreten(code, name, alsZuschauer) }
+            .onFailure { f ->
+                // Kein Netz beim Aufwachen, oder den Raum gibt es nicht mehr — in
+                // beiden Fällen ohne Meldung. Nur im zweiten Fall ist der Code weg:
+                // Ohne Netz versucht es der nächste Start wieder.
+                if (f is Absage && _stand.value.einwilligung == null) ablage.rundeMerken(null)
+                _stand.update { it.copy(fehler = null) }
+                if (_stand.value.raum == null && _stand.value.einwilligung == null) draht.trennen()
             }
+    }
 
-            if (ergebnis?.ok == true) {
-                _stand.update {
-                    it.copy(
-                        raum = ergebnis.state,
-                        code = code,
-                        fehler = null,
-                        zuschauer = alsZuschauer,
+    // ---------------------------------------------- Übertragung einer Schicht
+
+    /**
+     * Die Einwilligung erteilen und dort weitermachen, wo es unterbrochen wurde.
+     *
+     * <b>Die Zusage kann gültig sein oder nicht</b> — bei „unter 18" wartet sie
+     * auf den Bogen der Erziehungsberechtigten; dann bleibt die Blende offen und
+     * zeigt ihn. Der Aufrufer liest `gilt`. Wirft mit einer lesbaren Meldung.
+     */
+    suspend fun einwilligungErteilen(volljaehrig: Boolean): Uebertragungszusage {
+        val frage = _stand.value.einwilligungsfrage
+            ?: throw IllegalStateException("Es ist gerade keine Einwilligung offen.")
+        val kennung = ablage.kennung() ?: throw IllegalStateException("Bitte melde dich zuerst an.")
+
+        val zusage = uebertragung.einwilligen(kennung, frage.raumCode, volljaehrig)
+
+        if (!zusage.gilt) {
+            // Noch nicht durch: Der Bogen wandert in die offene Frage, damit die
+            // Blende ihn zeigen kann.
+            _stand.update { alt ->
+                val offen = alt.einwilligung
+                if (offen != null) {
+                    alt.copy(
+                        einwilligung = offen.copy(
+                            frage = offen.frage.copy(wartetAufEltern = true, elternbogen = zusage.elternbogen),
+                        ),
                     )
+                } else {
+                    alt.copy(elternbogenAmPlatz = zusage.elternbogen)
                 }
-                if (!alsZuschauer) draht.rufen("FunkerkennungWuenschen", wert(true))
-            } else {
-                ablage.rundeMerken(null)
-                draht.trennen()
             }
-        }.onFailure {
-            // Kein Netz beim Aufwachen — der Code bleibt liegen, der nächste
-            // Start versucht es wieder.
-            draht.trennen()
+            return zusage
         }
+
+        _stand.update { it.copy(elternbogenAmPlatz = null) }
+
+        val offen = _stand.value.einwilligung
+        if (offen != null) {
+            // Der Beitritt, der vorhin abgewiesen wurde — jetzt noch einmal.
+            _stand.update { it.copy(laeuft = true) }
+            try {
+                eintreten(offen.code, offen.name, offen.alsZuschauer)
+            } finally {
+                _stand.update { it.copy(laeuft = false) }
+            }
+        } else {
+            // Der Fall „saß schon": Der Platz bleibt und bekommt die Erlaubnis
+            // nachgetragen. Der Server schlägt selbst nach.
+            draht.frage("StreamerfreigabeNachtragen")
+        }
+        return zusage
     }
 
     /**
-     * Als Zuschauer beitreten — kein Platz, keine Rolle, nur die Sicht.
-     *
-     * <b>Der Zuschauer ist kein Spieler.</b> Er steht in `zuschauer`, nicht in
-     * `players`, zählt nicht gegen `maxSpieler` und kann nichts senden — alle
-     * Kommandos weisen ihn strukturell ab. Wer die Übung angelegt hat, bekommt
-     * hier den Regieplatz.
+     * Die Frage ablehnen. <b>Ein abgewiesener Beitritt wird nur vergessen</b> —
+     * man stand ohnehin draußen. <b>Wer schon saß, verlässt die Runde</b>: Ein
+     * „nein" muss folgenlos bleiben dürfen, und folgenlos ist es nur, wenn danach
+     * nichts mehr von einem übertragen werden kann.
      */
-    fun zuschauen(code: String, name: String) = arbeiten {
-        val sauber = code.trim().uppercase()
-        _stand.update { it.copy(code = sauber) }
-
-        draht.verbinden()
-        val antwort = draht.frage("JoinAsSpectator", wert(sauber), wert(name))
-        val ergebnis = antwort?.let {
-            runCatching { Netz.abgabe.decodeFromJsonElement(Beitrittsergebnis.serializer(), it) }
-                .getOrNull()
+    fun einwilligungAblehnen() {
+        if (_stand.value.einwilligung != null) {
+            _stand.update { it.copy(einwilligung = null) }
+            if (_stand.value.raum == null) draht.trennen()
+            return
         }
-        when {
-            ergebnis == null -> throw IllegalStateException("Die Leitstelle antwortet nicht.")
-            !ergebnis.ok -> throw IllegalStateException(
-                ergebnis.fehler ?: "Zuschauen ist hier gerade nicht möglich.",
-            )
-            else -> {
-                _stand.update { it.copy(raum = ergebnis.state, fehler = null, zuschauer = true) }
-                // Mit Vorzeichen gemerkt: Die Wiederaufnahme muss wissen, dass
-                // sie als Zuschauer zurückkommt, nicht als Spieler.
-                ablage.rundeMerken("Z:$sauber")
-            }
-        }
+        _stand.update { it.copy(elternbogenAmPlatz = null) }
+        if (_stand.value.raum != null) verlassen()
     }
+
+    // ----------------------------------------------------------- Die Lobby
 
     /**
      * Die Rolle wählen.
@@ -399,7 +789,24 @@ class Runde(anwendung: Application) : AndroidViewModel(anwendung) {
 
     fun dienstBeginnen() = draht.rufen("StartRound")
 
+    /**
+     * Fürs Dienstende stimmen — oder die eigene Stimme zurückziehen. Bei einer
+     * Schwelle von 1 ist es kein Abstimmen, sondern ein Beenden.
+     */
     fun dienstBeenden() = draht.rufen("EndRound")
+
+    /**
+     * Ob die App gerade im Vordergrund steht.
+     *
+     * Der Server entscheidet daran, ob er einen Alarm zusätzlich als Mitteilung
+     * nachschickt, und über die Abwesenheitsfrist in der Lobby. Er bekommt es bei
+     * jedem Wechsel und nach jedem Eintritt — die Verbindungskennung ist nach
+     * einem Wiederaufbau eine andere.
+     */
+    fun sichtbarkeit(sichtbar: Boolean) {
+        this.sichtbar = sichtbar
+        if (_stand.value.drin) draht.rufen("SetzeSichtbarkeit", wert(sichtbar))
+    }
 
     // -------------------------------------------------------------- Der Dienst
     //
@@ -490,8 +897,13 @@ class Runde(anwendung: Application) : AndroidViewModel(anwendung) {
         val jetzt = System.currentTimeMillis()
         val s = _stand.value
         if (s.sendet) return true
-        if (s.sprecher.isNotEmpty()) {
-            _stand.update { it.copy(funkhinweis = "Kanal belegt – ${s.sprecher.values.first()} spricht.") }
+        if (s.nebenleitung != null) return false
+        // Belegt ist nur der eigene Sendekanal — wer zwei Häuser weiter auf
+        // einer anderen Gruppe spricht, sperrt die eigene Taste nicht.
+        val belegtVon = s.sprecher[s.raum?.sendegruppe ?: ""]
+        if (belegtVon != null) {
+            toene.belegt()
+            _stand.update { it.copy(funkhinweis = "Kanal belegt – $belegtVon spricht.") }
             return false
         }
         val gesperrtBis = s.funkGesperrtBis
@@ -510,7 +922,7 @@ class Runde(anwendung: Application) : AndroidViewModel(anwendung) {
         // Die Uhr des Clients — der Server hat seine eigene und vollstreckt
         // notfalls nachträglich. Zwei Uhren, absichtlich.
         funklimit = bereich.launch {
-            kotlinx.coroutines.delay(Sprechfunk.MAX_SENDEDAUER_MS)
+            delay(Sprechfunk.MAX_SENDEDAUER_MS)
             if (_stand.value.sendet) {
                 mikrofon.stoppen()
                 draht.rufen("FunklimitErreicht")
@@ -563,6 +975,162 @@ class Runde(anwendung: Application) : AndroidViewModel(anwendung) {
 
     fun funkhinweisWegnehmen() = _stand.update { it.copy(funkhinweis = null) }
 
+    // -------------------------------------------------------- Nebenleitungen
+    //
+    // Draht, Einsatzstelle, Einzelruf, Notruftelefon und die gesprochene
+    // Alarmmeldung: fünfmal derselbe Dreischritt wie beim Funk — Taste drücken,
+    // Häppchen schicken, loslassen —, nur auf anderen Wegen. Es spricht immer
+    // höchstens einer davon, und nie zugleich mit der Sprechtaste des Kreises.
+
+    /**
+     * Auf dem Leitstellendraht sprechen — nur, wenn er offensteht und frei ist.
+     *
+     * @return false, wenn nicht gesprochen wird.
+     */
+    fun drahtSprechenStarten(): Boolean {
+        val s = _stand.value
+        val raum = s.raum ?: return false
+        if (!raum.drahtOffen) return false
+        val halter = s.drahtSprecher
+        if (halter != null && halter.playerId != s.eigeneKennung) {
+            toene.belegt()
+            return false
+        }
+        return nebenleitungStarten(Nebenleitung.Draht, vorher = { draht.rufen("DrahtSprechenStarten") }) {
+            paket -> draht.rufen("DrahtAudio", wert(paket))
+        }
+    }
+
+    /** Der Draht ist losgelassen — `true`: diese Seite liefert keinen Text. */
+    fun drahtSprechenBeenden() {
+        if (_stand.value.nebenleitung != Nebenleitung.Draht) return
+        nebenleitungAbbrechen()
+        draht.rufen("DrahtSprechenBeenden", wert(true))
+    }
+
+    /** Auf dem Einsatzstellenfunk sprechen — nur mit Status 4 an der Lage. */
+    fun einsatzstelleSprechenStarten(): Boolean {
+        val s = _stand.value
+        val halter = s.einsatzstellenSprecher
+        if (halter != null && halter.playerId != s.eigeneKennung) {
+            toene.belegt()
+            return false
+        }
+        return nebenleitungStarten(
+            Nebenleitung.Einsatzstelle,
+            vorher = { draht.rufen("EinsatzstelleSprechenStarten") },
+        ) { paket -> draht.rufen("EinsatzstelleAudio", wert(paket)) }
+    }
+
+    fun einsatzstelleSprechenBeenden() {
+        if (_stand.value.nebenleitung != Nebenleitung.Einsatzstelle) return
+        nebenleitungAbbrechen()
+        draht.rufen("EinsatzstelleSprechenBeenden", wert(true))
+    }
+
+    /**
+     * Im Einzelruf sprechen. Die Taste ist keine Kanalsperre, sondern Anfang und
+     * Ende <em>einer Äußerung</em> — mit einem Menschen geht die Stimme hinüber,
+     * mit einer Bot-Besatzung wird sie am Server erkannt.
+     */
+    fun einzelrufSprechenStarten(): Boolean =
+        nebenleitungStarten(Nebenleitung.Einzelruf, vorher = { draht.rufen("EinzelrufSprechenStarten") }) {
+            paket -> draht.rufen("EinzelrufAudio", wert(paket))
+        }
+
+    fun einzelrufSprechenBeenden(rufId: String) {
+        if (_stand.value.nebenleitung != Nebenleitung.Einzelruf) return
+        nebenleitungAbbrechen()
+        bereich.launch {
+            val antwort = runCatching { draht.frage("EinzelrufSprechenBeenden", wert(rufId)) }.getOrNull()
+            if ((antwort as? JsonPrimitive)?.content == "true") {
+                _stand.update { it.copy(einzelrufWirdVerstanden = true) }
+            }
+        }
+    }
+
+    /** Eine Rückfrage am Notruftelefon sprechen — der Server erkennt, was gesagt wurde. */
+    fun notrufSprechenStarten(): Boolean =
+        nebenleitungStarten(Nebenleitung.Notruf, vorher = { draht.rufen("NotrufSprechenStarten") }) {
+            paket -> draht.rufen("NotrufAudio", wert(paket))
+        }
+
+    fun notrufSprechenBeenden(anrufId: String) {
+        if (_stand.value.nebenleitung != Nebenleitung.Notruf) return
+        nebenleitungAbbrechen()
+        bereich.launch {
+            val antwort = runCatching { draht.frage("NotrufSprechenBeenden", wert(anrufId)) }.getOrNull()
+            if ((antwort as? JsonPrimitive)?.content == "true") {
+                _stand.update { it.copy(notrufWirdVerstanden = true) }
+            }
+        }
+    }
+
+    /**
+     * Die Meldung zur Alarmierung sprechen. Gehört wird sie erst beim Alarmieren,
+     * und nur von den Alarmierten — dazwischen liegt der Ton am Server und wartet
+     * auf seine Kennung (`meldungId`, vom Client vergeben).
+     */
+    fun alarmMeldungSprechenStarten(meldungId: String): Boolean =
+        nebenleitungStarten(
+            Nebenleitung.Alarmmeldung,
+            vorher = { draht.rufen("AlarmMeldungSprechenStarten", wert(meldungId)) },
+        ) { paket -> draht.rufen("AlarmMeldungAudio", wert(meldungId), wert(paket)) }
+
+    /** @return ob der Server eine Aufnahme zu dieser Kennung hat. */
+    suspend fun alarmMeldungSprechenBeenden(meldungId: String): Boolean {
+        if (_stand.value.nebenleitung == Nebenleitung.Alarmmeldung) nebenleitungAbbrechen()
+        val antwort = runCatching { draht.frage("AlarmMeldungSprechenBeenden", wert(meldungId)) }.getOrNull()
+        return (antwort as? JsonPrimitive)?.content == "true"
+    }
+
+    fun alarmMeldungVerwerfen(meldungId: String) =
+        draht.rufen("AlarmMeldungVerwerfen", wert(meldungId))
+
+    /**
+     * Welcher Anruf gerade am Ohr liegt — für Telefonstimme und erkannte Fragen.
+     * `null` nimmt das Gespräch, das man selbst führt.
+     */
+    fun telefonAnrufSetzen(anrufId: String?) = _stand.update { it.copy(telefonAnruf = anrufId) }
+
+    private fun nebenleitungStarten(
+        leitung: Nebenleitung,
+        vorher: () -> Unit,
+        beiPaket: (String) -> Unit,
+    ): Boolean {
+        val s = _stand.value
+        if (s.nebenleitung == leitung) return true
+        if (s.sendet || s.nebenleitung != null) return false
+
+        val los = nebenmikrofon.starten(beiPaket)
+        if (!los) {
+            _stand.update { it.copy(funkhinweis = "Das Mikrofon war nicht zu bekommen.") }
+            return false
+        }
+        vorher()
+        _stand.update { it.copy(nebenleitung = leitung, funkhinweis = null) }
+
+        // Dieselben zwanzig Sekunden wie am Kreiskanal — dann ist Schluss.
+        nebenlimit = bereich.launch {
+            delay(Sprechfunk.MAX_SENDEDAUER_MS)
+            if (_stand.value.nebenleitung == leitung) {
+                when (leitung) {
+                    Nebenleitung.Draht -> drahtSprechenBeenden()
+                    Nebenleitung.Einsatzstelle -> einsatzstelleSprechenBeenden()
+                    else -> nebenleitungAbbrechen()
+                }
+            }
+        }
+        return true
+    }
+
+    private fun nebenleitungAbbrechen() {
+        if (_stand.value.nebenleitung == null) return
+        nebenlimit?.cancel()
+        nebenmikrofon.stoppen()
+        _stand.update { it.copy(nebenleitung = null) }
+    }
+
     // ------------------------------------------------------------ Leitstelle
 
     fun einsatzAnlegen(
@@ -576,6 +1144,10 @@ class Runde(anwendung: Application) : AndroidViewModel(anwendung) {
         empfohleneFahrzeuge: Int?,
         empfohleneFaehigkeiten: List<String>,
         anrufId: String? = null,
+        ortsteil: String? = null,
+        lat: Double? = null,
+        lon: Double? = null,
+        ursprungEinsatzId: String? = null,
     ) = draht.rufen(
         "CreateIncident",
         wert(stichwort),
@@ -584,21 +1156,42 @@ class Runde(anwendung: Application) : AndroidViewModel(anwendung) {
         wert(adresse),
         wert(organisation),
         wert(prioritaet),
-        JsonNull, // ortsteil
+        ortsteil?.let { wert(it) } ?: JsonNull,
         meldender?.let { wert(it) } ?: JsonNull,
         empfohleneFahrzeuge?.let { wert(it) } ?: JsonNull,
         liste(empfohleneFaehigkeiten),
-        JsonNull, // lat
-        JsonNull, // lon
+        lat?.let { JsonPrimitive(it) } ?: JsonNull,
+        lon?.let { JsonPrimitive(it) } ?: JsonNull,
         anrufId?.let { wert(it) } ?: JsonNull,
-        JsonNull, // ursprungEinsatzId
+        ursprungEinsatzId?.let { wert(it) } ?: JsonNull,
     )
 
-    fun alarmieren(incidentId: String, fahrzeuge: List<String>) = draht.rufen(
+    /**
+     * Fahrzeuge alarmieren — <b>immer alle fünf Argumente.</b>
+     *
+     * SignalR bindet nach Stelle; drei statt fünf verwarf der Hub still
+     * („Invocation provides 3 argument(s) but target expects 5"). Das Web
+     * schickt `{}`, `null`, `null`, wenn nichts dazukommt — hier genauso.
+     *
+     * @param abrollbehaelter WLF-Id → Abrollbehälter-Vorlage, die er aufnimmt.
+     * @param zusatztext Die eigene Meldung der Leitstelle am Melder.
+     * @param meldungId Die Kennung einer gesprochenen Meldung (`alarmMeldungSprechenStarten`).
+     */
+    fun alarmieren(
+        incidentId: String,
+        fahrzeuge: List<String>,
+        abrollbehaelter: Map<String, String> = emptyMap(),
+        zusatztext: String? = null,
+        meldungId: String? = null,
+    ) = draht.rufen(
         "AlarmVehicles",
         wert(incidentId),
         liste(fahrzeuge),
-        JsonNull,
+        kotlinx.serialization.json.buildJsonObject {
+            abrollbehaelter.forEach { (wlf, ab) -> put(wlf, JsonPrimitive(ab)) }
+        },
+        zusatztext?.takeIf { it.isNotBlank() }?.let { wert(it.trim()) } ?: JsonNull,
+        meldungId?.let { wert(it) } ?: JsonNull,
     )
 
     /**
@@ -750,8 +1343,8 @@ class Runde(anwendung: Application) : AndroidViewModel(anwendung) {
     /**
      * Eine Frage an den Anrufer.
      *
-     * `frage` ist eine der sechs Faktenarten; `text` wäre die freie Frage aus
-     * der Spracherkennung, die es in der App nicht gibt.
+     * `frage` ist eine der sechs Faktenarten. Die freie Frage (getippt oder
+     * gesprochen) geht über `anrufFrageFrei` in `Rundenbefehle.kt`.
      */
     fun anrufFragen(anrufId: String, frage: String) = draht.rufen(
         "AnrufFrage",
@@ -775,7 +1368,8 @@ class Runde(anwendung: Application) : AndroidViewModel(anwendung) {
      *
      * Schon eine geänderte Dringlichkeit zählt — die alarmierten Kräfte sehen
      * die Umstufung auf dem Kanal. Alles außer der Priorität bleibt, wie es ist
-     * (`null` heißt: nicht anfassen).
+     * (`null` heißt: nicht anfassen). Das volle Umstufen steht in
+     * `Rundenbefehle.kt` (`einsatzAktualisieren`).
      */
     fun umstufen(incidentId: String, prioritaet: Int) = draht.rufen(
         "UpdateIncident",
@@ -790,29 +1384,117 @@ class Runde(anwendung: Application) : AndroidViewModel(anwendung) {
 
     /** Die Runde verlassen und die Leitung schließen. */
     fun verlassen() = viewModelScope.launch {
+        eintritt = null
         sprechenAbbrechen()
-        lautsprecher.schliessen()
+        nebenleitungAbbrechen()
+        lautsprecherSchliessen()
         runCatching { draht.rufen("Leave") }
         draht.trennen()
         ablage.rundeMerken(null)
-        _stand.value = Rundenstand()
+        _stand.value = Rundenstand(eigeneKennung = _stand.value.eigeneKennung)
     }
 
     fun fehlerWegnehmen() = _stand.update { it.copy(fehler = null) }
+
+    /** Die Fehlerseite nach einem Rauswurf ist gelesen — zurück zum Start. */
+    fun rausGrundWegnehmen() = _stand.update { it.copy(rausGrund = null) }
+
+    /** Das Warnband ist weggetippt oder abgelaufen. */
+    fun bevoelkerungswarnungWegnehmen() = _stand.update { it.copy(bevoelkerungswarnung = null) }
+
+    // ------------------------------------------------ Für `Rundenbefehle.kt`
+
+    /** Eine Hub-Methode rufen, ohne auf Antwort zu warten. */
+    internal fun senden(methode: String, vararg argumente: JsonElement) =
+        draht.rufen(methode, *argumente)
+
+    /** Eine Hub-Methode rufen und die Antwort abwarten; `null` bei toter Leitung. */
+    internal suspend fun fragen(methode: String, vararg argumente: JsonElement): JsonElement? =
+        runCatching { draht.frage(methode, *argumente) }.getOrNull()
+
+    /** Den Stand ändern — für Befehle, die etwas Örtliches mitführen. */
+    internal fun standAendern(tun: (Rundenstand) -> Rundenstand) = _stand.update(tun)
+
+    // ----------------------------------------------------------------- Intern
 
     private fun setzen(roh: JsonElement) {
         val raum = runCatching {
             Netz.abgabe.decodeFromJsonElement(Raumzustand.serializer(), roh)
         }.getOrNull() ?: return
 
+        // Der Server verschickt außerhalb seiner Raumsperre; zwei Stände können
+        // sich überholen. Einen älteren zu übernehmen hieße, ihn bis zur
+        // nächsten Änderung anzuzeigen — also verwerfen.
+        val alt = _stand.value.raum
+        if (alt != null && alt.code == raum.code && raum.version < alt.version) return
+
         // Das Funkprotokoll des Zustands ist die Wahrheit; die zwischenzeitlich
         // angehängten Radio-Ereignisse werden daran abgeglichen. Live trägt der
         // Zustand ohnehin nur die letzten 150 Zeilen — Kennzahlen daraus wären
         // falsch, aber zum Mitlesen reicht es.
         _stand.update { it.copy(raum = raum, code = raum.code, funk = raum.funkprotokoll) }
+        nachStand(raum)
     }
 
-    private fun text(roh: JsonElement): String? = (roh as? JsonPrimitive)?.content
+    /**
+     * Was jeder neue Stand geraderücken darf.
+     *
+     * <b>Die Sprecher hängen sonst nur an flüchtigen Ereignissen.</b> Geht ein
+     * `TransmissionEnded` verloren (Funkloch, App im Hintergrund), bliebe der
+     * Kanal für immer belegt. Der Server ist die Wahrheit: `funkkanaele` nennt
+     * die belegten, alles andere ist frei.
+     */
+    private fun nachStand(raum: Raumzustand) {
+        val ich = _stand.value.eigeneKennung
+        _stand.update { alt ->
+            val eigenes = raum.vehicles.firstOrNull { it.playerId == ich && ich.isNotEmpty() }
+            alt.copy(
+                sprecher = raum.funkkanaele
+                    .filter { it.senderPlayerId != null }
+                    .associate { (it.funkgruppe ?: "") to (it.senderName ?: "Unbekannt") },
+                drahtSprecher = raum.drahtkanal.senderPlayerId
+                    ?.takeIf { raum.drahtOffen }
+                    ?.let { Sprecherangabe(it, raum.drahtkanal.senderName ?: "Unbekannt") },
+                einsatzstellenSprecher = raum.einsatzstellenkanal.senderPlayerId
+                    ?.let { Sprecherangabe(it, raum.einsatzstellenkanal.senderName ?: "Unbekannt") },
+                drahtzeilen = if (raum.drahtOffen) alt.drahtzeilen else emptyList(),
+                // Ein Einsatz, der diesem Fahrzeug nicht mehr gehört, gehört
+                // auch vom Melder — gefragt wird nach dem Einsatz, nicht nach
+                // `alarmOffen`: Das Quittieren schließt den Alarm am Server ja
+                // auch, und die Meldung soll bis Status 3 stehen bleiben.
+                alarm = alt.alarm?.takeUnless { eigenes != null && eigenes.einsatzId != it.incidentId },
+            )
+        }
+
+        val s = _stand.value
+        // Steht der Draht nicht mehr offen, ist auch die eigene Taste dort los.
+        if (s.nebenleitung == Nebenleitung.Draht && !raum.drahtOffen) drahtSprechenBeenden()
+        // Wer nicht mehr an der Einsatzstelle steht, spricht dort auch nicht mehr.
+        if (s.nebenleitung == Nebenleitung.Einsatzstelle) {
+            val eigenes = raum.vehicles.firstOrNull { it.playerId == ich }
+            if (eigenes == null || eigenes.status != 4 || !eigenes.einsatzstelleErreicht) {
+                einsatzstelleSprechenBeenden()
+            }
+        }
+    }
+
+    /** Die Lautsprecher und Nebenleitungen eines verlassenen Raums schließen. */
+    private fun abraeumen() {
+        sprechenAbbrechen()
+        nebenleitungAbbrechen()
+    }
+
+    private fun lautsprecherSchliessen() {
+        lautsprecher.schliessen()
+        drahtLautsprecher.schliessen()
+        einsatzstellenLautsprecher.schliessen()
+        einzelrufLautsprecher.schliessen()
+        telefonLautsprecher.schliessen()
+        durchsageLautsprecher.schliessen()
+    }
+
+    private fun text(roh: JsonElement): String? =
+        (roh as? JsonPrimitive)?.takeUnless { it is JsonNull }?.content
 
     /**
      * Ein ausdrückliches „nichts" als Argument.
@@ -836,7 +1518,39 @@ class Runde(anwendung: Application) : AndroidViewModel(anwendung) {
             }
         _stand.update { it.copy(laeuft = false) }
     }
+
+    override fun onCleared() {
+        abraeumen()
+        lautsprecherSchliessen()
+        super.onCleared()
+    }
 }
+
+/** Das Nein des Servers zu einem Beitritt — kein Netzfehler, sondern eine Antwort. */
+private class Absage(meldung: String) : IllegalStateException(meldung)
+
+/** Wohin der Wiedereintritt nach einem Abbruch geht. */
+private data class Eintritt(val code: String, val name: String, val alsZuschauer: Boolean)
+
+/** Wer eine Halbduplex-Leitung gerade hält — Spieler-Id und Anzeigename. */
+data class Sprecherangabe(val playerId: String, val name: String)
+
+/** Die Nebenleitungen, auf denen man außer dem Kreiskanal sprechen kann. */
+enum class Nebenleitung { Draht, Einsatzstelle, Einzelruf, Notruf, Alarmmeldung }
+
+/** Die Bevölkerungswarnung der Leitstelle — Text und Ankunft (Epoch-Millis). */
+data class Bevoelkerungswarnung(val text: String, val um: Long)
+
+/**
+ * Eine offene Einwilligungsfrage aus einem abgewiesenen Beitritt — und wie es
+ * nach dem Erteilen weitergeht.
+ */
+data class OffeneEinwilligung(
+    val frage: Uebertragungsfrage,
+    val code: String,
+    val name: String,
+    val alsZuschauer: Boolean,
+)
 
 /** Was über die laufende Runde bekannt ist. */
 data class Rundenstand(
@@ -865,17 +1579,126 @@ data class Rundenstand(
     /** Ob dieser Platz ein Zuschauerplatz ist. */
     val zuschauer: Boolean = false,
     /** Drahtzeilen aus Push-Ereignissen — beim Vollstand abgeglichen. */
-    val drahtzeilen: List<de.pagerspass.pagerspass.netz.Drahtnachricht> = emptyList(),
+    val drahtzeilen: List<Drahtnachricht> = emptyList(),
+    // --------------------------------------------------------------------
+    // Runde, Teil 1 — was die Ansichten danach lesen.
+    // --------------------------------------------------------------------
+    /** Die eigene Spieler-Id — sie **ist** die Kontokennung (siehe `GameHub.Join`). */
+    val eigeneKennung: String = "",
+    /**
+     * Warum man den Raum verloren hat — Rauswurf oder gescheiterter
+     * Wiedereintritt. Solange er steht, zeigt der Rahmen die Fehlerseite mit
+     * „Zurück zum Start".
+     */
+    val rausGrund: String? = null,
+    /** Lobby-Chat-Zeilen aus Push-Ereignissen — beim Vollstand abgeglichen. */
+    val lobbyzeilen: List<Lobbynachricht> = emptyList(),
+    /** Die letzten dreißig Alarme am Melder — neueste zuerst. */
+    val melderverlauf: List<Alarmmeldung> = emptyList(),
+    /** Die Bevölkerungswarnung, die gerade als Band stehen soll. */
+    val bevoelkerungswarnung: Bevoelkerungswarnung? = null,
+    /** Wer auf dem Leitstellendraht spricht. */
+    val drahtSprecher: Sprecherangabe? = null,
+    /** Wer an der eigenen Einsatzstelle spricht. */
+    val einsatzstellenSprecher: Sprecherangabe? = null,
+    /** Auf welcher Nebenleitung man selbst gerade spricht — `null`: auf keiner. */
+    val nebenleitung: Nebenleitung? = null,
+    /** Der Server erkennt gerade eine gesprochene Frage am Notruftelefon. */
+    val notrufWirdVerstanden: Boolean = false,
+    /** Der Server erkennt gerade einen gesprochenen Satz im Einzelruf. */
+    val einzelrufWirdVerstanden: Boolean = false,
+    /** Der Anruf, der gerade am Ohr liegt — siehe `Runde.telefonAnrufSetzen`. */
+    val telefonAnruf: String? = null,
+    /** Ob am eigenen Platz ein Handy als Funkbegleiter hängt. */
+    val begleiterGekoppelt: Boolean = false,
+    /** Eine offene Einwilligungsfrage aus einem abgewiesenen Beitritt. */
+    val einwilligung: OffeneEinwilligung? = null,
+    /** Der Elternbogen im Fall „saß schon" — er kommt aus der Antwort, nicht aus dem Raum. */
+    val elternbogenAmPlatz: String? = null,
 ) {
     /** Der Draht, wie er angezeigt wird: Vollstand plus Zwischenzeilen. */
-    val drahtGesamt: List<de.pagerspass.pagerspass.netz.Drahtnachricht>
+    val drahtGesamt: List<Drahtnachricht>
         get() {
             val stand = raum?.leitstellendraht.orEmpty()
             val bekannt = stand.map { it.id }.toSet()
             return (stand + drahtzeilen.filter { it.id !in bekannt }).takeLast(200)
         }
 
+    /** Der Lobby-Chat, wie er angezeigt wird: Vollstand plus Zwischenzeilen. */
+    val lobbychatGesamt: List<Lobbynachricht>
+        get() {
+            val stand = raum?.lobbychat.orEmpty()
+            val bekannt = stand.map { it.id }.toSet()
+            return (stand + lobbyzeilen.filter { it.id !in bekannt }).takeLast(LOBBYZEILEN)
+        }
+
     val drin: Boolean get() = raum != null
+
+    /** Der eigene Platz — `null` am Zuschauerplatz und vor dem Beitritt. */
+    val ich: de.pagerspass.pagerspass.netz.Spieler?
+        get() = raum?.players?.firstOrNull { it.id == eigeneKennung && eigeneKennung.isNotEmpty() }
+
+    /** Das eigene Fahrzeug — `null` an der Leitstelle. */
+    val eigenesFahrzeug: de.pagerspass.pagerspass.netz.Rundenfahrzeug?
+        get() = raum?.vehicles?.firstOrNull { it.playerId == eigeneKennung && eigeneKennung.isNotEmpty() }
+
+    /** Der Einzelruf, an dem dieser Platz gerade beteiligt ist. */
+    val eigenerEinzelruf: de.pagerspass.pagerspass.netz.Einzelruf?
+        get() = raum?.einzelrufe?.firstOrNull { r ->
+            eigeneKennung.isNotEmpty() && (
+                r.vonPlayerId == eigeneKennung ||
+                    r.zielPlayerId == eigeneKennung ||
+                    r.angenommenVonPlayerId == eigeneKennung
+                )
+        }
+
+    /** Der Anruf, dem Telefonstimme und erkannte Fragen gelten. */
+    val aktiverAnruf: String?
+        get() = telefonAnruf ?: raum?.anrufe?.firstOrNull {
+            it.imGespraech && it.bearbeiterPlayerId == eigeneKennung && eigeneKennung.isNotEmpty()
+        }?.id
+
+    /** Ob die eigene Bitte um einen Leitstellenplatz noch aussteht. */
+    val eigenePlatzanfrage: Boolean
+        get() = raum?.platzanfragen?.any { it.playerId == eigeneKennung } == true
+
+    /** Ob die eigene Bitte um einen Platz in der vollen Runde noch aussteht. */
+    val eigeneBeitrittsanfrage: Boolean
+        get() = raum?.beitrittsanfragen?.any { it.playerId == eigeneKennung } == true
+
+    /**
+     * Die eine Frage, die die Einwilligungsblende stellt — aus welcher der zwei
+     * Quellen auch immer.
+     *
+     * <b>Der abgewiesene Beitritt hat Vorrang:</b> Wer draußen steht, hat keinen
+     * Platz im Raum. Die zweite Quelle ist gerechnet: Die Leitstelle hat den
+     * Streamer-Modus eingeschaltet oder den Kanal gewechselt, während man schon
+     * saß — Kanal, Plattform und Name stehen im Raumzustand.
+     */
+    val einwilligungsfrage: Uebertragungsfrage?
+        get() {
+            einwilligung?.let { return it.frage }
+            val r = raum ?: return null
+            if (zuschauer) return null
+            val kanal = r.settings.streamerkanal
+            if (!r.settings.streamermodus || kanal.isNullOrBlank()) return null
+            val mich = ich ?: return null
+            if (mich.streamerfreigabe) return null
+            // Der Streamer erklärt seine Übertragung, er willigt nicht in sie ein.
+            if (mich.id == r.settings.streamerKontoId) return null
+            return Uebertragungsfrage(
+                raumCode = r.code,
+                streamerName = r.players.firstOrNull { it.id == r.settings.streamerKontoId }?.name
+                    ?: "Die Leitstelle",
+                plattform = r.settings.streamerplattform,
+                kanal = kanal,
+                aufzeichnung = r.settings.streameraufzeichnung,
+                fassung = UEBERTRAGUNG_FASSUNG,
+                mindestalterAllein = UEBERTRAGUNG_MINDESTALTER,
+                wartetAufEltern = elternbogenAmPlatz != null,
+                elternbogen = elternbogenAmPlatz,
+            )
+        }
 }
 
 /**
@@ -885,3 +1708,9 @@ data class Rundenstand(
  * Speicher für Zeilen, die nie jemand sieht.
  */
 private const val FUNKZEILEN = 200
+
+/** Wie viele Lobby-Chat-Zeilen die App hält — der Server schickt 100. */
+private const val LOBBYZEILEN = 200
+
+/** Wie viele Meldungen der Melderverlauf hält — dieselbe Zahl wie im Web. */
+private const val MELDERVERLAUF = 30

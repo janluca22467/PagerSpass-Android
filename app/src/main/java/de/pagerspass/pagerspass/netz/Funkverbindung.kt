@@ -7,6 +7,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
@@ -61,6 +62,21 @@ class Funkverbindung(
 
     var beiLage: ((Lage) -> Unit)? = null
 
+    /**
+     * Nach jedem gelungenen Wiederaufbau — die Stelle für den erneuten Beitritt.
+     *
+     * <b>Die Verbindung allein holt niemanden in den Raum zurück.</b> Der Hub
+     * merkt sich Raum und Platz an der Verbindungskennung, und die ist nach dem
+     * Wiederaufbau eine neue: Ohne ein zweites `Join` stand die Leitung auf
+     * „verbunden", und es kam nie wieder ein Ereignis. Das Web ruft genau hier
+     * (`wiedereintreten` in `api/signalr.ts`).
+     *
+     * Gibt `false` zurück, wenn der Aufruf selbst scheiterte (Netz, Hubfehler) —
+     * dann versucht es die Schleife weiter. Ein Nein des Servers ist `true`: Die
+     * Frage ist beantwortet, nur eben mit Nein.
+     */
+    var beiWiederverbunden: (suspend () -> Boolean)? = null
+
     var lage: Lage = Lage.Getrennt
         private set(wert) {
             if (field == wert) return
@@ -81,6 +97,21 @@ class Funkverbindung(
 
     /** Ob von selbst wieder verbunden werden soll. Ein `trennen()` schaltet es ab. */
     private var gewollt = false
+
+    /**
+     * Die laufende Wiederaufbau-Schleife — höchstens eine.
+     *
+     * <b>Ohne diesen Riegel liefen es bald mehrere.</b> Jeder gescheiterte
+     * Versuch in der Schleife endet in `onFailure` und damit wieder in
+     * `aufgeben()` — das startete eine zweite Schleife, die eine dritte, und
+     * nach einem Funkloch riefen mehrere Schleifen gleichzeitig beim Server an.
+     */
+    @Volatile
+    private var wiederaufbau: kotlinx.coroutines.Job? = null
+
+    /** Kürzt die laufende Pause der Schleife ab — siehe `wiederaufnehmen`. */
+    @Volatile
+    private var abkuerzen: CompletableDeferred<Unit>? = null
 
     private val klient = OkHttpClient.Builder()
         // Der Hub schickt in kurzen Abständen einen Herzschlag; bleibt er aus,
@@ -103,11 +134,13 @@ class Funkverbindung(
      * Erst danach darf gerufen werden — ein Aufruf vor dem Handschlag wirft der
      * Server weg, ohne sich zu beschweren.
      */
-    suspend fun verbinden() {
+    suspend fun verbinden(imWiederaufbau: Boolean = false) {
         if (lage == Lage.Verbunden) return
 
         gewollt = true
-        lage = Lage.Verbindet
+        // Im Wiederaufbau bleibt es bei „wiederverbinden" — auch zwischen den
+        // Versuchen. Sonst flackerte das Band zwischen zwei Aufschriften.
+        lage = if (imWiederaufbau) Lage.Wiederverbinden else Lage.Verbindet
 
         val merkmal = ablage.merkmal().orEmpty()
         val adresse = ablage.server()
@@ -134,6 +167,9 @@ class Funkverbindung(
                 override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                     Log.w("Funk", "Verbindung verloren (${response?.code})", t)
                     if (!fertig.isCompleted) fertig.completeExceptionally(t)
+                    // Eine abgelöste Vorgängerin meldet sich hier noch nach — sie
+                    // darf die frische Leitung nicht für tot erklären.
+                    if (abgeloest(webSocket)) return
                     aufgeben()
                 }
 
@@ -153,6 +189,12 @@ class Funkverbindung(
 
                 override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                     Log.i("Funk", "Geschlossen: $code $reason")
+                    // Vor dem Handschlag geschlossen: Wer auf ihn wartet, darf
+                    // nicht für immer warten — sonst hinge der Wiederaufbau hier.
+                    if (!fertig.isCompleted) {
+                        fertig.completeExceptionally(Netzfehler("Die Verbindung wurde geschlossen."))
+                    }
+                    if (abgeloest(webSocket)) return
                     aufgeben()
                 }
             },
@@ -201,9 +243,17 @@ class Funkverbindung(
     /** Die Verbindung absichtlich beenden — danach wird nicht wieder aufgebaut. */
     fun trennen() {
         gewollt = false
+        wiederaufbau?.cancel()
+        wiederaufbau = null
         draht?.close(1000, null)
         draht = null
         lage = Lage.Getrennt
+    }
+
+    /** Ob diese Leitung schon von einer neueren abgelöst ist. */
+    private fun abgeloest(webSocket: WebSocket): Boolean {
+        val aktuell = draht
+        return aktuell != null && aktuell !== webSocket
     }
 
     private fun senden(rumpf: String) {
@@ -272,15 +322,73 @@ class Funkverbindung(
             return
         }
 
+        // Läuft schon eine Schleife, ist das hier einer ihrer gescheiterten
+        // Versuche — sie macht selbst weiter.
+        if (wiederaufbau?.isActive == true) return
+
+        wiederaufbauen()
+    }
+
+    /**
+     * Die Schleife: warten, verbinden, wieder eintreten — bis es klappt oder die
+     * Staffel durch ist.
+     *
+     * <b>Erst schnell, dann geduldiger.</b> Ein kurzer Funklochaussetzer soll
+     * niemanden aus der Runde werfen; ein Server, der wirklich weg ist, soll
+     * nicht im Sekundentakt angerufen werden. Die Wartezeiten sind die des Webs
+     * hintereinander: erst SignalRs eigener Reconnect (0 … 15 s), dann dessen
+     * Wiederaufbau (bis 30 s). Danach steht die Lage auf „getrennt", und es
+     * bleibt bei den Anlässen von `wiederaufnehmen`.
+     *
+     * <b>Offene Fragen werden aufgelöst, nicht liegen gelassen</b> — das tut
+     * `aufgeben()` vorher. Wer auf eine Antwort wartet, die nie kommt, wartet
+     * sonst für immer.
+     */
+    private fun wiederaufbauen() {
         lage = Lage.Wiederverbinden
-        bereich.launch {
-            listOf(0L, 2_000L, 5_000L, 10_000L, 20_000L, 30_000L).forEach { warten ->
+        wiederaufbau = bereich.launch {
+            for (warten in WIEDERAUFBAU_MS) {
                 if (!gewollt) return@launch
-                delay(warten)
-                if (runCatching { verbinden() }.isSuccess) return@launch
+                val signal = CompletableDeferred<Unit>()
+                abkuerzen = signal
+                withTimeoutOrNull(warten) { signal.await() }
+                abkuerzen = null
+                if (!gewollt) return@launch
+
+                if (runCatching { verbinden(imWiederaufbau = true) }.isFailure) {
+                    lage = Lage.Wiederverbinden
+                    continue
+                }
+
+                // Steht die Leitung, muss auch der Raum wieder stehen. Scheitert
+                // schon der Aufruf, ist das kein Nein — dann weiter in der Staffel.
+                val eingetreten = runCatching { beiWiederverbunden?.invoke() ?: true }
+                    .getOrDefault(false)
+                if (eingetreten) return@launch
+                if (!gewollt) return@launch
             }
-            lage = Lage.Getrennt
+            if (gewollt && lage != Lage.Verbunden) lage = Lage.Getrennt
         }
+    }
+
+    /**
+     * Holt eine aufgegebene Verbindung zurück — beim Zurückkommen in die App oder
+     * auf „Neu verbinden".
+     *
+     * <b>Am Handy ist das der Normalfall.</b> Bildschirm aus, Aufzug, Funkloch:
+     * Die Schleife hat irgendwann aufgegeben, die App sieht lebendig aus, und es
+     * kommen keine Alarme mehr. Läuft die Schleife noch, wird nur ihre Pause
+     * abgekürzt — ein zweiter Weg entsteht nicht. Ein bewusstes `trennen()`
+     * bleibt davon unberührt.
+     */
+    fun wiederaufnehmen() {
+        if (!gewollt) return
+        if (wiederaufbau?.isActive == true) {
+            abkuerzen?.complete(Unit)
+            return
+        }
+        if (lage != Lage.Getrennt) return
+        wiederaufbauen()
     }
 
     private companion object {
@@ -293,6 +401,12 @@ class Funkverbindung(
          * unvollständig hält.
          */
         const val TRENNER = ""
+
+        /** Die Staffel des Wiederaufbaus — SignalRs Reconnect und der des Webs danach. */
+        val WIEDERAUFBAU_MS = listOf(
+            0L, 1_000L, 2_000L, 5_000L, 10_000L, 15_000L,
+            20_000L, 30_000L, 30_000L, 30_000L, 30_000L,
+        )
     }
 }
 

@@ -156,9 +156,6 @@ internal fun tagKurz(roh: String?): String = formatiert(roh, "dd.MM.yy")
 /** „27. September 2026" — „Auf der Wache seit". */
 internal fun tagLang(roh: String?): String = formatiert(roh, "d. MMMM yyyy")
 
-/** „27.09." — im Coin-Auszug. */
-internal fun tagMonat(roh: String?): String = formatiert(roh, "dd.MM.")
-
 /** „19:30". */
 internal fun wachenuhr(roh: String?): String = formatiert(roh, "HH:mm")
 
@@ -463,10 +460,6 @@ internal fun stufenanteil(erfahrung: Int, schwelle: Int, bis: Int?): Float {
     if (spanne <= 0) return 1f
     return ((erfahrung - schwelle).toFloat() / spanne).coerceIn(0f, 1f)
 }
-
-/** „noch 1 200 bis Stufe 13" — die kurze Form fürs Band. */
-internal fun stufenziel(bis: Int?, naechste: Int): String =
-    if (bis == null) "höchste Stufe erreicht" else "noch ${zahl(bis)} bis Stufe $naechste"
 
 /**
  * Die Stufe der Wache mit ihrem Fortschritt — übertragen aus `WachenStufe.vue`.

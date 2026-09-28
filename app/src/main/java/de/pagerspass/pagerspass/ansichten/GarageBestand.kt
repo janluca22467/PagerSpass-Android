@@ -157,7 +157,7 @@ fun DienstbuchGarage(
         val sichtbar = bestand
             .filter { sucht || tor == "alle" || it.organisation == tor }
             .filter { vorlagePasst(it, suche) }
-        val gruppen = gruppiereFahrzeuge(sichtbar)
+        val gruppen = garageGruppieren(sichtbar)
 
         if (gruppen.isEmpty()) {
             SehrLeise(
@@ -290,10 +290,10 @@ internal fun Minimarke(text: String, mono: Boolean = false) {
 // -------------------------------------------------------- Gruppen und Suche
 
 /** Eine Trägergruppe innerhalb einer Kategorie. */
-internal data class Traegergruppe(val hiOrg: String, val name: String, val fahrzeuge: List<Fahrzeugvorlage>)
+internal data class GarageTraegergruppe(val hiOrg: String, val name: String, val fahrzeuge: List<Fahrzeugvorlage>)
 
 /** Eine Kategorie einer Organisation — „Feuerwehr · Löschfahrzeuge". */
-internal data class Fahrzeuggruppe(val schluessel: String, val organisation: String, val traeger: List<Traegergruppe>)
+internal data class GarageFahrzeuggruppe(val schluessel: String, val organisation: String, val traeger: List<GarageTraegergruppe>)
 
 /** Die feste Reihenfolge der Kategorien je Organisation — aus `fahrzeugGruppen.ts`. */
 private val KATEGORIEFOLGE = mapOf(
@@ -319,7 +319,7 @@ private val KATEGORIEFOLGE = mapOf(
  * Nur aufgeteilt, wenn eine Gruppe wirklich mehr als einen Träger enthält: sonst
  * stünde bei einer reinen Feuerwehrgruppe ein sinnloser Kopf „Kein Träger" darüber.
  */
-internal fun gruppiereFahrzeuge(liste: List<Fahrzeugvorlage>): List<Fahrzeuggruppe> {
+internal fun garageGruppieren(liste: List<Fahrzeugvorlage>): List<GarageFahrzeuggruppe> {
     val nach = linkedMapOf<String, MutableList<Fahrzeugvorlage>>()
     liste.forEach { f -> nach.getOrPut("${orgName(f.organisation)} · ${f.kategorie}") { mutableListOf() }.add(f) }
 
@@ -340,37 +340,26 @@ internal fun gruppiereFahrzeuge(liste: List<Fahrzeugvorlage>): List<Fahrzeuggrup
                 .thenBy { it.second.kategorie },
         )
         .map { (schluessel, erste, _) ->
-            Fahrzeuggruppe(schluessel, erste.organisation, traegerGruppen(nach.getValue(schluessel)))
+            GarageFahrzeuggruppe(schluessel, erste.organisation, traegerGruppen(nach.getValue(schluessel)))
         }
 }
 
-private fun traegerGruppen(fahrzeuge: List<Fahrzeugvorlage>): List<Traegergruppe> {
+private fun traegerGruppen(fahrzeuge: List<Fahrzeugvorlage>): List<GarageTraegergruppe> {
     val nach = linkedMapOf<String, MutableList<Fahrzeugvorlage>>()
     fahrzeuge.forEach { f -> nach.getOrPut(f.hiOrg.ifBlank { "Keine" }) { mutableListOf() }.add(f) }
 
     if (nach.size <= 1) {
-        return nach.map { (hiOrg, liste) -> Traegergruppe(hiOrg, traegerName(hiOrg), liste.sortedBy { it.typ }) }
+        return nach.map { (hiOrg, liste) -> GarageTraegergruppe(hiOrg, traegerName(hiOrg), liste.sortedBy { it.typ }) }
     }
     return nach.entries
         .sortedBy { traegerName(it.key).ifBlank { "Sonstige" } }
         .map { (hiOrg, liste) ->
-            Traegergruppe(
+            GarageTraegergruppe(
                 hiOrg,
                 if (hiOrg == "Keine") "Öffentlicher Träger" else traegerName(hiOrg),
                 liste.sortedBy { it.typ },
             )
         }
-}
-
-/** Ob eine Vorlage zum Suchbegriff passt — Typ, Beschreibung, Kategorie, Fähigkeit, Träger. */
-internal fun vorlagePasst(f: Fahrzeugvorlage, begriff: String): Boolean {
-    val t = begriff.trim().lowercase()
-    if (t.isEmpty()) return true
-    return f.typ.lowercase().contains(t) ||
-        f.beschreibung.lowercase().contains(t) ||
-        f.kategorie.lowercase().contains(t) ||
-        f.faehigkeiten.any { it.lowercase().contains(t) } ||
-        traegerName(f.hiOrg).lowercase().contains(t)
 }
 
 // ------------------------------------------------------------- Die Ablage

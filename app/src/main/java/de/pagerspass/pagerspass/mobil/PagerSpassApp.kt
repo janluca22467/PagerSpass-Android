@@ -32,6 +32,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -136,6 +137,34 @@ fun PagerSpassApp(
     // App — und genau so ist er gemeint.
     var zweiFaktor by rememberSaveable { mutableStateOf<Pair<String, String>?>(null) }
 
+    // --- Runde, Teil 1 — BEGINN: Wartung ---------------------------------------
+    // Die Sperre und das Ankündigungsband hängen am Rahmen und nicht an einer
+    // Seite: Eine Wartung betrifft alles. Ein 503 unterwegs (`stand.wartung`)
+    // stellt sie sofort, ohne den nächsten Takt abzuwarten.
+    val wartung: Wartung = viewModel()
+    val wartungslage by wartung.stand.collectAsStateWithLifecycle()
+    val lebenslaufWartung = LocalLifecycleOwner.current
+    LaunchedEffect(Unit) { wartung.beobachten() }
+    LaunchedEffect(stand.wartung) { wartung.ausAntwort(stand.wartung) }
+    LaunchedEffect(wartungslage.wiederOffen) {
+        if (wartungslage.wiederOffen > 0) {
+            sitzung.kontoSicherstellen()
+            runde.wiederaufnehmen()
+        }
+    }
+    DisposableEffect(lebenslaufWartung) {
+        val beobachter = LifecycleEventObserver { _, ereignis ->
+            when (ereignis) {
+                Lifecycle.Event.ON_START -> wartung.sichtbarkeit(true)
+                Lifecycle.Event.ON_STOP -> wartung.sichtbarkeit(false)
+                else -> Unit
+            }
+        }
+        lebenslaufWartung.lifecycle.addObserver(beobachter)
+        onDispose { lebenslaufWartung.lifecycle.removeObserver(beobachter) }
+    }
+    // --- Runde, Teil 1 — ENDE: Wartung -----------------------------------------
+
     Box(modifier = Modifier.fillMaxSize().background(Farben.Bg)) {
         when {
             // Noch nichts wissen ist ein eigener Zustand — siehe oben.
@@ -177,11 +206,13 @@ fun PagerSpassApp(
             // steht, sieht keine Tableiste und keine sechs Wege — im Raum hat
             // jede Ansicht ihre eigenen Reiter und braucht jede Zeile Höhe. Das
             // ist dieselbe Regel wie im Web (`leisteSichtbar` in MobilApp.vue).
-            rundenstand.drin || rundenstand.laeuft -> Rundenrahmen(
+            // Runde, Teil 1: Auch wer eben hinausgeworfen wurde, bleibt im
+            // Rahmen — der zeigt den Grund und den Weg zurück.
+            rundenstand.drin || rundenstand.laeuft || rundenstand.rausGrund != null -> Rundenrahmen(
                 stand = rundenstand,
                 sitzung = sitzung,
                 runde = runde,
-                daten = null,
+                sozial = sozial,
             )
 
             // <b>Der gekoppelte Begleiter verdrängt genauso.</b> Er ist ein
@@ -199,6 +230,13 @@ fun PagerSpassApp(
             sichtbar = stand.laedt && stand.angemeldet,
             modifier = Modifier.align(Alignment.TopCenter),
         )
+
+        // --- Runde, Teil 1: Wartungsband und -sperre --------------------------
+        de.pagerspass.pagerspass.ansichten.Wartungsband(
+            lage = wartungslage,
+            modifier = Modifier.align(Alignment.TopCenter),
+        )
+        de.pagerspass.pagerspass.ansichten.Wartungssperre(wartungslage)
 
         // Der Fehler steht am Fuß — aber nicht auf der Anmeldeseite: Dort steht
         // er im Formular, direkt unter dem Knopf, auf den er sich bezieht.
@@ -220,179 +258,22 @@ fun PagerSpassApp(
     // (siehe `mobil/Kontobereich.kt`). Nicht am gekoppelten Begleiter — dort ist
     // kein Konto am Werk, sondern ein Funkplatz.
     if (!begleiterstand.gekoppelt) KontoBlenden(sitzung)
-}
 
-/**
- * Der Rahmen um die laufende Runde.
- *
- * <b>Er verteilt nach Zustand und Rolle</b> — dieselbe Weiche wie `RaumView.vue`:
- * Beendet zeigt die Auswertung, die Lobby steht, solange die Runde nicht läuft
- * oder man keinen Platz hat, und danach entscheidet die Rolle zwischen
- * Leitstelle und Fahrzeug.
- *
- * <b>Und er trägt den Melder.</b> Das Alarm-Ereignis löst zweierlei aus: die
- * Blende mit Ton in der App und die Systemmeldung nach draußen — für den, der
- * zwischen zwei Einsätzen woanders ist. Die Berechtigung dafür wird beim
- * Betreten der Runde erfragt, nicht beim Start der App: Wer nie fährt, wird
- * nie gefragt.
- */
-@Composable
-private fun Rundenrahmen(
-    stand: Rundenstand,
-    sitzung: Sitzung,
-    runde: Runde,
-    daten: Seitenstand?,
-) {
-    val sitzungsstand by sitzung.stand.collectAsStateWithLifecycle()
-    val seiten by sitzung.daten.collectAsStateWithLifecycle()
-    val zusammenhang = LocalContext.current
-
-    // Die eigene Garage entscheidet, welchen Platz man wählen kann — und ohne
-    // Katalog wüsste weder die Lobby die Typen noch die Leitstelle die
-    // Stichworte.
-    LaunchedEffect(Unit) {
-        sitzung.garageLaden()
-        sitzung.katalogSicherstellen()
-    }
-
-    // Die Melder-Berechtigung — ab Android 13 eine eigene. Einmal beim Betreten
-    // der Runde, denn hier wird sie gleich gebraucht.
-    val berechtigung = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission(),
-    ) { }
-    LaunchedEffect(Unit) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-            !Meldermeldung.erlaubt(zusammenhang)
-        ) {
-            berechtigung.launch(Manifest.permission.POST_NOTIFICATIONS)
+    // --- Runde, Teil 1: die Einwilligung in eine Übertragung -------------------
+    // Aus beiden Quellen — dem abgewiesenen Beitritt und dem Streamer-Modus, der
+    // eingeschaltet wurde, während man schon saß (`Rundenstand.einwilligungsfrage`).
+    if (stand.angemeldet && !wartungslage.geschlossen) {
+        rundenstand.einwilligungsfrage?.let { frage ->
+            de.pagerspass.pagerspass.ansichten.Uebertragungsblende(
+                frage = frage,
+                beiEinwilligen = { runde.einwilligungErteilen(it) },
+                beiAblehnen = { runde.einwilligungAblehnen() },
+            )
         }
     }
-
-    // Der Haken für die Systemmeldung — gesetzt, solange dieser Rahmen steht.
-    DisposableEffect(Unit) {
-        runde.beiAlarm = { alarm -> Meldermeldung.zeigen(zusammenhang, alarm) }
-        onDispose { runde.beiAlarm = null }
-    }
-
-    val raum = stand.raum
-    val ich = raum?.players?.firstOrNull { it.id == sitzungsstand.konto?.kennung }
-
-    when {
-        // Der Zuschauerplatz — vor den Spielerplätzen, denn `ich` gibt es hier
-        // nicht: Der Zuschauer steht nie in `players`.
-        stand.zuschauer && raum?.beendet != true -> ZuschauerSeite(
-            stand = stand,
-            eigeneKennung = sitzungsstand.konto?.kennung.orEmpty(),
-            beiVerlassen = { runde.verlassen() },
-            regie = de.pagerspass.pagerspass.ansichten.RegieGriffe(
-                start = { runde.dienstBeginnen() },
-                jetzt = { runde.regieEintragJetzt() },
-                ueberspringen = { runde.regieEintragUeberspringen() },
-                achse = { runde.regieZeitachse(it) },
-                lage = { st, text, meldebild, adresse, org, prio ->
-                    runde.regieLage(st, text, meldebild, adresse, org, prio)
-                },
-                stoerung = { runde.regieStoerung(it) },
-                wetter = { runde.regieWetter(it) },
-                durchsage = { runde.regieDurchsage(it) },
-                beenden = { runde.regieUebungBeenden() },
-            ),
-        )
-
-        raum?.beendet == true -> DebriefingSeite(
-            stand = stand,
-            beiVerlassen = { runde.verlassen() },
-        )
-
-        raum?.laeuft == true && ich?.istLeitstelle == true -> LeitstelleSeite(
-            stand = stand,
-            katalog = seiten.katalog.inhalt,
-            beiEinsatzAnlegen = { stichwort, meldebild, adresse, meldender, anrufId ->
-                runde.einsatzAnlegen(
-                    stichwort = stichwort.stichwort,
-                    stichwortText = stichwort.stichwortText,
-                    meldebild = meldebild,
-                    adresse = adresse,
-                    organisation = stichwort.organisation,
-                    prioritaet = stichwort.prioritaet,
-                    meldender = meldender,
-                    empfohleneFahrzeuge = stichwort.empfohleneFahrzeuge,
-                    empfohleneFaehigkeiten = stichwort.empfohleneFaehigkeiten,
-                    anrufId = anrufId,
-                )
-            },
-            beiAlarmieren = { einsatz, fahrzeuge -> runde.alarmieren(einsatz, fahrzeuge) },
-            beiVorschlag = { runde.alarmvorschlag(it) },
-            beiSchliessen = { runde.einsatzSchliessen(it) },
-            beiSprechwunsch = { runde.sprechwunschBeantworten(it) },
-            beiAnrufAnnehmen = { runde.anrufAnnehmen(it) },
-            beiAnrufFrage = { anruf, frage -> runde.anrufFragen(anruf, frage) },
-            beiAnrufBeenden = { runde.anrufBeenden(it) },
-            beiAnrufAbweisen = { runde.anrufAbweisen(it) },
-            beiVorschlagVerwerfen = { runde.vorschlagVerwerfen(it) },
-            beiUmstufen = { einsatz, p -> runde.umstufen(einsatz, p) },
-            beiFunk = { text, an -> runde.funken(text, an) },
-            beiSprechstart = { runde.sprechenStarten() },
-            beiSprechende = { runde.sprechenBeenden() },
-            beiUeberspringen = { runde.ausbildungUeberspringen() },
-            beiDienstende = { runde.dienstBeenden() },
-            beiVerlassen = { runde.verlassen() },
-        )
-
-        raum?.laeuft == true -> FahrzeugSeite(
-            stand = stand,
-            eigeneKennung = sitzungsstand.konto?.kennung.orEmpty(),
-            katalog = seiten.katalog.inhalt,
-            beiFms = { status, grund, dauer -> runde.fmsSetzen(status, grund, dauer) },
-            beiSondersignal = { runde.sondersignal(it) },
-            beiLagemeldung = { runde.lagemeldung(it) },
-            beiFunk = { runde.funken(it) },
-            beiEinsatzstelle = { runde.einsatzstelleSchreiben(it) },
-            beiSprechstart = { runde.sprechenStarten() },
-            beiSprechende = { runde.sprechenBeenden() },
-            beiUeberspringen = { runde.ausbildungUeberspringen() },
-            beiDienstende = { runde.dienstBeenden() },
-            beiVerlassen = { runde.verlassen() },
-            manv = de.pagerspass.pagerspass.ansichten.ManvGriffe(
-                uebernehmen = { e, z -> runde.einsatzleitungUebernehmen(e, z) },
-                abgeben = { e, z -> runde.einsatzleitungAbgeben(e, z) },
-                abschnittBilden = { e, n, z -> runde.abschnittBilden(e, n, z) },
-                abschnittZuteilen = { e, f, a, z -> runde.abschnittZuteilen(e, f, a, z) },
-                auftrag = { e, a, f -> runde.manvauftragUebertragen(e, a, f) },
-                anordnen = { e, art, g -> runde.versorgungsstelleAnordnen(e, art, g) },
-                abbauen = { e, s, ab -> runde.versorgungsstelleAbbauen(e, s, ab) },
-                verlegen = { e, p, s -> runde.patientVerlegen(e, p, s) },
-                transportmittel = { e, p, f -> runde.patientTransportmittel(e, p, f) },
-                zielklinik = { e, p, k -> runde.patientZielklinik(e, p, k) },
-                transport = { e, p -> runde.transportEinleiten(e, p) },
-                verstorbene = { runde.verstorbeneUebergeben(it) },
-                triage = { runde.triageKoordinieren(it) },
-            ),
-        )
-
-        else -> LobbySeite(
-            stand = stand,
-            eigeneKennung = sitzungsstand.konto?.kennung.orEmpty(),
-            garage = seiten.garage.inhalt?.stand?.fahrzeuge.orEmpty(),
-            fahrzeuge = seiten.katalog.inhalt?.fahrzeuge.orEmpty(),
-            beiRolle = { rolle, fahrzeug -> runde.rolleWaehlen(rolle, fahrzeug) },
-            beiBereit = { runde.bereit(it) },
-            beiBot = { runde.botHinzufuegen(it) },
-            beiChat = { runde.chatSenden(it) },
-            beiStart = { runde.dienstBeginnen() },
-            beiVerlassen = { runde.verlassen() },
-        )
-    }
-
-    // Der Melder in der App — über allem, mit Ton, bis jemand reagiert.
-    stand.alarm?.let { alarm ->
-        Melderblende(
-            alarm = alarm,
-            beiQuittieren = { runde.alarmQuittieren() },
-            beiWegtippen = { runde.alarmWegtippen() },
-        )
-    }
 }
+
+// --- Runde, Teil 1 — der Rundenrahmen steht jetzt in `mobil/Rundenrahmen.kt`. ---
 
 /**
  * Der Rahmen um den mobilen Begleiter.
@@ -502,6 +383,9 @@ private fun Angemeldet(
     var loeschenOffen by remember { mutableStateOf(false) }
     // Freunde (Sozial-Port): die Zahlen für die Marke an „Freunde".
     val kreisstand by sozial.kreis.stand.collectAsStateWithLifecycle()
+    // --- Runde, Teil 1: was der Startbildschirm für Runden nachlädt.
+    val startdaten: Startdaten = viewModel()
+    val startstand by startdaten.stand.collectAsStateWithLifecycle()
 
     // Die Leiste steht auch auf den Unterseiten (Garage, Bestenliste) — sie sind
     // Teil des Buchs, kein eigener Zweig. Sie fiele erst weg, wenn eine Ansicht
@@ -544,6 +428,10 @@ private fun Angemeldet(
                         sitzung.mitteilungenLaden()
                         sitzung.einladungenLaden(neu = true)
                         sitzung.hinweiseLaden()
+                        // Runde, Teil 1: Vorlagen, Umfrage, Kacheln, Clanrunde, Tagesschicht.
+                        startdaten.laden(stand.konto?.kennung)
+                        sitzung.wacheLaden()
+                        sitzung.tagesschichtLaden()
                     },
                     beiGelesen = { sitzung.mitteilungGelesen(it) },
                     // Freunde (Sozial-Port): erst den Zettel abhaken, dann beitreten —
@@ -555,6 +443,7 @@ private fun Angemeldet(
                                 runde.zuschauen(e.roomCode, stand.konto?.anzeigename.orEmpty())
                             } else {
                                 runde.beitreten(e.roomCode, stand.konto?.anzeigename.orEmpty())
+                            }
                             }
                         }
                     },
@@ -568,6 +457,18 @@ private fun Angemeldet(
                     // Übungen und Lehrgang: in der App statt im Browser.
                     beiLehrgang = { steuerung.navigate(Extraswege.LEHRGANG) },
                     beiUebungen = { steuerung.navigate(Extraswege.UEBUNGEN) },
+                    // --- Runde, Teil 1 — BEGINN: Startbildschirm ---------------
+                    zusatz = startzusatz(
+                        stand = stand,
+                        daten = daten,
+                        start = startstand,
+                        startdaten = startdaten,
+                        runde = runde,
+                        sitzung = sitzung,
+                        oeffnen = { browser.openUri(it) },
+                        zumShop = { zurWahl(steuerung, Weg.Shop) },
+                    ),
+                    // --- Runde, Teil 1 — ENDE ---------------------------------
                 )
             }
 
@@ -641,6 +542,8 @@ private fun Angemeldet(
                     beiLaden = { sitzung.tagesschichtLaden(neu = true) },
                     beiStart = { sitzung.tagesschichtEroeffnen() },
                     beiZurueck = { steuerung.popBackStack() },
+                    // Runde, Teil 1: zur ganzen Tagesliste im Dienstbuch.
+                    beiDienstbuch = { zurWahl(steuerung, Weg.Dienstbuch) },
                 )
             }
 

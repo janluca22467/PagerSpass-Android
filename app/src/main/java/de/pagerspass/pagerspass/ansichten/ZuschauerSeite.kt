@@ -17,13 +17,16 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -63,6 +66,9 @@ fun ZuschauerSeite(
     eigeneKennung: String = "",
     beiVerlassen: () -> Unit = {},
     regie: RegieGriffe = RegieGriffe(),
+    premium: Boolean = false,
+    beiPlatzBitten: () -> Unit = {},
+    beiBitteZurueck: () -> Unit = {},
 ) {
     var reiter by remember { mutableStateOf(0) }
     val raum = stand.raum
@@ -98,13 +104,19 @@ fun ZuschauerSeite(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                SehrLeise(
-                    listOfNotNull(
-                        "Raum ${stand.code}",
-                        raum?.let { "${it.players.size} in der Runde" },
-                        raum?.zuschauer?.size?.takeIf { it > 0 }?.let { "$it sehen zu" },
-                    ).joinToString(" · "),
-                )
+                // Menschen, nicht Plätze: Bot-Besatzungen sind keine Teilnehmer.
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    SehrLeise(
+                        listOfNotNull(
+                            "Raum ${stand.code}",
+                            raum?.let { "${it.menschen.size} Teilnehmer" },
+                        ).joinToString(" · "),
+                    )
+                    if (raum != null) Zuschauerzaehler(raum)
+                }
             }
             Knopf("Verlassen", beiVerlassen, art = Knopfart.Leise, kompakt = true)
         }
@@ -144,6 +156,14 @@ fun ZuschauerSeite(
 
             if (istRegie) {
                 Regieleiste(raum = raum, uebung = raum.uebung, griffe = regie)
+            } else {
+                Platzbitte(
+                    raum = raum,
+                    premium = premium,
+                    bitteLaeuft = stand.eigeneBeitrittsanfrage,
+                    beiBitten = beiPlatzBitten,
+                    beiZurueck = beiBitteZurueck,
+                )
             }
 
             when (reiter) {
@@ -224,11 +244,7 @@ private fun ColumnScope.Regieleiste(
             SehrLeise("${uebung.stand}/${uebung.eintraege}")
             if (uebung.angehalten) Marke("angehalten", farbe = Farben.OrangeHell)
         }
-        uebung.naechsterText?.let { naechster ->
-            SehrLeise(
-                uebung.naechsterNachSekunden?.let { s -> "$naechster · in ${s}s" } ?: naechster,
-            )
-        }
+        Regiefortschritt(uebung)
 
         if (raum.inLobby) {
             // In der Lobby genau ein Knopf — die Übungsleitung darf starten.
@@ -344,3 +360,91 @@ private fun RegieLageBlock(
         )
     }
 }
+
+/**
+ * Um einen Platz bitten — `ZuschauerView.vue`, „platzbitte". Nur wer zusieht,
+ * weil die Runde voll ist, und nur mit Premium: Die Leitstelle entscheidet, ob
+ * sie einen Platz über die Grenze hinaus vergibt.
+ */
+@Composable
+private fun Platzbitte(
+    raum: Raumzustand,
+    premium: Boolean,
+    bitteLaeuft: Boolean,
+    beiBitten: () -> Unit,
+    beiZurueck: () -> Unit,
+) {
+    if (!raum.voll && !bitteLaeuft) return
+    Kasten {
+        Text(
+            text = if (bitteLaeuft) "Deine Bitte liegt bei der Leitstelle." else "Diese Runde ist voll.",
+            style = Schrift.Normal,
+            color = Farben.Text,
+        )
+        when {
+            bitteLaeuft -> Knopf("Bitte zurückziehen", beiZurueck, art = Knopfart.Leise, kompakt = true)
+            premium -> Knopf("Um einen Platz bitten", beiBitten, art = Knopfart.Haupt, kompakt = true)
+            else -> SehrLeise("Mit Premium kannst du die Leitstelle um einen zusätzlichen Platz bitten.")
+        }
+    }
+}
+
+/**
+ * Die Zeitachse der Übung als Balken — mit einer Kerbe je Eintrag und der
+ * Uhr, die zwischen zwei Raumständen selbst weiterläuft. Der Server schickt
+ * die vergangenen Sekunden nur bei jedem Stand; eine Uhr, die dazwischen
+ * stillsteht, sieht nach einer angehaltenen Achse aus.
+ */
+@Composable
+private fun Regiefortschritt(uebung: Uebungsstand) {
+    var dazu by remember(uebung.vergangeneSekunden, uebung.naechsterNachSekunden) { mutableIntStateOf(0) }
+    LaunchedEffect(uebung.vergangeneSekunden, uebung.naechsterNachSekunden, uebung.angehalten) {
+        if (uebung.angehalten) return@LaunchedEffect
+        while (true) {
+            kotlinx.coroutines.delay(1_000)
+            dazu += 1
+        }
+    }
+    val jetzt = uebung.vergangeneSekunden + dazu
+    val ende = maxOf(
+        uebung.marken.maxOfOrNull { it.nachSekunden } ?: 0,
+        jetzt + (uebung.naechsterNachSekunden?.minus(dazu)?.coerceAtLeast(0) ?: 0),
+        1,
+    )
+    val anteil = jetzt.toFloat() / ende
+
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        SehrLeise("+${minutenSekunden(jetzt)}", mono = true)
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .height(8.dp)
+                .drawBehind {
+                    drawRect(Farben.Rand)
+                    drawRect(Farben.Amber, size = size.copy(width = size.width * anteil.coerceIn(0f, 1f)))
+                    uebung.marken.forEach { m ->
+                        val x = size.width * (m.nachSekunden.toFloat() / ende).coerceIn(0f, 1f)
+                        val farbe = when (m.art) {
+                            "Stoerung" -> Farben.SignalHell
+                            "Wetterwechsel" -> Farben.BlauHell
+                            else -> Farben.Text
+                        }
+                        drawLine(farbe, Offset(x, 0f), Offset(x, size.height), strokeWidth = 2.dp.toPx())
+                    }
+                },
+        )
+        SehrLeise(minutenSekunden(ende), mono = true)
+    }
+    uebung.naechsterText?.let { naechster ->
+        val rest = uebung.naechsterNachSekunden?.minus(dazu)?.coerceAtLeast(0)
+        SehrLeise(
+            "als Nächstes: $naechster" + (rest?.let { " · in ${minutenSekunden(it)}" } ?: ""),
+        )
+    }
+}
+
+private fun minutenSekunden(sekunden: Int): String =
+    "%d:%02d".format(sekunden / 60, sekunden % 60)

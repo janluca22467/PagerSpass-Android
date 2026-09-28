@@ -113,8 +113,20 @@ fun OeffentlicheRundenSeite(
                                     .takeIf { runde.offeneEinsaetze > 0 },
                                 "Sandkasten — ungewertet".takeIf { runde.sandkasten },
                                 "Leitstelle gesucht".takeIf { !runde.leitstelleBesetzt },
+                                // Runde, Teil 1: voll heißt nicht zu — zuschauen geht.
+                                "voll".takeIf { runde.freiePlaetze <= 0 },
                             ).joinToString(" · "),
                         )
+                        // Runde, Teil 1: der Code zum Weitersagen und der Hinweis
+                        // auf die Übertragung — gefragt wird beim Beitritt.
+                        SehrLeise("Code ${runde.code}", mono = true)
+                        if (runde.streamermodus) {
+                            Text(
+                                "Wird gestreamt — du wirst gefragt.",
+                                style = Schrift.Klein,
+                                color = Farben.AmberHell,
+                            )
+                        }
                         Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
                             Knopf(
                                 "Beitreten",
@@ -146,6 +158,8 @@ fun TagesschichtSeite(
     beiLaden: () -> Unit = {},
     beiStart: () -> Unit = {},
     beiZurueck: () -> Unit = {},
+    // Runde, Teil 1: der Weg zur ganzen Tagesliste.
+    beiDienstbuch: (() -> Unit)? = null,
 ) {
     LaunchedEffect(Unit) { beiLaden() }
 
@@ -180,7 +194,12 @@ fun TagesschichtSeite(
                         style = Schrift.Gross,
                         color = Farben.Amber,
                     )
-                    SehrLeise("Du bist die Schicht heute schon gefahren — morgen gibt es eine neue.")
+                    SehrLeise(
+                        "Gewertet wird die erste Fahrt des Tages. Du kannst danach weiter fahren — " +
+                            "ohne Wertung, zum Üben.",
+                    )
+                    // Runde, Teil 1: Der Knopf bleibt — wie im Web.
+                    Knopf("Noch einmal fahren", beiStart, art = Knopfart.Normal, aktiv = !laeuft)
                 } else {
                     SehrLeise(
                         "Festes Skript, Bots als Besatzung, dieselbe Lage für alle. " +
@@ -196,6 +215,9 @@ fun TagesschichtSeite(
             }
 
             Ueberschrift("Tagesliste")
+            beiDienstbuch?.let { weg ->
+                Knopf("Ganze Tagesliste im Dienstbuch ansehen", weg, art = Knopfart.Leise, kompakt = true)
+            }
             if (schicht.beste.isEmpty()) {
                 Leerhinweis("Noch niemand gefahren — sei der Erste.")
             } else {

@@ -81,7 +81,7 @@ fun Autohaus(
         if (bestaetige != null && auswahl.none { it.id == bestaetige }) bestaetige = null
     }
 
-    val reihen = gruppiereFahrzeuge(auswahl.filter { vorlagePasst(it, suche) })
+    val reihen = garageGruppieren(auswahl.filter { vorlagePasst(it, suche) })
     val erstes = reihen.firstOrNull()?.traeger?.firstOrNull()?.fahrzeuge?.firstOrNull()
     // Das Schaufenster liest aus der ganzen Auswahl: Ein Suchbegriff, der den Wagen
     // aus den Reihen nimmt, räumt ihn nicht aus dem Fenster.

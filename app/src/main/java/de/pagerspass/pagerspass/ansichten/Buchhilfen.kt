@@ -62,10 +62,6 @@ internal fun wochentagKurz(roh: String?): String =
 internal fun tagImMonat(roh: String?): String =
     ortszeit(roh)?.format(DateTimeFormatter.ofPattern("dd")) ?: "—"
 
-/** „20:14". */
-internal fun uhrzeitKurz(roh: String?): String =
-    ortszeit(roh)?.format(DateTimeFormatter.ofPattern("HH:mm")) ?: ""
-
 /**
  * Eine Dauer, wie das Buch sie schreibt: „7:12 min" ab einer Minute, sonst „42 s".
  * `null` wird ein Strich.
