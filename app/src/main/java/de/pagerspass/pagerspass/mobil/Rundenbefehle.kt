@@ -402,11 +402,6 @@ fun Runde.einsatzfunkgruppeOeffnen(incidentId: String, name: String) =
 fun Runde.einsatzfunkgruppeSchliessen(gruppeId: String) =
     senden("EinsatzfunkgruppeSchliessen", wert(gruppeId))
 
-fun Runde.funkgruppeOeffnen(name: String, nummer: String) =
-    senden("FunkgruppeOeffnen", wert(name), wert(nummer))
-
-fun Runde.funkgruppeSchliessen(gruppeId: String) = senden("FunkgruppeSchliessen", wert(gruppeId))
-
 // ------------------------------------------------------------ Notruftelefon
 
 /** Den Anrufer orten lassen — das Ergebnis kommt nach der Wartezeit am Anruf. */
