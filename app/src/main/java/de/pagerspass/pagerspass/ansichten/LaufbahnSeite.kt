@@ -285,7 +285,7 @@ private fun Laufbahnkarte(konto: Konto, daten: Dienstbuchdaten) {
                 Etikett("Deine Laufbahn")
                 Text(aktuell?.bezeichnung ?: konto.rang, style = Schrift.Titel, color = Farben.Text)
                 Text(
-                    "${zahl(konto.erfahrung)} Punkte · ${stufenziel(konto.bisZumNaechsten, konto.level + 1)}",
+                    "${zahl(konto.erfahrung)} Punkte · ${buchStufenziel(konto.bisZumNaechsten, konto.level + 1)}",
                     style = Schrift.MonoKlein,
                     color = Farben.TextLeise,
                 )

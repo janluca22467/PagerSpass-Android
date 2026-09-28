@@ -99,7 +99,7 @@ enum class Buchreiter(val weg: String, val titel: String) {
 }
 
 /** „noch 1 500 bis Stufe 13" — oder die Ansage, dass es keine höhere gibt. */
-internal fun stufenziel(bis: Int?, naechsteStufe: Int): String =
+internal fun buchStufenziel(bis: Int?, naechsteStufe: Int): String =
     if (bis == null) "höchste Stufe erreicht" else "noch ${zahl(bis)} bis Stufe $naechsteStufe"
 
 /**
@@ -453,7 +453,7 @@ private fun Standkarte(konto: Konto, beiDruck: () -> Unit) {
             Text(konto.rang, style = Schrift.Gross, color = Farben.Text, maxLines = 2)
             Fortschritt(anteil = konto.stufenanteil)
             Text(
-                text = "${zahl(konto.erfahrung)} Punkte · ${stufenziel(konto.bisZumNaechsten, konto.level + 1)}",
+                text = "${zahl(konto.erfahrung)} Punkte · ${buchStufenziel(konto.bisZumNaechsten, konto.level + 1)}",
                 style = Schrift.MonoKlein,
                 color = Farben.TextLeise,
             )
@@ -486,7 +486,7 @@ private fun Tafel(daten: Dienstbuchdaten) {
         Kennzahlkachel(
             etikett = "Schichten",
             wert = zahl(schichten.size),
-            unter = schichten.firstOrNull()?.beendetUm?.let { "zuletzt ${tagMonat(it)}" } ?: "noch keine",
+            unter = schichten.firstOrNull()?.beendetUm?.let { "zuletzt ${buchTagMonat(it)}" } ?: "noch keine",
             modifier = Modifier.weight(1f),
         )
         Kennzahlkachel(
@@ -710,9 +710,9 @@ fun SchichtZeile(
                         }
                         Text(
                             text = if (kompakt) {
-                                uhrzeitKurz(schicht.beendetUm)
+                                buchUhrzeit(schicht.beendetUm)
                             } else {
-                                "${wochentagKurz(schicht.beendetUm)}, ${uhrzeitKurz(schicht.beendetUm)}"
+                                "${wochentagKurz(schicht.beendetUm)}, ${buchUhrzeit(schicht.beendetUm)}"
                             },
                             style = Schrift.Winzig.copy(fontFamily = Schrift.Mono),
                             color = Farben.TextSehrLeise,

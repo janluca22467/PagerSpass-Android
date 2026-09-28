@@ -407,7 +407,7 @@ fun LadenSeite(
                                 horizontalArrangement = Arrangement.spacedBy(Abstand.Normal),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                Text(tagMonat(p.um), style = Schrift.MonoKlein, color = Farben.TextSehrLeise)
+                                Text(buchTagMonat(p.um), style = Schrift.MonoKlein, color = Farben.TextSehrLeise)
                                 Text(p.text, style = Schrift.Klein, color = Farben.Text, modifier = Modifier.weight(1f))
                                 Text(
                                     (if (p.betrag > 0) "+" else "") + p.betrag,
@@ -699,7 +699,7 @@ private fun gattung(art: String) = when (art) {
  * Der Ton je Gattung. Er tönt die Bühne der Kachel, damit man schon aus dem
  * Augenwinkel sieht, ob da ein Melder oder ein Titel steht.
  */
-private fun gattungston(art: String): Color = when (art) {
+private fun shopGattungston(art: String): Color = when (art) {
     "Meldergesicht" -> Farben.Amber
     "Profilrahmen" -> Color(0xFF5F8CFF)
     "Kopfmuster" -> Color(0xFF46C8A0)
@@ -839,7 +839,7 @@ private fun Warenkachel(
     buehne: @Composable () -> Unit,
     fuss: @Composable () -> Unit,
 ) {
-    val ton = gattungston(artikel.art)
+    val ton = shopGattungston(artikel.art)
     Column(
         verticalArrangement = Arrangement.spacedBy(Abstand.Klein),
         modifier = modifier

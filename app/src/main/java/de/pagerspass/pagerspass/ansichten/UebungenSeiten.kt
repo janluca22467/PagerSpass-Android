@@ -562,13 +562,13 @@ private fun Traegermarke(hiOrg: String, aufschrift: String = Uebungsaufschrift.t
 }
 
 /** Eine Gruppe der Auswahl: Organisation und Kategorie, darunter die Träger. */
-private data class UebungFahrzeuggruppe(
+private data class Uebungsfahrzeuggruppe(
     val schluessel: String,
     val organisation: String,
-    val traeger: List<UebungTraegergruppe>,
+    val traeger: List<Uebungstraegergruppe>,
 )
 
-private data class UebungTraegergruppe(
+private data class Uebungstraegergruppe(
     val hiOrg: String,
     val aufschrift: String,
     val fahrzeuge: List<Fahrzeugvorlage>,
@@ -578,7 +578,7 @@ private data class UebungTraegergruppe(
  * Die Auswahl, geordnet wie in Garage und Lobby — `gruppiereFahrzeuge` im Web:
  * Organisation und Kategorie in der Reihenfolge der Wache, darunter der Träger.
  */
-private fun fahrzeuggruppen(liste: List<Fahrzeugvorlage>): List<UebungFahrzeuggruppe> {
+private fun fahrzeuggruppen(liste: List<Fahrzeugvorlage>): List<Uebungsfahrzeuggruppe> {
     val organisationen = listOf("Feuerwehr", "Rettungsdienst", "Thw", "Polizei")
 
     fun rang(org: String, kategorie: String): Pair<Int, Int> {
@@ -601,22 +601,22 @@ private fun fahrzeuggruppen(liste: List<Fahrzeugvorlage>): List<UebungFahrzeuggr
             ),
         )
         .map { (schluessel, _, fahrzeuge) ->
-            UebungFahrzeuggruppe(schluessel, fahrzeuge.first().organisation, traegergruppen(fahrzeuge))
+            Uebungsfahrzeuggruppe(schluessel, fahrzeuge.first().organisation, traegergruppen(fahrzeuge))
         }
 }
 
-private fun traegergruppen(fahrzeuge: List<Fahrzeugvorlage>): List<UebungTraegergruppe> {
+private fun traegergruppen(fahrzeuge: List<Fahrzeugvorlage>): List<Uebungstraegergruppe> {
     val nach = fahrzeuge.groupBy { it.hiOrg.ifBlank { "Keine" } }
     val alphabetisch: (List<Fahrzeugvorlage>) -> List<Fahrzeugvorlage> = { l -> l.sortedBy { it.typ.lowercase() } }
 
     if (nach.size <= 1) {
-        return nach.map { (hiOrg, l) -> UebungTraegergruppe(hiOrg, Uebungsaufschrift.traeger(hiOrg), alphabetisch(l)) }
+        return nach.map { (hiOrg, l) -> Uebungstraegergruppe(hiOrg, Uebungsaufschrift.traeger(hiOrg), alphabetisch(l)) }
     }
 
     return nach.entries
         .sortedBy { Uebungsaufschrift.traeger(it.key).ifBlank { "Sonstige" }.lowercase() }
         .map { (hiOrg, l) ->
-            UebungTraegergruppe(
+            Uebungstraegergruppe(
                 hiOrg,
                 if (hiOrg == "Keine") "Öffentlicher Träger" else Uebungsaufschrift.traeger(hiOrg),
                 alphabetisch(l),
