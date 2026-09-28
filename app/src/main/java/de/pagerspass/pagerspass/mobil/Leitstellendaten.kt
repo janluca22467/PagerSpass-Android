@@ -68,7 +68,7 @@ class Leitstellendaten(anwendung: Application) : AndroidViewModel(anwendung) {
             _stand.update { it.copy(sichert = true) }
             runCatching { wege.aaoVorlageSichern(kennung, vorlage) }
                 .onSuccess {
-                    melden(Ordnungsmeldung(true, "„${vorlage.name}\" ist gespeichert."))
+                    melden(Ordnungsmeldung(true, "„${vorlage.name}“ ist gespeichert."))
                     ordnungenLaden(kennung, landkreisId)
                 }
                 .onFailure { f -> melden(Ordnungsmeldung(false, f.message ?: "Speichern fehlgeschlagen.")) }
@@ -91,7 +91,7 @@ class Leitstellendaten(anwendung: Application) : AndroidViewModel(anwendung) {
                             bestand = s.bestand?.copy(vorlagen = uebrig, anzahl = uebrig.size),
                         )
                     }
-                    melden(Ordnungsmeldung(true, "„${vorlage.name}\" ist gelöscht."))
+                    melden(Ordnungsmeldung(true, "„${vorlage.name}“ ist gelöscht."))
                 }
                 .onFailure { f -> melden(Ordnungsmeldung(false, f.message ?: "Löschen fehlgeschlagen.")) }
             _stand.update { it.copy(loeschtGerade = null) }
