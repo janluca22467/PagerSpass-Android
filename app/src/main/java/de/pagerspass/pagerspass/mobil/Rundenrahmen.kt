@@ -187,10 +187,31 @@ internal fun Rundenrahmen(
                 beiBitteZurueck = { runde.beitrittsanfrageZuruecknehmen() },
             )
 
-            raum?.beendet == true -> DebriefingSeite(
-                stand = stand,
-                beiVerlassen = { runde.verlassen() },
-            )
+            // Nachbesprechung: dieselben Bausteine wie die archivierte Schicht im Dienstbuch.
+            raum?.beendet == true -> {
+                val buch by sitzung.dienstbuch.stand.collectAsStateWithLifecycle()
+                LaunchedEffect(Unit) { sitzung.freundeLaden() }
+                DebriefingSeite(
+                    stand = stand,
+                    konto = sitzungsstand.konto,
+                    freunde = seiten.freunde.inhalt.orEmpty(),
+                    archiv = buch.runde,
+                    beiArchivLaden = { sitzung.dienstbuch.rundeLaden(it) },
+                    beiAnfragen = { wen ->
+                        sitzung.dienstbuch.freundAnfragen(wen).also { if (it.isSuccess) sitzung.freundeLaden(neu = true) }
+                    },
+                    beiVerlassen = { runde.verlassen() },
+                    beiHilfe = { browser.openUri(rundenhilfe(raum, ich, stand.zuschauer)) },
+                    beiDienstbuch = {
+                        Einsprung.oeffnen("dienstbuch")
+                        runde.verlassen()
+                    },
+                    beiPremium = {
+                        Einsprung.oeffnen(de.pagerspass.pagerspass.ansichten.Ladenbereich.Premium.weg)
+                        runde.verlassen()
+                    },
+                )
+            }
 
             laeuft && ich?.istLeitstelle == true -> LeitstelleSeite(
                 stand = stand,

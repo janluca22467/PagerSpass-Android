@@ -449,16 +449,33 @@ fun FmsKasten(
 
 // ---------------------------------------------------------------- Sondersignal
 
+/** Was das eigene Fahrzeug an Sondersignal trägt — `ausstattung` in `Sondersignal.vue`. */
+data class Signalausstattung(val blaulicht: Boolean, val horn: Boolean, val heck: Boolean, val matrix: Boolean)
+
 /**
- * Ob das Fahrzeug überhaupt Blaulicht trägt — die Schranke, an der sich das
- * Bedienteil im Web selbst ausblendet. Ohne den Bauplankatalog des Webs gilt:
- * Luftfahrzeuge und zivile Wagen nicht, alles andere schon.
+ * Die Ausstattung aus dem Bauplan des Fahrzeugs: Der Bauplan darf das Blaulicht
+ * abbestellen (ziviler Pkw); am Boot ist das Horn ein Typhon und am Hubschrauber
+ * gar nichts; eine Heckwarnanlage braucht ein breites Heck; die Matrix haben der
+ * Streifenwagen und die Großfahrzeuge.
  */
-fun hatBlaulicht(f: Rundenfahrzeug): Boolean {
-    if (f.istLuftfahrzeug) return false
-    val typ = f.typ.lowercase()
-    return !(typ.contains("zivil") || typ.contains("rth") || typ.contains("ith") || typ.contains("hubschrauber"))
+fun signalausstattung(f: Rundenfahrzeug): Signalausstattung {
+    val bp = de.pagerspass.pagerspass.ui.fahrzeug.bauplanFuer(f.typ, f.organisation)
+    val form = bp.form
+    val luft = f.istLuftfahrzeug || form == de.pagerspass.pagerspass.ui.fahrzeug.Form.Heli
+    val schmal = form == de.pagerspass.pagerspass.ui.fahrzeug.Form.Moto || form == de.pagerspass.pagerspass.ui.fahrzeug.Form.Quad
+    val boot = form == de.pagerspass.pagerspass.ui.fahrzeug.Form.Boot
+    val gross = bp.klasse == de.pagerspass.pagerspass.ui.fahrzeug.Klasse.Lkw ||
+        bp.klasse == de.pagerspass.pagerspass.ui.fahrzeug.Klasse.Transporter
+    return Signalausstattung(
+        blaulicht = bp.blaulicht,
+        horn = !luft && !boot,
+        heck = !luft && !schmal && !boot,
+        matrix = !luft && !schmal && !boot && (gross || f.organisation == "Polizei"),
+    )
 }
+
+/** Ob das Fahrzeug überhaupt Blaulicht trägt — die Schranke des Bedienteils. */
+fun hatBlaulicht(f: Rundenfahrzeug): Boolean = signalausstattung(f).blaulicht
 
 /** Was die Matrixtafel zeigen kann — die Polizei spricht, die anderen sichern. */
 private fun matrixbilder(organisation: String): List<Pair<String, String>> =
@@ -492,8 +509,9 @@ private fun ColumnScope.Sondersignalteil(
     var matrixText by remember { mutableStateOf("") }
     var nacht by remember { mutableStateOf(false) }
     var laut by remember { mutableStateOf(70) }
-    val hatHorn = meins.organisation != "Thw" || meins.typ.isNotBlank()
-    val hatHeck = meins.organisation != "Rettungsdienst"
+    val ausstattung = remember(meins.typ, meins.organisation, meins.istLuftfahrzeug) { signalausstattung(meins) }
+    val hatHorn = ausstattung.horn
+    val hatHeck = ausstattung.heck
 
     // Das Horn tönt, solange es an ist — und nur mit Blaulicht, wie im echten Fahrzeug.
     LaunchedEffect(horn, hornArt, laut, blau, tonwahl.umgebungspegel) {
@@ -557,18 +575,25 @@ private fun ColumnScope.Sondersignalteil(
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
-        modifier = Modifier.fillMaxWidth().clickable(role = Role.Button) { matrixOffen = !matrixOffen }.padding(vertical = Abstand.Winzig),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(enabled = ausstattung.matrix, role = Role.Button) { matrixOffen = !matrixOffen }
+            .padding(vertical = Abstand.Winzig),
     ) {
         Text("MATRIX", style = Schrift.MonoKlein.copy(fontWeight = FontWeight.Bold), color = Farben.TextLeise)
         Text(
-            matrix?.let { m -> matrixbilder(meins.organisation).firstOrNull { it.first == m }?.second ?: "Eigener Text" } ?: "aus",
+            if (!ausstattung.matrix) {
+                "nicht verbaut"
+            } else {
+                matrix?.let { m -> matrixbilder(meins.organisation).firstOrNull { it.first == m }?.second ?: "Eigener Text" } ?: "aus"
+            },
             style = Schrift.MonoKlein,
             color = Farben.Text,
             modifier = Modifier.weight(1f),
         )
         Text(if (matrixOffen) "▾" else "▸", style = Schrift.MonoKlein, color = Farben.TextSehrLeise)
     }
-    if (matrixOffen) {
+    if (matrixOffen && ausstattung.matrix) {
         Pillenreihe {
             matrixbilder(meins.organisation).forEach { (wort, name) ->
                 Pille(name, an = matrix == wort, beiDruck = { matrix = wort })
