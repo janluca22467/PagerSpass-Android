@@ -163,7 +163,7 @@ fun KontoZentrale(
             },
         )
 
-        Schnellwege(beiWeg)
+        Schnellwege(premium = konto.premiumAktiv, beiWeg = beiWeg)
 
         Spielweisekarte(wege, konto)
 
@@ -240,16 +240,22 @@ fun KontoZentrale(
  * Die Schnellzugriffe unter dem Kopf. Dazu, was es nur in der App gibt: der
  * mobile Begleiter und die Mitteilungen vom Betrieb (die hießen bis hierher
  * „Postfach" — das Postfach im Web ist aber die E-Mail-Adresse weiter unten).
+ *
+ * <b>Der Begleiter steht nur mit Premium da</b> — wie der Scan-Reiter im Web
+ * (`begleiterSichtbar` in `MobilTableiste.vue`): Ohne Abo erzeugt der Rechner
+ * keinen QR-Code, den man hier scannen könnte.
  */
 @Composable
-private fun Schnellwege(beiWeg: (String) -> Unit) {
+private fun Schnellwege(premium: Boolean, beiWeg: (String) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
-        Wegzeile(
-            "Mobiler Begleiter",
-            { beiWeg("begleiter") },
-            unterzeile = "QR-Code scannen: Funkgerät und Melder aufs Handy",
-            zeichen = Zeichen.Funk,
-        )
+        if (premium) {
+            Wegzeile(
+                "Mobiler Begleiter",
+                { beiWeg("begleiter") },
+                unterzeile = "QR-Code scannen: Funkgerät und Melder aufs Handy",
+                zeichen = Zeichen.Funk,
+            )
+        }
         Wegzeile("Privatsphäre", { beiWeg("privatsphaere") }, unterzeile = "Sichtbarkeit und Einladungen", zeichen = Zeichen.Handy)
         Wegzeile("Mitteilungen", { beiWeg("mitteilungen") }, unterzeile = "Alarm und Nachrichten", zeichen = Zeichen.Melder)
         Wegzeile("Discord", { beiWeg("discord") }, unterzeile = "Rolle und Verknüpfung", zeichen = Zeichen.Kanal)
