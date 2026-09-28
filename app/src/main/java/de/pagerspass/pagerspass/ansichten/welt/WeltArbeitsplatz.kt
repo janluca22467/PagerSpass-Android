@@ -67,6 +67,7 @@ import de.pagerspass.pagerspass.ui.bausteine.Knopf
 import de.pagerspass.pagerspass.ui.bausteine.Knopfart
 import de.pagerspass.pagerspass.ui.bausteine.Textweg
 import de.pagerspass.pagerspass.ui.karte.Kartenrand
+import de.pagerspass.pagerspass.ui.karte.Kartenzustand
 import de.pagerspass.pagerspass.ui.karte.rememberKartenzustand
 import de.pagerspass.pagerspass.ui.theme.Abstand
 import de.pagerspass.pagerspass.ui.theme.Farben
@@ -110,6 +111,8 @@ class Weltgriffe(
     val gelaendeModus: (Boolean, Boolean) -> Unit,
     /** Die Ecken ersetzen (zurück, leeren). */
     val gelaendeSetzen: (List<Pair<Double, Double>>) -> Unit,
+    /** Die Karte selbst — für die Ansicht, die die Einstellungen umschalten. */
+    val karte: Kartenzustand,
 )
 
 /**
@@ -254,6 +257,7 @@ fun WeltArbeitsplatz(
             gelaendeStrecke = an && strecke
         },
         gelaendeSetzen = { gelaende = it },
+        karte = karte,
     )
 
     val modi = Kartenmodi(
