@@ -284,6 +284,8 @@ data class Katalog(
     val leitstellen: List<Leitstelle> = emptyList(),
     /** Alle Fähigkeiten, die irgendein Fahrzeug mitbringt. */
     val faehigkeiten: List<String> = emptyList(),
+    // --- Leitstelle: das Ortsverzeichnis des Einsatzbogens (Kreise ohne echte Straßen).
+    val orte: List<Katalogort> = emptyList(),
 )
 
 /**
