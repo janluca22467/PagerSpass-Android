@@ -74,7 +74,7 @@ import de.pagerspass.pagerspass.ui.theme.flaeche
 
 /**
  * Die Blenden der Wachenseiten — Mitglied, Chatzeile, Einladen, Einstellungen,
- * Aussehen, Gründen. Übertragen aus `web/src/components/gemeinschaft/*Dialog.vue`.
+ * Aussehen, Gründen. Übertragen aus den `…Dialog.vue`-Dateien in `web/src/components/gemeinschaft/`.
  *
  * <b>Alle Personen- und Zeilen-Aktionen liegen hier und nicht als Knöpfe in der
  * Liste.</b> Dort drängten sie Name, Rang und Dienstalter auf zwei Wörter

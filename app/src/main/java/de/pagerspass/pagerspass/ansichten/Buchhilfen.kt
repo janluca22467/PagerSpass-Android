@@ -32,7 +32,7 @@ internal fun zeitVon(roh: String?): Instant? {
 private fun ortszeit(roh: String?) = zeitVon(roh)?.atZone(ZoneId.systemDefault())
 
 /** „23.09." — wo der Monat als Anker reicht. */
-internal fun tagMonat(roh: String?): String =
+internal fun buchTagMonat(roh: String?): String =
     ortszeit(roh)?.format(DateTimeFormatter.ofPattern("dd.MM.")) ?: "—"
 
 /** „23.09.26, 20:14" — die Zeile unter einem Diagrammpunkt. */
@@ -63,7 +63,7 @@ internal fun tagImMonat(roh: String?): String =
     ortszeit(roh)?.format(DateTimeFormatter.ofPattern("dd")) ?: "—"
 
 /** „20:14". */
-internal fun uhrzeitKurz(roh: String?): String =
+internal fun buchUhrzeit(roh: String?): String =
     ortszeit(roh)?.format(DateTimeFormatter.ofPattern("HH:mm")) ?: ""
 
 /**

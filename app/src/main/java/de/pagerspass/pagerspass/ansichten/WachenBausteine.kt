@@ -83,7 +83,7 @@ import kotlin.math.roundToInt
 
 /**
  * Die Bausteine der Wachenseiten — Emblem, Stufe, Tag, Dienstplan, Logbuch,
- * Laufbahn. Übertragen aus `web/src/components/gemeinschaft/*` und
+ * Laufbahn. Übertragen aus `web/src/components/gemeinschaft/` (alle Dateien) und
  * `web/src/utils/wachenschmuck.ts`.
  *
  * <b>Hier steht, was mehr als eine Wachenseite braucht</b> — der Kopf der Wache
