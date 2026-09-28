@@ -897,6 +897,32 @@ internal fun AaoOrdnung(
             Text(text, style = Schrift.Klein, color = if (gut) Farben.GruenHell else Farben.SignalHell)
         }
 
+        // Die Ordnungen dieser Schicht — sie gelten für alle am Tisch, bis die Schicht
+        // endet oder jemand sie wieder herausnimmt.
+        if (raum.aaoVorlagen.isNotEmpty()) {
+            Etikett("Ordnungen dieser Schicht")
+            raum.aaoVorlagen.forEach { v ->
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .flaeche(farbe = Farben.FlaecheHoch, ecke = 9.dp)
+                        .padding(horizontal = Abstand.Klein, vertical = Abstand.Winzig),
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(v.name, style = Schrift.Klein, color = Farben.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        SehrLeise(
+                            "${v.empfohleneFahrzeuge} Fzg" +
+                                if (v.empfohleneFaehigkeiten.isNotEmpty()) " · ${v.empfohleneFaehigkeiten.joinToString(", ")}" else "",
+                            mono = true,
+                        )
+                    }
+                    Knopf("Herausnehmen", { griffe.schichtordnungLoeschen(v.name) }, art = Knopfart.Leise, kompakt = true)
+                }
+            }
+        }
+
         // Die Verwaltung — zugeklappt, weil sie im eiligen Griff nichts zu suchen hat.
         daten.bestand?.let { stand ->
             val voll = stand.anzahl >= stand.grenze

@@ -79,6 +79,8 @@ data class LeitstellenGriffe(
     // ------------------------------------------ Alarm- und Ausrückeordnung
     /** Eine Ordnung für diese Schicht — `SaveAaoVorlage` am Hub. */
     val schichtordnung: (name: String, anzahl: Int, faehigkeiten: List<String>) -> Unit = { _, _, _ -> },
+    /** Eine Ordnung wieder aus der Schicht nehmen — `DeleteAaoVorlage` am Hub. */
+    val schichtordnungLoeschen: (name: String) -> Unit = {},
     val ordnungenLaden: () -> Unit = {},
     val ordnungSichern: (Aaosicherung) -> Unit = {},
     val ordnungLoeschen: (AaoVorlagenzeile) -> Unit = {},
