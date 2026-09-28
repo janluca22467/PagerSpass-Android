@@ -419,8 +419,8 @@ object Meldertonprobe {
      * Den Ton in einen Puffer rechnen: so viele Zyklen hintereinander, wie in die
      * Probe passen, am Ende abgeschnitten.
      */
-    fun rechnen(art: String, sekunden: Double = probedauer(art)): ShortArray {
-        val zyklus = zyklus(art)
+    fun rechnen(art: String, sekunden: Double = probedauer(art), prioritaet: Int = 1): ShortArray {
+        val zyklus = zyklus(art, prioritaet)
         val laenge = (sekunden * ABTASTRATE).roundToInt().coerceAtLeast(1)
         val summe = DoubleArray(laenge)
         val runden = ceil(sekunden / max(0.1, zyklus.dauer)).toInt()
@@ -466,6 +466,21 @@ object Meldertonprobe {
             (min(1.0, max(-1.0, summe[i])) * Short.MAX_VALUE).roundToInt().toShort()
         }
     }
+
+    // Fahrzeug: der Alarm im Dienst — endlos, in der Dringlichkeit der Meldung.
+    /**
+     * Ganze Zyklen des Tons, mindestens drei Sekunden lang — die Spur läuft
+     * darauf in der Schleife (`Melderwerk`). Ganze Zyklen, damit die Naht nicht
+     * mitten in einem Ton liegt.
+     */
+    fun alarmschleife(art: String, prioritaet: Int): ShortArray {
+        val dauer = max(0.1, zyklus(art, prioritaet).dauer)
+        val runden = ceil(3.0 / dauer).toInt().coerceAtLeast(1)
+        return rechnen(art, runden * dauer, prioritaet)
+    }
+
+    /** Die Abtastrate der Puffer — für Spuren, die sie selbst anlegen. */
+    const val RATE = ABTASTRATE
 
     /** Einen gerechneten Puffer einmal abspielen — die Spur gibt der Aufrufer frei. */
     fun abspielen(puffer: ShortArray): AudioTrack {
