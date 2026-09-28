@@ -1,81 +1,115 @@
 package de.pagerspass.pagerspass.ansichten
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import de.pagerspass.pagerspass.mobil.Fahrzeugkennung
 import de.pagerspass.pagerspass.mobil.Rundenstand
-import de.pagerspass.pagerspass.netz.Einsatz
-import de.pagerspass.pagerspass.netz.FmsTaste
+import de.pagerspass.pagerspass.mobil.rememberAlarmierungsart
+import de.pagerspass.pagerspass.mobil.rememberKennungsform
+import de.pagerspass.pagerspass.mobil.rememberMelderBauform
+import de.pagerspass.pagerspass.mobil.rememberMelderTon
+import de.pagerspass.pagerspass.mobil.rememberMelderwerk
+import de.pagerspass.pagerspass.mobil.rememberTonwahl
 import de.pagerspass.pagerspass.netz.Katalog
+import de.pagerspass.pagerspass.netz.Konto
 import de.pagerspass.pagerspass.netz.Rundenfahrzeug
-import de.pagerspass.pagerspass.ui.bausteine.Feld
-import de.pagerspass.pagerspass.ui.bausteine.Kasten
 import de.pagerspass.pagerspass.ui.bausteine.Knopf
 import de.pagerspass.pagerspass.ui.bausteine.Knopfart
 import de.pagerspass.pagerspass.ui.bausteine.Ladezeile
-import de.pagerspass.pagerspass.ui.bausteine.Leerhinweis
 import de.pagerspass.pagerspass.ui.bausteine.Marke
-import de.pagerspass.pagerspass.ui.bausteine.Pille
-import de.pagerspass.pagerspass.ui.bausteine.Pillenreihe
-import de.pagerspass.pagerspass.ui.bausteine.Reiter
-import de.pagerspass.pagerspass.ui.bausteine.Reiterreihe
-import de.pagerspass.pagerspass.ui.bausteine.Schalterzeile
-import de.pagerspass.pagerspass.ui.bausteine.SehrLeise
 import de.pagerspass.pagerspass.ui.bausteine.Teil
 import de.pagerspass.pagerspass.ui.bausteine.Teilleiste
-import de.pagerspass.pagerspass.ui.bausteine.Ueberschrift
+import de.pagerspass.pagerspass.ui.karte.Lagekarte
 import de.pagerspass.pagerspass.ui.theme.Abstand
 import de.pagerspass.pagerspass.ui.theme.Farben
-import de.pagerspass.pagerspass.ui.theme.Rundung
 import de.pagerspass.pagerspass.ui.theme.Schrift
 import de.pagerspass.pagerspass.ui.theme.flaeche
 import de.pagerspass.pagerspass.ui.theme.flaechenmarke
 import de.pagerspass.pagerspass.ui.theme.raster
 import de.pagerspass.pagerspass.ui.zeichen.Zeichen
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+
+/**
+ * Die Griffe des Fahrzeugs — ein Bündel statt vierzig Parametern.
+ *
+ * Gefüllt im Rundenrahmen (`mobil/Fahrzeuggriffe.kt`) aus der `Runde`; hier steht
+ * nur, <em>was</em> die Seite tun können muss, nicht wie es über die Leitung geht.
+ */
+class FahrzeugGriffe(
+    val fms: (Int, String?, Int?) -> Unit = { _, _, _ -> },
+    val sondersignal: (Boolean) -> Unit = {},
+    val lagemeldung: (String) -> Unit = {},
+    val nachfordern: (String) -> Unit = {},
+    val funk: Funkgriffe = Funkgriffe(),
+    val ueberspringen: () -> Unit = {},
+    /** Fürs Dienstende stimmen — oder die Stimme zurücknehmen. */
+    val dienstende: () -> Unit = {},
+    /** Aussteigen, ohne weitere Rückfrage — gefragt hat die Seite schon. */
+    val verlassen: () -> Unit = {},
+    val hilfe: () -> Unit = {},
+    /** `AcknowledgeAlarm` — der Server erfährt, dass jemand reagiert hat. */
+    val alarmQuittieren: () -> Unit = {},
+    /** Den Alarm der Runde abräumen, ohne zu quittieren (Status 3/4 schließt ihn am Server). */
+    val alarmWeg: () -> Unit = {},
+    val leitstelleUebernehmen: () -> Unit = {},
+    /** Fahrzeug, an. */
+    val streife: (String, Boolean) -> Unit = { _, _ -> },
+    val streifeneinsatz: (Feststellungsmeldung) -> Unit = {},
+    val wasserAufnehmen: () -> Unit = {},
+    val aufgabeUebernehmen: (Int?) -> Unit = {},
+    val patient: Patientengriffe = Patientengriffe(),
+    val einzelruf: BegleiterGriffe = BegleiterGriffe(),
+    val einzelrufZulassen: (Boolean) -> Unit = {},
+    /** Funk, Einsatzstelle, Alarmdurchsage — 0–1. */
+    val pegel: (Float, Float, Float) -> Unit = { _, _, _ -> },
+    /** Der QR-Zugang zum Funkbegleiter — liefert den Link fürs Handy. */
+    val begleiterZugang: suspend () -> Result<String> = { Result.failure(IllegalStateException("Kein Zugang.")) },
+    val premium: () -> Unit = {},
+)
 
 /**
  * Das Fahrzeug — der Dienst aus Sicht der Besatzung.
  *
- * Übertragen aus `web/src/views/FahrzeugView.vue` in die Handyform: fester Kopf
- * mit Rufname und Status, ein Teil in der Mitte, Reiter unten — Einsatz ·
- * Status · Funk · Mehr. Dieselbe Bauform wie die Lobby.
+ * Übertragen aus `web/src/views/FahrzeugView.vue` im Handyzweig: fester Kopf mit
+ * Statusmarke und den Schaltern der Bedienung, darunter die Hinweisbänder, dann
+ * die Reiter — **Melder** (Bauart DME) oder **Gerät** (Bauart „Im Funk"),
+ * **Fahrzeug** und **Funk** mit der Zahl ungelesener Sprüche — und ganz rechts
+ * der Weg in die Spielhilfe.
  *
- * <b>Der Ablauf einer Fahrt ist FMS:</b> Der Melder weckt (Alarm quittieren),
- * Status 3 rückt aus, Status 4 meldet die Ankunft, die Lagemeldung sagt der
- * Leitstelle, was Sache ist, Status 1 macht wieder frei. Die Engine fährt das
- * Fahrzeug; die Besatzung meldet — genau wie im echten Funk.
+ * <b>Der Melder gehört dem Gerät, nicht dem Server.</b> Welche Meldung auf dem
+ * Display steht und ob sie quittiert ist, führt diese Seite ([Melderstand]); der
+ * Server kennt nur `alarmOffen`. Quittieren stellt Ton und Vibration ab, die
+ * Meldung bleibt bis Status 3 — man will auf der Fahrt noch lesen, wohin es geht.
+ *
+ * <b>Der Ablauf einer Fahrt ist FMS:</b> Der Melder weckt, Status 3 rückt aus,
+ * Status 4 meldet die Ankunft, die Lagemeldung sagt der Leitstelle, was Sache ist,
+ * Status 1 macht wieder frei. Die Engine fährt das Fahrzeug; die Besatzung meldet.
  */
 @Composable
 fun FahrzeugSeite(
@@ -83,229 +117,423 @@ fun FahrzeugSeite(
     stand: Rundenstand = Rundenstand(),
     eigeneKennung: String = "",
     katalog: Katalog? = null,
-    beiFms: (Int, String?, Int?) -> Unit = { _, _, _ -> },
-    beiSondersignal: (Boolean) -> Unit = {},
-    beiLagemeldung: (String) -> Unit = {},
-    beiFunk: (String) -> Unit = {},
-    beiEinsatzstelle: (String) -> Unit = {},
-    beiSprechstart: () -> Unit = {},
-    beiSprechende: () -> Unit = {},
-    beiUeberspringen: () -> Unit = {},
-    beiDienstende: () -> Unit = {},
-    beiVerlassen: () -> Unit = {},
+    konto: Konto? = null,
+    melderGesicht: String? = null,
+    griffe: FahrzeugGriffe = FahrzeugGriffe(),
     manv: ManvGriffe = ManvGriffe(),
 ) {
-    var reiter by remember { mutableStateOf(Fahrzeugteil.Einsatz) }
-
     val raum = stand.raum
-    val meins = raum?.vehicles?.firstOrNull { it.playerId == eigeneKennung }
+    val meins = raum?.vehicles?.firstOrNull { it.playerId == eigeneKennung && eigeneKennung.isNotEmpty() }
     val einsatz = raum?.incidents?.firstOrNull { it.id == meins?.einsatzId }
+    val ich = raum?.players?.firstOrNull { it.id == eigeneKennung }
     val oben = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .drawBehind { drawRect(Brush.verticalGradient(listOf(Farben.Bg, Farben.BgTief))) }
-            .raster(),
-    ) {
-        Fahrzeugkopf(meins, oben, beiVerlassen)
+    val tonwahl = rememberTonwahl()
+    val werk = rememberMelderwerk()
+    val bauform by rememberMelderBauform()
+    val ton by rememberMelderTon()
+    val art by rememberAlarmierungsart()
+    val form by rememberKennungsform()
+    val jetzt = rememberSekundenuhr()
 
-        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-            if (raum == null || meins == null) {
-                Ladezeile("Der Dienst wird geladen …", Modifier.padding(Abstand.Gross))
-            } else {
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(Abstand.Gross),
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .verticalScroll(rememberScrollState())
-                        .padding(Abstand.Gross),
-                ) {
-                    Ausbildungsleiste(stand, beiUeberspringen)
+    val stufe = konto?.level ?: ich?.level ?: 1
+    val premium = konto?.premiumAktiv ?: (ich?.premium == true)
+    val melderAmHandy = stand.begleiterGekoppelt
+    val alarmpegel = tonwahl.alarmpegel(art)
+    val lautlos = tonwahl.geraetAus || art == "stumm" || art == "vibration" || tonwahl.melder <= 0f
+    val kreis = raum?.settings?.landkreis.orEmpty()
+    val kennung: (Rundenfahrzeug) -> String = { f ->
+        Fahrzeugkennung.kennung(f.kurzname, f.typ, f.organisation, f.hiOrg, form, kreis)
+    }
 
-                    when (reiter) {
-                        Fahrzeugteil.Einsatz -> {
-                            // Die Navigation — 220 pt wie im Web. Ohne Auftrag
-                            // und auf Anfahrt steht sie oben, sonst unter dem
-                            // Einsatz (`karteOben` in FahrzeugView.vue).
-                            val karteOben = einsatz == null || meins.status == 3
-                            if (karteOben) {
-                                de.pagerspass.pagerspass.ui.karte.Lagekarte(
-                                    raum = raum,
-                                    eigenesFahrzeugId = meins.id,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(220.dp),
-                                )
-                            }
-                            TeilEinsatz(
-                                einsatz = einsatz,
-                                meins = meins,
-                                katalog = katalog,
-                                beiLagemeldung = beiLagemeldung,
-                                beiFms = beiFms,
-                            )
-                            ManvBereich(
-                                einsatz = einsatz,
-                                raum = raum,
-                                meins = meins,
-                                griffe = manv,
-                            )
-                            if (!karteOben) {
-                                de.pagerspass.pagerspass.ui.karte.Lagekarte(
-                                    raum = raum,
-                                    eigenesFahrzeugId = meins.id,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(220.dp),
-                                )
-                            }
-                        }
+    // ------------------------------------------------------------ Der Melder
 
-                        Fahrzeugteil.Status -> TeilStatus(
-                            meins = meins,
-                            tasten = katalog?.fmsStatus.orEmpty(),
-                            beiFms = beiFms,
-                            beiSondersignal = beiSondersignal,
-                        )
+    val melder = remember { Melderstand() }
 
-                        Fahrzeugteil.Funk -> {
-                            // Der Einsatzstellenfunk schaltet mit Status 4 an
-                            // der Lage frei — vorher steht der Reiter gesperrt
-                            // da und sagt warum (dieselbe Regel wie im Web).
-                            val stelleFrei = meins.status == 4 &&
-                                meins.einsatzstelleErreicht &&
-                                meins.einsatzId != null
-                            var leitung by remember { mutableStateOf("funk") }
-                            if (!stelleFrei && leitung == "einsatzstelle") leitung = "funk"
+    // Ein neuer Alarm kommt als Ereignis — und nur das Ereignis darf den Melder wecken.
+    LaunchedEffect(stand.alarm) { stand.alarm?.let { melder.neu(it) } }
 
-                            Reiterreihe {
-                                Reiter(
-                                    "Funkverkehr",
-                                    offen = leitung == "funk",
-                                    beiDruck = { leitung = "funk" },
-                                    modifier = Modifier.weight(1f),
-                                )
-                                Reiter(
-                                    if (stelleFrei) "Einsatzstelle" else "Einsatzstelle · S4",
-                                    offen = leitung == "einsatzstelle",
-                                    beiDruck = { if (stelleFrei) leitung = "einsatzstelle" },
-                                    modifier = Modifier.weight(1f),
-                                )
-                            }
-
-                            if (leitung == "einsatzstelle") {
-                                Einsatzstellenfaden(
-                                    zeilen = raum.einsatzstellenchat,
-                                    beiSenden = beiEinsatzstelle,
-                                )
-                            } else {
-                                Funkprotokoll(
-                                    zeilen = stand.funk,
-                                    eigenerRufname = meins.funkrufname,
-                                    laeuft = stand.laeuft,
-                                    beiSenden = { beiFunk(it) },
-                                )
-                                stand.funkhinweis?.let { SehrLeise(it) }
-                                Sprechtaste(
-                                    sendet = stand.sendet,
-                                    wirdVerstanden = stand.wirdVerstanden,
-                                    belegtVon = stand.sprecher.values.firstOrNull(),
-                                    gesperrtBis = stand.funkGesperrtBis,
-                                    beiDruck = beiSprechstart,
-                                    beiLoslassen = beiSprechende,
-                                )
-                            }
-                        }
-
-                        Fahrzeugteil.Mehr -> TeilMehrFahrzeug(beiDienstende)
-                    }
-                }
-            }
+    // Ein Einsatz, der diesem Fahrzeug nicht mehr gehört, gehört auch vom Display —
+    // geprüft bei jedem neuen Raumstand, nicht bei jedem Positions-Tick.
+    LaunchedEffect(raum?.version, meins?.einsatzId) {
+        val oberste = melder.aktuell
+        if (meins != null && oberste != null && meins.einsatzId != oberste.incidentId && raum?.version != 0L) {
+            melder.raeumen()
         }
+    }
 
-        Teilleiste(
-            teile = Fahrzeugteil.entries.map { Teil(it.name, it.titel, it.zeichen) },
-            offen = reiter.name,
-            // Ein offener Alarm ruft nach dem Einsatz-Teil — dort steht, wohin
-            // es geht.
-            ruft = if (meins?.alarmOffen == true) setOf(Fahrzeugteil.Einsatz.name) else emptySet(),
-            beiWahl = { id -> reiter = Fahrzeugteil.valueOf(id) },
+    // Quittiert ist quittiert — auf jedem Bildschirm des Platzes. Fällt `alarmOffen`,
+    // während hier noch ein Alarm tönt, hat jemand am gekoppelten Handy gedrückt.
+    var warOffen by remember { mutableStateOf(meins?.alarmOffen) }
+    LaunchedEffect(meins?.alarmOffen) {
+        val offen = meins?.alarmOffen
+        if (warOffen == true && offen == false && melder.hatAlarm) melder.quittieren()
+        warOffen = offen
+    }
+
+    // Ton und Vibration — nicht, wenn ein Handy am Platz der Melder ist: Zwei
+    // Melder, die dieselbe Schleife versetzt spielen, sind ein Echo.
+    val tonAktiv = melder.hatAlarm && !melderAmHandy
+    LaunchedEffect(tonAktiv, melder.aktuell, ton, alarmpegel) {
+        val a = melder.aktuell
+        if (tonAktiv && a != null) werk.alarmStarten(ton, a.prioritaet, alarmpegel) else werk.alarmStoppen()
+    }
+    LaunchedEffect(melder.aktuell?.zeit, melder.aktuell?.incidentId) {
+        if (tonAktiv && !tonwahl.geraetAus && (art == "voll" || art == "vibration")) werk.vibrationAlarm()
+    }
+
+    // Die Ruferinnerung: eine quittierte, aber stehende Meldung meldet sich jede Minute.
+    val erinnern = melder.meldungSteht && melder.quittiert && !melderAmHandy
+    LaunchedEffect(erinnern, melder.aktuell?.incidentId) {
+        while (erinnern && isActive) {
+            delay(ERINNERUNG_TAKT_MS)
+            werk.erinnerung(alarmpegel)
+        }
+    }
+
+    // Die Pegel der Runde folgen dem Tonregler — auch die Durchsage der Leitstelle.
+    LaunchedEffect(tonwahl.funkpegel, tonwahl.dmoStumm, tonwahl.durchsage, tonwahl.melder, tonwahl.geraetAus) {
+        griffe.pegel(
+            tonwahl.funkpegel,
+            if (tonwahl.dmoStumm) 0f else tonwahl.funkpegel,
+            if (tonwahl.durchsage && !tonwahl.geraetAus) tonwahl.melder else 0f,
         )
     }
-}
 
-private enum class Fahrzeugteil(
-    val titel: String,
-    val zeichen: androidx.compose.ui.graphics.vector.ImageVector,
-) {
-    Einsatz("Einsatz", Zeichen.Lage),
-    Status("Status", Zeichen.Melder),
-    Funk("Funk", Zeichen.Funk),
-    Mehr("Mehr", Zeichen.LobbyMehr),
+    val quittieren: () -> Unit = {
+        if (melder.meldungSteht && !melder.quittiert) {
+            melder.quittieren()
+            werk.alarmStoppen()
+            werk.vibrationAus()
+            if (bauform != "fax" && bauform != "monitor") werk.quittung(alarmpegel)
+            griffe.alarmQuittieren()
+        }
+    }
+
+    // Status 3 und 4 räumen den Melder — der Einsatz ist übernommen.
+    val fms: (Int, String?, Int?) -> Unit = { status, grund, dauer ->
+        if (status == 3 || status == 4) {
+            melder.raeumen()
+            werk.alarmStoppen()
+            werk.vibrationAus()
+            griffe.alarmWeg()
+        }
+        werk.statusVersand(tonwahl.funkpegel)
+        griffe.fms(status, grund, dauer)
+    }
+
+    val ausruecken: () -> Unit = {
+        if (melder.meldungSteht) {
+            quittieren()
+            fms(3, null, null)
+        }
+    }
+
+    // ------------------------------------------------------------ Die Reiter
+
+    val ersterReiter: String? = when {
+        melderAmHandy -> null
+        tonwahl.bauart == "dme" -> "melder"
+        tonwahl.bauart == "funk" -> "geraet"
+        else -> null
+    }
+    var reiter by remember { mutableStateOf("fahrzeug") }
+    if ((reiter == "melder" || reiter == "geraet") && ersterReiter != reiter) reiter = "fahrzeug"
+    var gelesen by remember { mutableIntStateOf(stand.funk.size) }
+    val ungelesen = if (reiter == "funk") 0 else (stand.funk.size - gelesen).coerceAtLeast(0)
+    LaunchedEffect(reiter, stand.funk.size) { if (reiter == "funk") gelesen = stand.funk.size }
+
+    var verlassenFragen by remember { mutableStateOf(false) }
+    var dienstendeFragen by remember { mutableStateOf(false) }
+    var tonreglerOffen by remember { mutableStateOf(false) }
+    var begleiterOffen by remember { mutableStateOf(false) }
+
+    Box(modifier = modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .drawBehind { drawRect(Brush.verticalGradient(listOf(Farben.Bg, Farben.BgTief))) }
+                .raster(),
+        ) {
+            if (raum == null || meins == null) {
+                Box(Modifier.padding(top = oben)) {
+                    Ladezeile("Der Dienst wird geladen …", Modifier.padding(Abstand.Gross))
+                }
+                return@Column
+            }
+
+            Fahrzeugkopf(
+                raum = raum,
+                meins = meins,
+                oben = oben,
+                tonwahl = tonwahl,
+                griffe = Kopfgriffe(
+                    dienstende = {
+                        val entscheidet = !raum.dienstendeEigeneStimme &&
+                            raum.dienstendeStimmen + 1 >= raum.dienstendeSchwelle
+                        if (entscheidet) dienstendeFragen = true else griffe.dienstende()
+                    },
+                    verlassen = { verlassenFragen = true },
+                    hilfe = griffe.hilfe,
+                    tonregler = { tonreglerOffen = true },
+                    begleiter = { begleiterOffen = true },
+                ),
+            )
+
+            Column(
+                verticalArrangement = Arrangement.spacedBy(Abstand.Winzig),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = Abstand.Normal, vertical = Abstand.Winzig),
+            ) {
+                Fahrzeugbaender(raum, meins, jetzt, griffe.leitstelleUebernehmen)
+            }
+
+            Column(
+                verticalArrangement = Arrangement.spacedBy(Abstand.Gross),
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(Abstand.Gross),
+            ) {
+                Ausbildungsleiste(stand, griffe.ueberspringen)
+
+                when (reiter) {
+                    "melder" -> MelderGeraet(
+                        bauform = bauform,
+                        stufe = stufe,
+                        premium = premium,
+                        gesichtId = melderGesicht,
+                        melder = melder,
+                        verlauf = stand.melderverlauf,
+                        fahrzeug = meins,
+                        kennung = kennung(meins),
+                        raum = raum,
+                        menue = rememberMeldermenue(premium, tonwahl, stand.melderverlauf) { werk.taste(alarmpegel) },
+                        lautlos = lautlos,
+                        griffe = Meldergriffe(
+                            quittieren = quittieren,
+                            ausruecken = ausruecken,
+                            taste = { werk.taste(alarmpegel) },
+                        ),
+                    )
+
+                    "geraet" -> Geraetefeld {
+                        Handfunkgeraet(
+                            stand = stand,
+                            raum = raum,
+                            meins = meins,
+                            einsatz = einsatz,
+                            alarmzeilen = melder.aktuell?.takeIf { melder.hatAlarm }?.let { meldungszeilen(it) },
+                            jetzt = jetzt,
+                            tonwahl = tonwahl,
+                            beiTaste = { werk.taste(tonwahl.funkpegel) },
+                            beiQuittieren = quittieren,
+                            beiFms = fms,
+                            griffe = griffe.funk,
+                        )
+                    }
+
+                    "funk" -> FahrzeugFunkteil(
+                        stand = stand,
+                        raum = raum,
+                        meins = meins,
+                        einsatz = einsatz,
+                        mitGeraet = ersterReiter != "geraet",
+                        geraet = {
+                            Handfunkgeraet(
+                                stand = stand,
+                                raum = raum,
+                                meins = meins,
+                                einsatz = einsatz,
+                                alarmzeilen = if (tonwahl.bauart == "funk") {
+                                    melder.aktuell?.takeIf { melder.hatAlarm }?.let { meldungszeilen(it) }
+                                } else {
+                                    null
+                                },
+                                jetzt = jetzt,
+                                tonwahl = tonwahl,
+                                beiTaste = { werk.taste(tonwahl.funkpegel) },
+                                beiQuittieren = quittieren,
+                                beiFms = fms,
+                                griffe = griffe.funk,
+                            )
+                        },
+                        griffe = griffe.funk,
+                    )
+
+                    else -> TeilFahrzeug(
+                        stand = stand,
+                        meins = meins,
+                        katalog = katalog,
+                        jetzt = jetzt,
+                        kennung = kennung,
+                        melderAmHandy = melderAmHandy,
+                        tonwahl = tonwahl,
+                        werk = werk,
+                        fms = fms,
+                        griffe = griffe,
+                        manv = manv,
+                    )
+                }
+            }
+
+            FahrzeugEinzelruf(stand, tonwahl, griffe.einzelruf)
+
+            val teile = buildList {
+                when (ersterReiter) {
+                    "melder" -> add(Teil("melder", "Melder", Zeichen.Melder))
+                    "geraet" -> add(Teil("geraet", "Gerät", Zeichen.Funk))
+                }
+                add(Teil("fahrzeug", "Fahrzeug", Zeichen.Fahrzeug))
+                add(Teil("funk", "Funk", Zeichen.Kanal))
+                add(Teil("hilfe", "Hilfe", Zeichen.Wiki))
+            }
+            Teilleiste(
+                teile = teile,
+                offen = reiter,
+                beiWahl = { id -> if (id == "hilfe") griffe.hilfe() else reiter = id },
+                marken = if (ungelesen > 0) mapOf("funk" to ungelesen) else emptyMap(),
+                // Der Punkt sagt: da liegt ein Alarm — auch wer gerade auf den Tasten war.
+                ruft = if (melder.meldungSteht && ersterReiter != null) setOf(ersterReiter) else emptySet(),
+            )
+        }
+
+        // Die Alarm-App liegt über allem — nur bei der Bauart „App".
+        val alarm = melder.aktuell
+        if (raum != null && meins != null && alarm != null && tonwahl.bauart == "app" && !melderAmHandy) {
+            AlarmAppUeberlagerung(
+                alarm = alarm,
+                quittiert = melder.quittiert,
+                eigenerRufname = meins.funkrufname,
+                jetzt = jetzt,
+                beiQuittieren = quittieren,
+                beiAusruecken = ausruecken,
+            )
+        }
+    }
+
+    if (raum != null && meins != null) {
+        if (verlassenFragen) {
+            VerlassenBlende(
+                meins = meins,
+                einsatz = einsatz,
+                beiBleiben = { verlassenFragen = false },
+                beiAussteigen = {
+                    verlassenFragen = false
+                    griffe.verlassen()
+                },
+            )
+        }
+        if (dienstendeFragen) {
+            DienstendeBlende(
+                raum = raum,
+                beiWeiter = { dienstendeFragen = false },
+                beiBeenden = {
+                    dienstendeFragen = false
+                    griffe.dienstende()
+                },
+            )
+        }
+        if (tonreglerOffen) {
+            FahrzeugTonregler(
+                tonwahl = tonwahl,
+                einzelrufZulassen = ich?.einzelrufZulassen ?: true,
+                beiEinzelrufZulassen = griffe.einzelrufZulassen,
+                tonname = alarmtonName(ton),
+                beiSchliessen = { tonreglerOffen = false },
+            )
+        }
+        if (begleiterOffen) {
+            FahrzeugBegleiterBlende(
+                premium = ich?.premium == true || premium,
+                gekoppelt = stand.begleiterGekoppelt,
+                beiZugang = griffe.begleiterZugang,
+                beiPremium = griffe.premium,
+                beiSchliessen = { begleiterOffen = false },
+            )
+        }
+    }
 }
 
 /**
- * Der Kopf — Rufname, Status, Verlassen.
+ * Der Fahrzeug-Teil: Karte, Einsatz, FMS und Sondersignal, Lagemeldung, die
+ * Feststellung der Streife, Führung und Patienten.
  *
- * Der Statuspunkt trägt die FMS-Farbe: Wer aufs Gerät sieht, weiß in einer
- * Sekunde, ob er frei, unterwegs oder gebunden ist.
+ * <b>Wann die Karte oben steht:</b> ohne Auftrag und auf der Anfahrt (Status 3) —
+ * dann ist sie das, worauf man sieht. Am Einsatzort zählen Tasten, Aufgaben und
+ * Lagemeldung, und die Karte darf nach unten (`karteOben` im Web).
  */
 @Composable
-private fun Fahrzeugkopf(
-    meins: Rundenfahrzeug?,
-    oben: androidx.compose.ui.unit.Dp,
-    beiVerlassen: () -> Unit,
+private fun ColumnScope.TeilFahrzeug(
+    stand: Rundenstand,
+    meins: Rundenfahrzeug,
+    katalog: Katalog?,
+    jetzt: Long,
+    kennung: (Rundenfahrzeug) -> String,
+    melderAmHandy: Boolean,
+    tonwahl: de.pagerspass.pagerspass.mobil.Tonwahl,
+    werk: de.pagerspass.pagerspass.mobil.Melderwerk,
+    fms: (Int, String?, Int?) -> Unit,
+    griffe: FahrzeugGriffe,
+    manv: ManvGriffe,
 ) {
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(Abstand.Normal),
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(Brush.verticalGradient(listOf(Farben.FlaecheHoch, Farben.Flaeche)))
-            .drawBehind {
-                val strich = 1.dp.toPx()
-                drawLine(
-                    color = Farben.Rand,
-                    start = Offset(0f, size.height - strich / 2f),
-                    end = Offset(size.width, size.height - strich / 2f),
-                    strokeWidth = strich,
-                )
-            }
-            .padding(top = oben)
-            .padding(horizontal = Abstand.Gross, vertical = Abstand.Normal),
-    ) {
-        if (meins != null) {
-            Box(
-                contentAlignment = Alignment.Center,
-                modifier = Modifier
-                    .size(40.dp)
-                    .background(fmsFarbe(meins.status), CircleShape),
-            ) {
-                Text(
-                    text = meins.status.toString(),
-                    style = Schrift.MarkeZahl,
-                    color = Farben.AufFarbe,
-                )
-            }
-        }
-
-        Column(
-            verticalArrangement = Arrangement.spacedBy(Abstand.Haar),
-            modifier = Modifier.weight(1f),
-        ) {
-            Text(
-                text = meins?.funkrufname ?: "—",
-                style = Schrift.MonoNormal.copy(fontSize = Schrift.GROSS),
-                color = Farben.Text,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            SehrLeise(meins?.statusText.orEmpty().ifBlank { "…" }, mono = true)
-        }
-
-        Knopf("Verlassen", beiVerlassen, art = Knopfart.Gefahr, kompakt = true)
+    val raum = stand.raum ?: return
+    val einsatz = raum.incidents.firstOrNull { it.id == meins.einsatzId }
+    val karteOben = einsatz == null || meins.status == 3
+    val karte: @Composable () -> Unit = {
+        Lagekarte(raum = raum, eigenesFahrzeugId = meins.id, modifier = Modifier.fillMaxWidth().height(220.dp))
     }
+
+    if (karteOben) karte()
+
+    FahrzeugEinsatzkarte(
+        raum = raum,
+        meins = meins,
+        einsatz = einsatz,
+        jetzt = jetzt,
+        kennung = kennung,
+        melderAmHandy = melderAmHandy,
+        beiWasser = griffe.wasserAufnehmen,
+        beiAufgabe = { griffe.aufgabeUebernehmen(it) },
+    )
+
+    FmsKasten(
+        raum = raum,
+        meins = meins,
+        einsatz = einsatz,
+        katalog = katalog,
+        jetzt = jetzt,
+        imFunk = tonwahl.bauart == "funk" && !melderAmHandy,
+        tonwahl = tonwahl,
+        werk = werk,
+        beiFms = fms,
+        beiSondersignal = griffe.sondersignal,
+        beiStreife = { griffe.streife(meins.id, it) },
+    )
+
+    Lagemeldungskasten(
+        einsatz = einsatz,
+        katalog = katalog,
+        beiLagemeldung = griffe.lagemeldung,
+        beiNachfordern = griffe.nachfordern,
+    )
+
+    if (meins.aufStreife) {
+        Feststellungskasten(meins = meins, katalog = katalog, beiAnlegen = griffe.streifeneinsatz)
+    }
+
+    ManvBereich(
+        einsatz = einsatz,
+        raum = raum,
+        meins = meins,
+        griffe = manv,
+        kennung = kennung,
+        beiNachfordern = griffe.nachfordern,
+    )
+
+    Patientenfenster(einsatz = einsatz, meins = meins, jetzt = jetzt, griffe = griffe.patient)
+
+    if (!karteOben) karte()
 }
 
 /**
@@ -349,202 +577,5 @@ fun ColumnScope.Ausbildungsleiste(stand: Rundenstand, beiUeberspringen: () -> Un
         Row {
             Knopf("Überspringen", beiUeberspringen, art = Knopfart.Leise, kompakt = true)
         }
-    }
-}
-
-/**
- * Der Einsatz-Teil: wohin es geht und was zu melden ist.
- *
- * <b>Die Lagemeldungen kommen aus dem Stichwort.</b> Niemand tippt „Feuer unter
- * Kontrolle" auf einer Handytastatur, wenn der Satz einen Fingertipp entfernt
- * steht — der Katalog führt zu jedem Stichwort die Sätze, die zu dieser Lage
- * passen. Das freie Feld bleibt daneben: Es gibt immer eine Lage, die der
- * Katalog nicht kennt.
- */
-@Composable
-private fun ColumnScope.TeilEinsatz(
-    einsatz: Einsatz?,
-    meins: Rundenfahrzeug,
-    katalog: Katalog?,
-    beiLagemeldung: (String) -> Unit,
-    beiFms: (Int, String?, Int?) -> Unit,
-) {
-    if (einsatz == null) {
-        Leerhinweis(
-            "Kein Einsatz. Du bist frei auf Wache — der Melder weckt dich, wenn es " +
-                "so weit ist.",
-        )
-        return
-    }
-
-    Kasten(marke = true, wartet = !einsatz.abgeschlossen, abstandInnen = Abstand.Klein) {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text(
-                text = einsatz.stichwort,
-                style = Schrift.Anzeige.copy(fontSize = Schrift.SCHLAGZEILE),
-                color = Farben.Text,
-                modifier = Modifier.weight(1f),
-            )
-            Marke(einsatzZustand(einsatz.state), farbe = einsatzFarbe(einsatz.state))
-        }
-
-        Text(einsatz.stichwortText, style = Schrift.Normal, color = Farben.TextLeise)
-        if (einsatz.meldebild.isNotBlank()) {
-            Text(einsatz.meldebild, style = Schrift.Klein, color = Farben.TextLeise)
-        }
-
-        Text(
-            text = listOfNotNull(einsatz.adresse.ifBlank { null }, einsatz.ortsteil)
-                .joinToString(" · "),
-            style = Schrift.MonoNormal,
-            color = Farben.AmberHell,
-        )
-
-        einsatz.meldender?.let { SehrLeise("gemeldet von $it") }
-    }
-
-    // Die zwei Meldungen, die jede Fahrt braucht — als Knöpfe, nicht als
-    // Merksatz: Status 4 bei Ankunft, Status 1 nach getaner Arbeit.
-    Ueberschrift("Melden")
-    Pillenreihe {
-        Pille("Status 3 — Anfahrt", an = meins.status == 3, beiDruck = { beiFms(3, null, null) })
-        Pille("Status 4 — vor Ort", an = meins.status == 4, beiDruck = { beiFms(4, null, null) })
-        Pille("Status 1 — frei", an = meins.status == 1, beiDruck = { beiFms(1, null, null) })
-    }
-
-    Ueberschrift("Lagemeldung")
-    val saetze = remember(einsatz.stichwort, katalog) {
-        katalog?.stichworte?.firstOrNull { it.stichwort == einsatz.stichwort }
-            ?.lagemeldungen.orEmpty()
-    }
-
-    if (saetze.isNotEmpty()) {
-        Pillenreihe {
-            saetze.forEach { satz ->
-                Pille(satz, an = false, beiDruck = { beiLagemeldung(satz) })
-            }
-        }
-    }
-
-    FreiesMeldefeld(beiLagemeldung)
-}
-
-/** Das freie Feld für die Lage, die der Katalog nicht kennt. */
-@Composable
-private fun FreiesMeldefeld(beiSenden: (String) -> Unit) {
-    var text by remember { mutableStateOf("") }
-
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
-        verticalAlignment = Alignment.Bottom,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Feld(
-            wert = text,
-            beiAenderung = { text = it.take(200) },
-            platzhalter = "Eigene Lagemeldung …",
-            weiterTaste = ImeAction.Send,
-            modifier = Modifier.weight(1f),
-        )
-        Knopf(
-            aufschrift = "Melden",
-            beiDruck = {
-                beiSenden(text)
-                text = ""
-            },
-            aktiv = text.isNotBlank(),
-            kompakt = true,
-        )
-    }
-}
-
-/**
- * Der Status-Teil: das FMS-Tastenfeld.
- *
- * <b>Die Aufschriften kommen aus dem Katalog</b> — je Organisation, denn drei
- * Status heißen nicht überall gleich. Die gerade gültige Taste ist gefüllt,
- * alle anderen tragen nur ihre Farbe als Rand: Das ist das Display eines
- * Funkgeräts, keine Knopfreihe.
- */
-@Composable
-private fun ColumnScope.TeilStatus(
-    meins: Rundenfahrzeug,
-    tasten: List<FmsTaste>,
-    beiFms: (Int, String?, Int?) -> Unit,
-    beiSondersignal: (Boolean) -> Unit,
-) {
-    Ueberschrift("FMS-Status")
-
-    if (tasten.isEmpty()) {
-        Ladezeile("Das Tastenfeld wird geladen …")
-        return
-    }
-
-    Column(verticalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
-        tasten.sortedBy { it.status }.forEach { taste ->
-            val an = meins.status == taste.status
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(Abstand.Normal),
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .defaultMinSize(minHeight = 48.dp)
-                    .background(
-                        color = if (an) fmsFarbe(taste.status) else Farben.Flaeche,
-                        shape = Rundung.Klein,
-                    )
-                    .flaeche(
-                        farbe = if (an) fmsFarbe(taste.status) else Farben.Flaeche,
-                        randfarbe = fmsFarbe(taste.status),
-                        ecke = 9.dp,
-                        mitLichtkante = false,
-                    )
-                    .clickable(
-                        onClick = { beiFms(taste.status, null, null) },
-                        role = Role.Button,
-                        indication = null,
-                        interactionSource = null,
-                    )
-                    .padding(horizontal = Abstand.Normal),
-            ) {
-                Text(
-                    text = taste.status.toString(),
-                    style = Schrift.MonoNormal,
-                    color = if (an) Farben.AufFarbe else fmsFarbe(taste.status),
-                )
-                Text(
-                    text = taste.aufschrift(meins.organisation),
-                    style = Schrift.Normal,
-                    color = if (an) Farben.AufFarbe else Farben.Text,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
-    }
-
-    Ueberschrift("Fahrt")
-    Schalterzeile(
-        titel = "Sondersignal",
-        unterzeile = "Ohne fährt es sich wie im Berufsverkehr — weil es das ist.",
-        an = !meins.sondersignalAus,
-        beiWechsel = { an -> beiSondersignal(!an) },
-    )
-}
-
-/** Der Mehr-Teil: das Dienstende. */
-@Composable
-private fun ColumnScope.TeilMehrFahrzeug(beiDienstende: () -> Unit) {
-    Ueberschrift("Dienstende")
-    SehrLeise(
-        "Das Dienstende ist eine Abstimmung — jeder stimmt mit, die Leitstelle " +
-            "zählt. Nach dem Ende steht die Auswertung.",
-    )
-    Row {
-        Knopf("Dienst beenden", beiDienstende, art = Knopfart.Gefahr)
     }
 }

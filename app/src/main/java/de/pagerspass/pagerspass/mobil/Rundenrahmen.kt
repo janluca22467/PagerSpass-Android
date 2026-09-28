@@ -45,7 +45,6 @@ import de.pagerspass.pagerspass.ansichten.FahrzeugSeite
 import de.pagerspass.pagerspass.ansichten.LeitstelleSeite
 import de.pagerspass.pagerspass.ansichten.LobbyGriffe
 import de.pagerspass.pagerspass.ansichten.LobbySeite
-import de.pagerspass.pagerspass.ansichten.ManvGriffe
 import de.pagerspass.pagerspass.ansichten.Melderblende
 import de.pagerspass.pagerspass.ansichten.RegieGriffe
 import de.pagerspass.pagerspass.ansichten.Rundentexte
@@ -231,36 +230,24 @@ internal fun Rundenrahmen(
             )
 
             // Nur wer einen Platz hat, fährt — alle anderen wählen in der Lobby.
-            laeuft && ich != null && ich.role != "Unbestimmt" -> FahrzeugSeite(
-                stand = stand,
-                eigeneKennung = kennung,
-                katalog = seiten.katalog.inhalt,
-                beiFms = { status, grund, dauer -> runde.fmsSetzen(status, grund, dauer) },
-                beiSondersignal = { runde.sondersignal(it) },
-                beiLagemeldung = { runde.lagemeldung(it) },
-                beiFunk = { runde.funken(it) },
-                beiEinsatzstelle = { runde.einsatzstelleSchreiben(it) },
-                beiSprechstart = { runde.sprechenStarten() },
-                beiSprechende = { runde.sprechenBeenden() },
-                beiUeberspringen = { runde.ausbildungUeberspringen() },
-                beiDienstende = { runde.dienstBeenden() },
-                beiVerlassen = verlassen,
-                manv = ManvGriffe(
-                    uebernehmen = { e, z -> runde.einsatzleitungUebernehmen(e, z) },
-                    abgeben = { e, z -> runde.einsatzleitungAbgeben(e, z) },
-                    abschnittBilden = { e, n, z -> runde.abschnittBilden(e, n, z) },
-                    abschnittZuteilen = { e, f, a, z -> runde.abschnittZuteilen(e, f, a, z) },
-                    auftrag = { e, a, f -> runde.manvauftragUebertragen(e, a, f) },
-                    anordnen = { e, art, g -> runde.versorgungsstelleAnordnen(e, art, g) },
-                    abbauen = { e, s, ab -> runde.versorgungsstelleAbbauen(e, s, ab) },
-                    verlegen = { e, p, s -> runde.patientVerlegen(e, p, s) },
-                    transportmittel = { e, p, f -> runde.patientTransportmittel(e, p, f) },
-                    zielklinik = { e, p, k -> runde.patientZielklinik(e, p, k) },
-                    transport = { e, p -> runde.transportEinleiten(e, p) },
-                    verstorbene = { runde.verstorbeneUebergeben(it) },
-                    triage = { runde.triageKoordinieren(it) },
-                ),
-            )
+            // Fahrzeug: die Griffe stehen in `mobil/Fahrzeuggriffe.kt`.
+            laeuft && ich != null && ich.role != "Unbestimmt" -> {
+                LaunchedEffect(Unit) { sitzung.profilLaden() }
+                FahrzeugSeite(
+                    stand = stand,
+                    eigeneKennung = kennung,
+                    katalog = seiten.katalog.inhalt,
+                    konto = sitzungsstand.konto,
+                    melderGesicht = seiten.profil.inhalt?.melderGesicht,
+                    griffe = fahrzeuggriffe(
+                        runde = runde,
+                        zusammenhang = zusammenhang,
+                        kennung = kennung,
+                        hilfe = { browser.openUri(rundenhilfe(raum, ich, stand.zuschauer)) },
+                    ),
+                    manv = manvgriffe(runde),
+                )
+            }
 
             else -> LobbySeite(
                 stand = stand,
@@ -315,7 +302,11 @@ internal fun Rundenrahmen(
         )
     }
 
-    stand.alarm?.let { alarm ->
+    // Fahrzeug: Im Fahrzeug führt die Seite ihren Melder selbst (Bauart, Gerät, Ton);
+    // die Blende bleibt für jede andere Lage, in der ein Alarm ankommt.
+    val imFahrzeug = laeuft && ich != null && ich.role != "Unbestimmt" && !ich.istLeitstelle &&
+        !stand.zuschauer && stand.rausGrund == null
+    if (!imFahrzeug) stand.alarm?.let { alarm ->
         Melderblende(
             alarm = alarm,
             beiQuittieren = { runde.alarmQuittieren() },

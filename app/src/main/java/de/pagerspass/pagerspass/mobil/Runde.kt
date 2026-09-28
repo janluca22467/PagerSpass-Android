@@ -1402,6 +1402,23 @@ class Runde(anwendung: Application) : AndroidViewModel(anwendung) {
     /** Das Warnband ist weggetippt oder abgelaufen. */
     fun bevoelkerungswarnungWegnehmen() = _stand.update { it.copy(bevoelkerungswarnung = null) }
 
+    // ------------------------------------------- Fahrzeug: der Tonregler der Runde
+
+    /**
+     * Lauter, leiser, still — die Regler des Tonreglers auf die Lautsprecher der
+     * Runde. Der Funkregler trägt Funk, Draht, Einzelruf und Telefon; die
+     * Einsatzstelle hat ihren eigenen (DMO mithören), die Durchsage der Leitstelle
+     * beim Alarm hängt am Melderregler (`durchsageAnwenden` im Web).
+     */
+    fun pegelSetzen(funk: Float, einsatzstelle: Float, durchsage: Float) {
+        lautsprecher.lautstaerke(funk)
+        drahtLautsprecher.lautstaerke(funk)
+        einzelrufLautsprecher.lautstaerke(funk)
+        telefonLautsprecher.lautstaerke(funk)
+        einsatzstellenLautsprecher.lautstaerke(einsatzstelle)
+        durchsageLautsprecher.lautstaerke(durchsage)
+    }
+
     // ------------------------------------------------ Für `Rundenbefehle.kt`
 
     /** Eine Hub-Methode rufen, ohne auf Antwort zu warten. */

@@ -15,29 +15,30 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.unit.dp
 import de.pagerspass.pagerspass.netz.Einsatz
+import de.pagerspass.pagerspass.netz.Klinik
 import de.pagerspass.pagerspass.netz.ManvPatient
 import de.pagerspass.pagerspass.netz.Raumzustand
 import de.pagerspass.pagerspass.netz.Rundenfahrzeug
-import de.pagerspass.pagerspass.ui.bausteine.Feld
-import de.pagerspass.pagerspass.ui.bausteine.Kasten
+import de.pagerspass.pagerspass.ui.bausteine.Etikett
 import de.pagerspass.pagerspass.ui.bausteine.Knopf
 import de.pagerspass.pagerspass.ui.bausteine.Knopfart
+import de.pagerspass.pagerspass.ui.bausteine.Leise
 import de.pagerspass.pagerspass.ui.bausteine.Marke
 import de.pagerspass.pagerspass.ui.bausteine.SehrLeise
-import de.pagerspass.pagerspass.ui.bausteine.Ueberschrift
 import de.pagerspass.pagerspass.ui.theme.Abstand
 import de.pagerspass.pagerspass.ui.theme.Farben
 import de.pagerspass.pagerspass.ui.theme.Schrift
+import de.pagerspass.pagerspass.ui.theme.flaeche
 
 /**
  * MANV, Sichtung, Führung — die Kästen der Fahrzeugseite bei großen Lagen.
  *
  * Übertragen aus `EinsatzleitungPanel.vue`, `ManvVersorgung.vue` und dem
- * Führungs-Reiter des `EinsatzleiterTablet.vue`. Am Handy ist das Tablet nicht
- * aushertbar — alles steht als Kästen im Einsatz-Teil, wie im Web-Handyzweig.
+ * `EinsatzleiterTablet.vue` (siehe `FahrzeugTablet.kt`): <b>Vor der Übernahme der
+ * eine Knopf, danach das Tablet.</b> Die Versorgung steht im Fahrzeugbereich nur
+ * für die medizinische Führung, die nicht selbst führt — wer führt, findet sie im
+ * Tablet, und zwei Wege zu derselben Arbeit wären einer zu viel.
  *
  * <b>Die Regeln, die man beim Anfassen nicht brechen darf:</b>
  *  - Kategorien vergibt nie der Spieler; die Sichtung würfelt sie.
@@ -48,8 +49,9 @@ import de.pagerspass.pagerspass.ui.theme.Schrift
  */
 
 /**
- * Die Griffe der Führungs- und MANV-Kästen — ein Bündel statt zwölf einzelner
- * Parameter an der Fahrzeugseite.
+ * Die Griffe der Führungs- und MANV-Kästen samt Tablet — ein Bündel statt
+ * zwanzig einzelner Parameter an der Fahrzeugseite. `zweig` ist immer
+ * `Gesamt` oder `Rettungsdienst`.
  */
 class ManvGriffe(
     val uebernehmen: (String, String) -> Unit = { _, _ -> },
@@ -65,273 +67,230 @@ class ManvGriffe(
     val transport: (String, String) -> Unit = { _, _ -> },
     val verstorbene: (String) -> Unit = {},
     val triage: (String) -> Unit = {},
+    // --- Fahrzeug (Lücke A7): Umbenennen und Weiterreichen, dazu die Flächen und der Einsatzfunk.
+    /** Einsatz, bisheriger Name, neuer Name, Zweig. */
+    val abschnittUmbenennen: (String, String, String, String) -> Unit = { _, _, _, _ -> },
+    /** Einsatz, Zweig — die gesammelten Nachforderungen an die Leitstelle. */
+    val nachforderungenWeiterreichen: (String, String) -> Unit = { _, _ -> },
+    val bereitstellungsraumFestlegen: (String) -> Unit = {},
+    /** Einsatz, Fahrzeug, halten. */
+    val bereitstellungSetzen: (String, String, Boolean) -> Unit = { _, _, _ -> },
+    val landeplatzFestlegen: (String) -> Unit = {},
+    val landeplatzAusleuchten: (String) -> Unit = {},
+    /** Einsatz, Name der neuen DMO-Gruppe. */
+    val einsatzfunkgruppeOeffnen: (String, String) -> Unit = { _, _ -> },
+    val einsatzfunkgruppeSchliessen: (String) -> Unit = {},
+    /** Fahrzeug, Gruppe (`null` = zurück auf die Stammgruppe). */
+    val funkgruppeZuweisen: (String, String?) -> Unit = { _, _ -> },
 )
 
-/** Alle MANV- und Führungs-Kästen der Fahrzeugseite an einer Stelle. */
+/** Alle Führungs- und MANV-Kästen der Fahrzeugseite an einer Stelle. */
 @Composable
 fun ColumnScope.ManvBereich(
     einsatz: Einsatz?,
     raum: Raumzustand,
     meins: Rundenfahrzeug,
     griffe: ManvGriffe,
+    kennung: (Rundenfahrzeug) -> String,
+    beiNachfordern: (String) -> Unit,
 ) {
     if (einsatz == null) return
-
-    EinsatzleitungKasten(
-        einsatz = einsatz,
-        meins = meins,
-        beiUebernehmen = { zweig -> griffe.uebernehmen(einsatz.id, zweig) },
-        beiAbgeben = { zweig -> griffe.abgeben(einsatz.id, zweig) },
-    )
-
-    val fuehrt = einsatz.einsatzleitung == meins.funkrufname
-    val fuehrtRd = einsatz.einsatzleitungRd == meins.funkrufname
-
-    if (einsatz.manv && (fuehrt || fuehrtRd || fuehrungsdienstRd(meins))) {
-        ManvKasten(
-            einsatz = einsatz,
-            raum = raum,
-            meins = meins,
-            beiAnordnen = { art, groesse -> griffe.anordnen(einsatz.id, art, groesse) },
-            beiAbbauen = { stelle, ab -> griffe.abbauen(einsatz.id, stelle, ab) },
-            beiVerlegen = { p, stelle -> griffe.verlegen(einsatz.id, p, stelle) },
-            beiTransportmittel = { p, f -> griffe.transportmittel(einsatz.id, p, f) },
-            beiZielklinik = { p, k -> griffe.zielklinik(einsatz.id, p, k) },
-            beiTransport = { p -> griffe.transport(einsatz.id, p) },
-            beiVerstorbene = { griffe.verstorbene(einsatz.id) },
-            beiTriage = { griffe.triage(einsatz.id) },
-        )
-    }
-
-    if (fuehrt) {
-        FuehrungKasten(
-            einsatz = einsatz,
-            raum = raum,
-            zweig = "Gesamt",
-            beiBilden = { name -> griffe.abschnittBilden(einsatz.id, name, "Gesamt") },
-            beiZuteilen = { f, a -> griffe.abschnittZuteilen(einsatz.id, f, a, "Gesamt") },
-            beiAuftrag = { _, _ -> },
-        )
-    }
-    if (fuehrtRd) {
-        FuehrungKasten(
-            einsatz = einsatz,
-            raum = raum,
-            zweig = "Rettungsdienst",
-            beiBilden = { name -> griffe.abschnittBilden(einsatz.id, name, "Rettungsdienst") },
-            beiZuteilen = { f, a ->
-                griffe.abschnittZuteilen(einsatz.id, f, a, "Rettungsdienst")
-            },
-            beiAuftrag = { auftrag, f -> griffe.auftrag(einsatz.id, auftrag, f) },
-        )
-    }
+    EinsatzleitungPanel(einsatz, meins) { zweig -> griffe.uebernehmen(einsatz.id, zweig) }
+    ManvVersorgung(raum = raum, einsatz = einsatz, meins = meins, imTablet = false, griffe = griffe)
+    EinsatzleiterTablet(raum, meins, einsatz, kennung, griffe, beiNachfordern)
 }
 
 /** Ob die Lage groß genug für eine Einsatzleitung ist — die Web-Schwelle. */
 fun lageGrossGenug(einsatz: Einsatz): Boolean =
     einsatz.prioritaet >= 3 || einsatz.manv || einsatz.alarmierteFahrzeuge.size >= 4
 
-/** Ob dieses Fahrzeug die RD-Führung übernehmen darf — OrgL, ELRD oder LNA. */
-private fun fuehrungsdienstRd(f: Rundenfahrzeug): Boolean =
-    listOf("OrgL", "ELRD", "LNA").any { f.typ.contains(it, ignoreCase = true) }
+private val RANG = mapOf("Rot" to 0, "Gelb" to 1, "Gruen" to 2, "Schwarz" to 3)
 
-/** Die Übernahme — ein Knopf und ein Hinweissatz, sonst nichts. */
+/** Die Ausweichleiter: Traumazentrum zuerst, dann Chirurgie, zuletzt Grundversorgung. */
+private val AUSWEICHSTUFEN = mapOf(
+    "Rot" to listOf("Trauma", "Chirurgie", "Grundversorgung"),
+    "Gelb" to listOf("Chirurgie", "Grundversorgung"),
+    "Gruen" to listOf("Grundversorgung"),
+    "Schwarz" to emptyList(),
+)
+
+private val VERSORGUNG_WORT = mapOf(
+    "Grundversorgung" to "Grundversorgung",
+    "Chirurgie" to "Chirurgie",
+    "Neurologie" to "Stroke Unit",
+    "Kardiologie" to "Herzkatheter",
+    "Trauma" to "Traumazentrum",
+    "Verbrennung" to "Verbrennungszentrum",
+    "Kinder" to "Kinderklinik",
+)
+
+/** Welches Bett dieses Haus einem Patienten dieser Kategorie stellt — `manvFach`. */
+private fun manvFach(k: Klinik, kategorie: String): String? =
+    AUSWEICHSTUFEN[kategorie].orEmpty().firstOrNull { it in k.abteilungen && it !in k.abgemeldet }
+
+/** Was trotz „Transport" niemanden in eine Klinik fährt. */
+private val KEIN_PATIENTENTRANSPORT = listOf("betreuung", "ortung")
+
+/**
+ * Die Ordnung des Raumes bei einem Massenanfall — `ManvVersorgung.vue`:
+ * Verletztenablagen und Behandlungsplatz anordnen, die gesichteten Verletzten
+ * hineinlegen, Transportmittel und Zielklinik zuweisen, abtransportieren, und zuletzt
+ * die Verstorbenen an die Polizei übergeben.
+ */
 @Composable
-fun ColumnScope.EinsatzleitungKasten(
+fun ColumnScope.ManvVersorgung(
+    raum: Raumzustand,
     einsatz: Einsatz,
     meins: Rundenfahrzeug,
-    beiUebernehmen: (String) -> Unit,
-    beiAbgeben: (String) -> Unit,
+    imTablet: Boolean,
+    griffe: ManvGriffe,
 ) {
-    if (!lageGrossGenug(einsatz)) return
-    val vorOrt = meins.status == 4 || meins.einsatzstelleErreicht
-    val ichFuehre = einsatz.einsatzleitung == meins.funkrufname
-    val ichFuehreRd = einsatz.einsatzleitungRd == meins.funkrufname
+    if (!einsatz.manv) return
+    val fuehrtSelbst = meins.funkrufname.isNotBlank() &&
+        (einsatz.einsatzleitung == meins.funkrufname || einsatz.einsatzleitungRd == meins.funkrufname)
+    val darfOrdnen = when {
+        fuehrtSelbst -> imTablet
+        imTablet -> false
+        else -> istMedizinischeFuehrung(meins) && meins.status == 4 && meins.einsatzId == einsatz.id
+    }
+    val sichtungsaufgabe = einsatz.aufgaben.firstOrNull { it.name == "Vorsichtung" && !it.fertig }
+        ?: einsatz.aufgaben.firstOrNull { it.name == "Sichtung" && !it.fertig }
+    val notaerzte = raum.vehicles.filter {
+        it.einsatzId == einsatz.id && it.status == 4 && it.einsatzstelleErreicht && it.faehigkeiten.contains("Notarzt")
+    }
+    val darfTriage = !imTablet && meins.typ.lowercase() == "elw 2" && meins.status == 4 &&
+        meins.einsatzstelleErreicht && meins.einsatzId == einsatz.id && sichtungsaufgabe != null
+    if (!darfOrdnen && !darfTriage) return
 
-    Kasten {
-        Ueberschrift("Einsatzleitung")
-        when {
-            ichFuehre -> {
-                SehrLeise("Du führst diese Lage.")
-                Knopf("Übergeben", { beiAbgeben("Gesamt") }, kompakt = true)
-            }
-            einsatz.einsatzleitung == null && vorOrt -> {
-                SehrLeise("Die Lage ist groß genug für eine Führung vor Ort.")
-                Knopf("Einsatzleitung übernehmen", { beiUebernehmen("Gesamt") }, kompakt = true)
-            }
-            einsatz.einsatzleitung != null ->
-                SehrLeise("Einsatzleitung: ${einsatz.einsatzleitung}")
-            else -> SehrLeise("Die Einsatzleitung wird vor Ort übernommen (Status 4).")
-        }
-
-        if (einsatz.manv && fuehrungsdienstRd(meins)) {
-            when {
-                ichFuehreRd -> {
-                    SehrLeise("Du führst den Rettungsdienst.")
-                    Knopf("EL RD übergeben", { beiAbgeben("Rettungsdienst") }, kompakt = true)
+    val inhalt: @Composable ColumnScope.() -> Unit = {
+        if (darfTriage) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Etikett("ELW-2-Triagekoordination")
+                    Leise("${notaerzte.size} Notarztfahrzeug(e) vor Ort · gemeinsam auf die Sichtung setzen")
                 }
-                einsatz.einsatzleitungRd == null && vorOrt -> Knopf(
-                    "Einsatzleitung Rettungsdienst übernehmen",
-                    { beiUebernehmen("Rettungsdienst") },
-                    kompakt = true,
-                )
-                einsatz.einsatzleitungRd != null ->
-                    SehrLeise("EL RD: ${einsatz.einsatzleitungRd}")
+                Knopf("Notärzte koordinieren", { griffe.triage(einsatz.id) }, aktiv = notaerzte.isNotEmpty(), kompakt = true)
             }
         }
+        if (darfOrdnen) Versorgungsordnung(raum, einsatz, griffe)
+    }
+
+    if (imTablet) {
+        inhalt()
+    } else {
+        Column(
+            verticalArrangement = Arrangement.spacedBy(Abstand.Normal),
+            modifier = Modifier.fillMaxWidth().flaeche().padding(Abstand.Normal),
+            content = inhalt,
+        )
     }
 }
 
-private fun kategorieFarbe(kategorie: String?): Color = when (kategorie) {
-    "Rot" -> Color(0xFFE5484D)
-    "Gelb" -> Farben.Amber
-    "Gruen" -> Color(0xFF2F9E44)
-    "Schwarz" -> Color(0xFF6B7684)
-    else -> Farben.TextSehrLeise
-}
-
-private fun kategorieText(kategorie: String?): String = when (kategorie) {
-    "Gruen" -> "Grün"
-    null -> "—"
-    else -> kategorie
-}
-
-/**
- * Die Versorgung — Stellen anordnen, Patienten verlegen, Transporte einleiten.
- *
- * Sichtbar für OrgL/ELRD/LNA vor Ort und für die Führung — wie im Web.
- */
 @Composable
-fun ColumnScope.ManvKasten(
-    einsatz: Einsatz,
-    raum: Raumzustand,
-    meins: Rundenfahrzeug,
-    beiAnordnen: (String, Int) -> Unit,
-    beiAbbauen: (String, Boolean) -> Unit,
-    beiVerlegen: (String, String?) -> Unit,
-    beiTransportmittel: (String, String?) -> Unit,
-    beiZielklinik: (String, String?) -> Unit,
-    beiTransport: (String) -> Unit,
-    beiVerstorbene: () -> Unit,
-    beiTriage: () -> Unit,
-) {
-    if (!einsatz.manv) return
+private fun ColumnScope.Versorgungsordnung(raum: Raumzustand, einsatz: Einsatz, griffe: ManvGriffe) {
+    val stellen = einsatz.versorgungsstellen
+    val hatBhp = stellen.any { it.art == "Behandlungsplatz" }
+    val offeneStellen = stellen.filter { it.einsatzbereit && !it.imAbbau && (it.kapazitaet <= 0 || it.patienten.size < it.kapazitaet) }
+    val sichtungFertig = einsatz.aufgaben.firstOrNull { it.name == "Sichtung" }?.fertig ?: true
 
-    // „Sichtung abgeschlossen" braucht den Vorbehalt: Ohne Aufgabenplan gibt es
-    // gar keine Sichtungsaufgabe — dann gilt die vor Ort gemeldete Sichtung.
-    val sichtungsaufgabe = einsatz.aufgaben.firstOrNull { it.name == "Sichtung" }
-    val sichtungFertig = sichtungsaufgabe?.fertig ?: true
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein), verticalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
+        Knopf(
+            "Verletztenablage einrichten",
+            { griffe.anordnen(einsatz.id, "Verletztenablage", 0) },
+            aktiv = stellen.count { it.art == "Verletztenablage" } < 4,
+            kompakt = true,
+        )
+        Knopf("BHP 25 aufbauen", { griffe.anordnen(einsatz.id, "Behandlungsplatz", 25) }, aktiv = !hatBhp, kompakt = true)
+        Knopf("BHP 50 aufbauen", { griffe.anordnen(einsatz.id, "Behandlungsplatz", 50) }, aktiv = !hatBhp, kompakt = true)
+    }
 
-    Kasten {
-        Ueberschrift("Massenanfall")
-
-        // Die Zwischenstufe — solange sie steht, gibt es keine Patienten.
-        einsatz.betroffeneUngefaehr?.let {
-            SehrLeise("ungefähr $it Betroffene – Vorsichtung läuft")
-        }
-
-        // Sichtungsübersicht: alle Patienten, nicht nur wartende. Schwarz
-        // steht hier immer, auch als 0.
-        if (einsatz.manvPatienten.isNotEmpty()) {
-            Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Normal)) {
-                listOf("Rot", "Gelb", "Gruen", "Schwarz").forEach { k ->
-                    val zahl = einsatz.manvPatienten.count { it.kategorie == k }
-                    Marke("$zahl ${kategorieText(k)}", farbe = kategorieFarbe(k))
-                }
+    if (stellen.isEmpty()) {
+        SehrLeise("Noch keine Versorgungsstelle angeordnet. Der Aufbau kostet Kräfte an der Einsatzstelle.")
+    }
+    stellen.forEach { s ->
+        Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein), verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(s.name, style = Schrift.MonoKlein, color = Farben.Text)
+                val belegung = if (s.kapazitaet > 0) "${s.patienten.size}/${s.kapazitaet}" else "${s.patienten.size}"
+                SehrLeise(
+                    when {
+                        s.imAbbau -> "im Abbau · ${(s.aufbaufortschritt * 100).toInt()} %"
+                        s.einsatzbereit -> "steht"
+                        else -> "im Aufbau · ${(s.aufbaufortschritt * 100).toInt()} %"
+                    } + " · $belegung ${if (s.patienten.size == 1) "Patient" else "Patienten"}",
+                )
             }
-        }
-
-        // ELW-2-Triagekoordination — beschleunigt die Sichtung.
-        if (meins.typ.contains("ELW 2") && meins.status == 4 && sichtungsaufgabe?.fertig == false) {
-            Knopf("Notärzte koordinieren", beiTriage, kompakt = true)
-        }
-
-        // Anordnen — die Ablage ist ab vier Stellen gesperrt, wie im Web.
-        val stellen = einsatz.versorgungsstellen
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
             Knopf(
-                "Verletztenablage einrichten",
-                { beiAnordnen("Verletztenablage", 0) },
-                aktiv = stellen.size < 4,
+                if (s.imAbbau) "Abbau abbrechen" else "Abbauen",
+                { griffe.abbauen(einsatz.id, s.name, !s.imAbbau) },
+                art = Knopfart.Leise,
                 kompakt = true,
             )
-            Knopf("BHP 25 aufbauen", { beiAnordnen("Behandlungsplatz", 25) }, kompakt = true)
-            Knopf("BHP 50 aufbauen", { beiAnordnen("Behandlungsplatz", 50) }, kompakt = true)
         }
+    }
 
-        stellen.forEach { stelle ->
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(Abstand.Normal),
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(stelle.name, style = Schrift.Klein, color = Farben.Text)
-                    SehrLeise(
-                        when {
-                            stelle.imAbbau -> "im Abbau · ${(stelle.aufbaufortschritt * 100).toInt()} %"
-                            stelle.einsatzbereit ->
-                                "steht · ${stelle.patienten.size}/${stelle.kapazitaet}"
-                            else -> "im Aufbau · ${(stelle.aufbaufortschritt * 100).toInt()} %"
-                        },
-                    )
-                }
-                Knopf(
-                    if (stelle.imAbbau) "Abbau abbrechen" else "Abbauen",
-                    { beiAbbauen(stelle.name, !stelle.imAbbau) },
-                    art = Knopfart.Leise,
-                    kompakt = true,
+    einsatz.betroffeneUngefaehr?.let {
+        SehrLeise("Erkundung: ungefähr $it Betroffene. Die Kategorien stehen nach der Vorsichtung.")
+    }
+
+    // Das Lagebild in einer Zeile — alle, nicht nur die Wartenden. Schwarz steht immer dabei.
+    if (einsatz.manvPatienten.any { it.kategorie != null }) {
+        Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
+            listOf("Rot", "Gelb", "Gruen", "Schwarz").forEach { k ->
+                Marke("${kategorieWort(k)} ${einsatz.manvPatienten.count { it.kategorie == k }}", farbe = kategorieTon(k))
+            }
+        }
+    }
+
+    // Die Verstorbenen — zuletzt, wenn kein Lebender mehr an der Stelle liegt.
+    val verstorbene = einsatz.manvPatienten.filter { it.kategorie == "Schwarz" && it.status != "Uebergeben" }
+    if (verstorbene.isNotEmpty()) {
+        val lebendeVersorgt = einsatz.manvPatienten.all { it.kategorie == "Schwarz" || it.status == "ImTransport" || it.status == "Uebergeben" }
+        val polizei = raum.settings.organisationen.isEmpty() || raum.settings.organisationen.contains("Polizei")
+        val streife = raum.vehicles.firstOrNull {
+            it.einsatzId == einsatz.id && it.organisation == "Polizei" && it.status == 4 && it.einsatzstelleErreicht
+        }
+        val grund = when {
+            !lebendeVersorgt -> "Erst wenn kein Verletzter mehr hier liegt — die Verstorbenen gehen zuletzt."
+            streife == null && polizei -> "Dafür muss eine Streife an der Einsatzstelle stehen."
+            else -> null
+        }
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.weight(1f)) {
+                Etikett("${verstorbene.size} ${if (verstorbene.size == 1) "Verstorbener" else "Verstorbene"} an der Einsatzstelle")
+                Leise(
+                    grund ?: streife?.let { "Übergabe an ${it.funkrufname}" }
+                        ?: "Diese Runde fährt ohne Polizei — die Einsatzleitung regelt es selbst.",
                 )
             }
+            Knopf(
+                if (polizei) "An die Polizei übergeben" else "Übergabe veranlassen",
+                { griffe.verstorbene(einsatz.id) },
+                aktiv = grund == null,
+                kompakt = true,
+            )
         }
+    }
 
-        // Die Verstorbenen — der Grundsatz: Erst wenn die Lebenden versorgt
-        // sind. Der Server prüft; der Knopf sagt nur, was er tun würde.
-        val verstorbene = einsatz.manvPatienten.count { it.kategorie == "Schwarz" }
-        if (verstorbene > 0) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(Abstand.Normal),
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                SehrLeise("$verstorbene Verstorbene", modifier = Modifier.weight(1f))
-                Knopf("An die Polizei übergeben", beiVerstorbene, art = Knopfart.Leise, kompakt = true)
-            }
-        }
-
-        // Gesichtete Verletzte — Ort, Ziel, Transport. Beides bei Schwarz
-        // gesperrt: kein Bedarf, kein Ziel, mit Absicht.
-        val gesichtet = einsatz.manvPatienten.filter { it.kategorie != null }
-        if (gesichtet.isNotEmpty()) {
-            Ueberschrift("Gesichtete Verletzte")
-            gesichtet.forEachIndexed { i, p ->
-                Patientenzeile(
-                    nummer = i + 1,
-                    patient = p,
-                    einsatz = einsatz,
-                    raum = raum,
-                    sichtungFertig = sichtungFertig,
-                    beiVerlegen = { beiVerlegen(p.id, it) },
-                    beiTransportmittel = { beiTransportmittel(p.id, it) },
-                    beiZielklinik = { beiZielklinik(p.id, it) },
-                    beiTransport = { beiTransport(p.id) },
-                )
-            }
+    val patienten = einsatz.manvPatienten
+        .filter { it.kategorie != null && (it.status == "WartetAufSichtung" || it.status == "WartetAufTransport") }
+        .sortedWith(compareBy<ManvPatient> { RANG[it.kategorie] ?: 9 }.thenBy { it.id })
+    if (patienten.isNotEmpty()) {
+        Etikett("Gesichtete Verletzte")
+        patienten.forEach { p ->
+            Patientenzeile(p, einsatz, raum, offeneStellen.map { it.name }, sichtungFertig, griffe)
         }
     }
 }
 
 @Composable
 private fun Patientenzeile(
-    nummer: Int,
     patient: ManvPatient,
     einsatz: Einsatz,
     raum: Raumzustand,
+    offeneStellen: List<String>,
     sichtungFertig: Boolean,
-    beiVerlegen: (String?) -> Unit,
-    beiTransportmittel: (String?) -> Unit,
-    beiZielklinik: (String?) -> Unit,
-    beiTransport: () -> Unit,
+    griffe: ManvGriffe,
 ) {
     var ortwahl by remember { mutableStateOf(false) }
     var klinikwahl by remember { mutableStateOf(false) }
@@ -339,83 +298,74 @@ private fun Patientenzeile(
     val transportfahrzeug = raum.vehicles.firstOrNull { it.id == patient.transportVehicleId }
     val klinik = raum.kliniken.firstOrNull { it.id == patient.zielklinikId }
 
-    Column(
-        verticalArrangement = Arrangement.spacedBy(Abstand.Klein),
-        modifier = Modifier.fillMaxWidth().padding(vertical = Abstand.Haar),
-    ) {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Marke(kategorieText(patient.kategorie), farbe = kategorieFarbe(patient.kategorie))
-            Text("P-$nummer", style = Schrift.MonoKlein, color = Farben.Text)
-            patient.bedarf?.let { SehrLeise(it) }
-            SehrLeise(
-                when (patient.status) {
-                    "ImTransport" -> "im Transport"
-                    "Uebergeben" -> "übergeben"
-                    else -> ""
-                },
-            )
-        }
+    // Die Transportmittel an dieser Stelle — plus das, auf das er schon gebucht ist.
+    val transportmittel = raum.vehicles.filter { v ->
+        v.einsatzId == einsatz.id && v.organisation == "Rettungsdienst" && v.faehigkeiten.contains("Transport") &&
+            v.faehigkeiten.none { it.lowercase() in KEIN_PATIENTENTRANSPORT } && v.status == 4
+    }.let { liste ->
+        if (transportfahrzeug != null && liste.none { it.id == transportfahrzeug.id }) liste + transportfahrzeug else liste
+    }
 
-        if (!schwarz && patient.status != "Uebergeben") {
-            Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
-                Knopf(
-                    aufschrift = patient.stelle
-                        ?: transportfahrzeug?.funkrufname
-                        ?: "— im Gelände —",
-                    beiDruck = { ortwahl = true },
-                    art = Knopfart.Leise,
-                    kompakt = true,
-                )
-                Knopf(
-                    aufschrift = klinik?.name ?: "Zielklinik …",
-                    beiDruck = { klinikwahl = true },
-                    art = Knopfart.Leise,
-                    kompakt = true,
-                )
-                if (sichtungFertig &&
-                    patient.transportVehicleId != null &&
-                    patient.zielklinikId != null &&
-                    patient.status == "WartetAufTransport"
-                ) {
-                    Knopf("Transport", beiTransport, kompakt = true)
-                }
+    Column(verticalArrangement = Arrangement.spacedBy(Abstand.Winzig), modifier = Modifier.fillMaxWidth().padding(vertical = Abstand.Haar)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein), verticalAlignment = Alignment.CenterVertically) {
+            Text(patient.id, style = Schrift.MonoKlein, color = Farben.Text)
+            patient.kategorie?.let { Marke(kategorieWort(it), farbe = kategorieTon(it)) }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
+            Knopf(
+                patient.stelle ?: transportfahrzeug?.funkrufname ?: "— im Gelände —",
+                { ortwahl = true },
+                art = Knopfart.Leise,
+                aktiv = !schwarz,
+                kompakt = true,
+            )
+            Knopf(
+                klinik?.name ?: "— Klinik offen —",
+                { klinikwahl = true },
+                art = Knopfart.Leise,
+                aktiv = !schwarz,
+                kompakt = true,
+            )
+            if (sichtungFertig && patient.transportVehicleId != null && patient.zielklinikId != null &&
+                patient.status == "WartetAufTransport"
+            ) {
+                Knopf("Transport", { griffe.transport(einsatz.id, patient.id) }, art = Knopfart.Alarm, kompakt = true)
             }
         }
     }
 
     if (ortwahl) {
-        // Eine Liste, zwei Gruppen — Versorgungsstellen und Transportmittel,
-        // wie das eine <select> des Web.
-        val stellen = einsatz.versorgungsstellen.filter { it.einsatzbereit }.map { "st:" + it.name }
-        val fahrzeuge = raum.vehicles
-            .filter { it.einsatzId == einsatz.id && it.einsatzstelleErreicht }
-            .map { "fz:" + it.id }
+        // Eine Liste, zwei Gruppen — wie das eine Auswahlfeld des Webs. Ein Wechsel sind
+        // zwei Kommandos, und zwar erst setzen, dann lösen: scheitert das Setzen, bleibt
+        // der Patient, wo er war.
+        val stellen = (listOfNotNull(patient.stelle) + offeneStellen.filter { it != patient.stelle }).map { "st:$it" }
         Wahlblende(
-            titel = "Wohin mit P-$nummer?",
+            titel = "Ort von Patient ${patient.id}",
             gruppen = listOf(
                 null to listOf("—"),
                 "Versorgungsstelle" to stellen,
-                "Transportmittel" to fahrzeuge,
+                "Transportmittel" to transportmittel.map { "fz:" + it.id },
             ),
             aufschrift = { eintrag ->
                 when {
                     eintrag == "—" -> "— im Gelände —"
                     eintrag.startsWith("st:") -> eintrag.removePrefix("st:")
-                    else -> raum.vehicles.firstOrNull { it.id == eintrag.removePrefix("fz:") }
-                        ?.funkrufname ?: eintrag
+                    else -> raum.vehicles.firstOrNull { it.id == eintrag.removePrefix("fz:") }?.let { v ->
+                        v.funkrufname + if (v.status != 4) " · Status ${v.status}" else ""
+                    } ?: eintrag
                 }
             },
             beiWahl = { eintrag ->
                 when {
-                    eintrag == "—" -> {
-                        beiVerlegen(null)
-                        beiTransportmittel(null)
+                    eintrag.startsWith("fz:") -> {
+                        griffe.transportmittel(einsatz.id, patient.id, eintrag.removePrefix("fz:"))
+                        if (patient.stelle != null) griffe.verlegen(einsatz.id, patient.id, null)
                     }
-                    eintrag.startsWith("st:") -> beiVerlegen(eintrag.removePrefix("st:"))
-                    else -> beiTransportmittel(eintrag.removePrefix("fz:"))
+                    else -> {
+                        val stelle = if (eintrag == "—") null else eintrag.removePrefix("st:")
+                        griffe.verlegen(einsatz.id, patient.id, stelle)
+                        if (patient.transportVehicleId != null) griffe.transportmittel(einsatz.id, patient.id, null)
+                    }
                 }
                 ortwahl = false
             },
@@ -424,153 +374,41 @@ private fun Patientenzeile(
     }
 
     if (klinikwahl) {
+        val kategorie = patient.kategorie
+        // Das Umland steht nur offen, solange kein bodengebundenes Fahrzeug gebucht ist.
+        val umlandOffen = transportfahrzeug?.istLuftfahrzeug != false
+        val wahl = if (kategorie == null || kategorie == "Schwarz") {
+            emptyList()
+        } else {
+            val lat = einsatz.lat
+            val lon = einsatz.lon
+            raum.kliniken
+                .filter { (!it.imUmland || umlandOffen) && manvFach(it, kategorie) != null }
+                .let { l -> if (lat != null && lon != null) l.sortedBy { distanzMeter(lat, lon, it.lat, it.lon) } else l }
+        }
         Wahlblende(
-            titel = "Zielklinik für P-$nummer",
-            gruppen = listOf(null to (listOf<String?>(null) + raum.kliniken.map { it.id })),
-            aufschrift = { id ->
-                id?.let { k -> raum.kliniken.firstOrNull { it.id == k }?.name ?: k }
-                    ?: "— keine —"
+            titel = "Zielklinik für Patient ${patient.id}",
+            gruppen = listOf(null to (listOf<Klinik?>(null) + wahl)),
+            aufschrift = { k ->
+                if (k == null) {
+                    "— Klinik offen —"
+                } else {
+                    val teile = mutableListOf(k.name)
+                    if (k.imUmland) teile += "Umland" + (k.entfernungKm?.let { " ${it.toInt()} km" } ?: "")
+                    kategorie?.let { manvFach(k, it) }?.let { fach ->
+                        val betten = k.freieBetten[fach]
+                        teile += (VERSORGUNG_WORT[fach] ?: fach) + (betten?.let { ", $it frei" } ?: "")
+                    }
+                    teile.joinToString(" · ")
+                }
             },
-            gewaehlt = patient.zielklinikId,
-            beiWahl = {
-                beiZielklinik(it)
+            gewaehlt = klinik,
+            beiWahl = { k ->
+                griffe.zielklinik(einsatz.id, patient.id, k?.id)
                 klinikwahl = false
             },
             beiSchliessen = { klinikwahl = false },
-            suchbar = raum.kliniken.size > 8,
-        )
-    }
-}
-
-/**
- * Der Führungs-Kasten — Abschnitte bilden und zuteilen, Aufträge delegieren.
- *
- * Nur für die Führung sichtbar; `zweig` entscheidet, welcher Satz Abschnitte
- * gemeint ist. Höchstens vier je Zweig, Namen bis 40 Zeichen — der Server
- * prüft, die Kästen sagen es vorher.
- */
-@Composable
-fun ColumnScope.FuehrungKasten(
-    einsatz: Einsatz,
-    raum: Raumzustand,
-    zweig: String,
-    beiBilden: (String) -> Unit,
-    beiZuteilen: (String, String?) -> Unit,
-    beiAuftrag: (String, String?) -> Unit,
-) {
-    val abschnitte = if (zweig == "Rettungsdienst") einsatz.abschnitteRd else einsatz.abschnitte
-    var neuerName by remember { mutableStateOf("") }
-    var fahrzeugwahl by remember { mutableStateOf<String?>(null) }
-
-    Kasten {
-        Ueberschrift(
-            if (zweig == "Rettungsdienst") "Abschnitte Rettungsdienst" else "Abschnitte",
-        )
-        SehrLeise("${abschnitte.size}/4")
-
-        abschnitte.forEach { a ->
-            Column(modifier = Modifier.fillMaxWidth()) {
-                Text(a.name, style = Schrift.Klein, color = Farben.Text)
-                SehrLeise(
-                    if (a.funkrufnamen.isEmpty()) "keine Fahrzeuge"
-                    else a.funkrufnamen.joinToString(", "),
-                )
-                Knopf(
-                    "Fahrzeug zuordnen",
-                    { fahrzeugwahl = a.name },
-                    art = Knopfart.Leise,
-                    kompakt = true,
-                )
-            }
-        }
-
-        if (abschnitte.size < 4) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
-                verticalAlignment = Alignment.Bottom,
-            ) {
-                Feld(
-                    wert = neuerName,
-                    beiAenderung = { neuerName = it.take(40) },
-                    platzhalter = "Abschnitt ${abschnitte.size + 1} benennen",
-                    modifier = Modifier.weight(1f),
-                )
-                Knopf(
-                    "Anlegen",
-                    {
-                        beiBilden(neuerName.trim())
-                        neuerName = ""
-                    },
-                    aktiv = neuerName.isNotBlank(),
-                    kompakt = true,
-                )
-            }
-        }
-
-        // Delegation — nur am RD-Zweig eines MANV, wie im Web.
-        if (zweig == "Rettungsdienst" && einsatz.manv) {
-            Ueberschrift("Aufträge übertragen")
-            listOf("Vorsichtung", "Sichtung", "Transportorganisation").forEach { auftrag ->
-                var wahl by remember(auftrag) { mutableStateOf(false) }
-                // Der Server liefert Funkrufnamen, die Auswahl braucht Ids —
-                // ohne die Übersetzung stünde hier dauerhaft „— selbst —".
-                val beauftragt = einsatz.manvauftraege[auftrag]
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(Abstand.Normal),
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    SehrLeise(auftrag, modifier = Modifier.weight(1f))
-                    Knopf(
-                        beauftragt ?: "— selbst —",
-                        { wahl = true },
-                        art = Knopfart.Leise,
-                        kompakt = true,
-                    )
-                }
-                if (wahl) {
-                    val passende = raum.vehicles.filter { f ->
-                        f.einsatzId == einsatz.id && when (auftrag) {
-                            "Vorsichtung" -> f.faehigkeiten.contains("Vorsichtung")
-                            "Sichtung" -> f.faehigkeiten.contains("Sichtung")
-                            else -> fuehrungsdienstRd(f)
-                        }
-                    }
-                    Wahlblende(
-                        titel = auftrag,
-                        gruppen = listOf(null to (listOf<String?>(null) + passende.map { it.id })),
-                        aufschrift = { id ->
-                            id?.let { v -> raum.vehicles.firstOrNull { it.id == v }?.funkrufname }
-                                ?: "— selbst —"
-                        },
-                        beiWahl = {
-                            beiAuftrag(auftrag, it)
-                            wahl = false
-                        },
-                        beiSchliessen = { wahl = false },
-                    )
-                }
-            }
-        }
-    }
-
-    fahrzeugwahl?.let { abschnitt ->
-        val zuordenbar = raum.vehicles.filter { f ->
-            f.einsatzId == einsatz.id &&
-                abschnitte.firstOrNull { it.name == abschnitt }
-                    ?.funkrufnamen?.contains(f.funkrufname) != true
-        }
-        Wahlblende(
-            titel = "Fahrzeug für $abschnitt",
-            gruppen = listOf(null to zuordenbar.map { it.id }),
-            aufschrift = { id ->
-                raum.vehicles.firstOrNull { it.id == id }?.funkrufname ?: id
-            },
-            beiWahl = { id ->
-                beiZuteilen(id, abschnitt)
-                fahrzeugwahl = null
-            },
-            beiSchliessen = { fahrzeugwahl = null },
+            suchbar = wahl.size > 8,
         )
     }
 }
