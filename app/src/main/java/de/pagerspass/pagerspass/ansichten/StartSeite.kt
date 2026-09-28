@@ -109,6 +109,8 @@ fun StartSeite(
     beiUebungen: () -> Unit = {},
     // --- Runde, Teil 1: alles aus `Startbausteine.kt`.
     zusatz: Startzusatz = Startzusatz(),
+    // World: der Weg in die Welt — mit Premium auf die Gründung, sonst in den Laden.
+    beiWelt: () -> Unit = {},
 ) {
     LaunchedEffect(Unit) {
         beiKatalog()
@@ -127,6 +129,8 @@ fun StartSeite(
     // Runde, Teil 1: ganzer Leitstellenbereich und die Vorlagenblende.
     var ganzerBereich by rememberSaveable { mutableStateOf(false) }
     var vorlagenOffen by remember { mutableStateOf(false) }
+    // World: ob die Erklärung offen ist.
+    var weltErklaerung by remember { mutableStateOf(false) }
 
     val laender = remember(landkreise) { landkreise.bundeslaender() }
     val landkreis = remember(landkreisId, landkreise) {
@@ -345,25 +349,53 @@ fun StartSeite(
         }
 
         Startweg.menue(einweisung, konto?.premiumAktiv == true).forEach { eintrag ->
-            Wegzeile(
-                titel = eintrag.titel,
-                // Runde, Teil 1: Die Tagesschicht sagt, wo heute gefahren wird.
-                unterzeile = zusatz.tagesschichtKreis
-                    ?.takeIf { eintrag.weg == Startweg.Tagesschicht }
-                    ?.let { "Heute $it — gewertet, für alle dieselbe" }
-                    ?: eintrag.unterzeile,
-                zeichen = eintrag.zeichen,
-                schild = eintrag.schild,
-                beiDruck = {
-                    when (eintrag.weg) {
-                        Startweg.Ausbildung -> beiAusbildung()
-                        Startweg.Tagesschicht -> beiTagesschicht()
-                        Startweg.OeffentlicheRunden -> beiOeffentlicheRunden()
-                        Startweg.Lehrgang -> beiLehrgang()
-                        Startweg.Uebungen -> beiUebungen()
-                        else -> beiImWeb()
+            // World: Das „i" steht neben dem Eintrag und nicht darin — ein Knopf im Weg
+            // wären zwei Ziele in einer Zeile (siehe `WorldInfoTaste` im Web).
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Wegzeile(
+                    titel = eintrag.titel,
+                    // Runde, Teil 1: Die Tagesschicht sagt, wo heute gefahren wird.
+                    unterzeile = zusatz.tagesschichtKreis
+                        ?.takeIf { eintrag.weg == Startweg.Tagesschicht }
+                        ?.let { "Heute $it — gewertet, für alle dieselbe" }
+                        ?: eintrag.unterzeile,
+                    zeichen = eintrag.zeichen,
+                    schild = eintrag.schild,
+                    beiDruck = {
+                        when (eintrag.weg) {
+                            Startweg.Ausbildung -> beiAusbildung()
+                            Startweg.Tagesschicht -> beiTagesschicht()
+                            Startweg.OeffentlicheRunden -> beiOeffentlicheRunden()
+                            Startweg.Lehrgang -> beiLehrgang()
+                            Startweg.Uebungen -> beiUebungen()
+                            Startweg.Welt -> beiWelt()
+                            else -> beiImWeb()
+                        }
+                    },
+                    modifier = Modifier.weight(1f),
+                )
+                if (eintrag.weg == Startweg.Welt) {
+                    de.pagerspass.pagerspass.ui.bausteine.Zeichenknopf(
+                        beiDruck = { weltErklaerung = true },
+                        beschreibung = "Was ist PagerSpass - World?",
+                        art = Knopfart.Leise,
+                    ) {
+                        Text(
+                            text = "i",
+                            style = Schrift.Normal.copy(fontWeight = FontWeight.Bold),
+                            color = Farben.TextLeise,
+                        )
                     }
-                },
+                }
+            }
+        }
+
+        if (weltErklaerung) {
+            de.pagerspass.pagerspass.ansichten.welt.WorldErklaerungDialog(
+                beiSchliessen = { weltErklaerung = false },
             )
         }
 
@@ -762,8 +794,8 @@ enum class Startweg {
                 lehrgang,
                 Eintrag(
                     weg = Welt,
-                    titel = "World",
-                    unterzeile = "Eine Karte, alle Leitstellen — im Browser",
+                    titel = "PagerSpass - World",
+                    unterzeile = "Eine Karte, alle Leitstellen, jede Woche ein Großeinsatz",
                     zeichen = Zeichen.Welt,
                     schild = if (premium) null else "Premium",
                 ),

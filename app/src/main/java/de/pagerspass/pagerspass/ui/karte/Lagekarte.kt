@@ -80,7 +80,7 @@ import kotlin.math.pow
 import kotlin.math.sin
 import kotlin.math.tan
 
-/**
+/*
  * Die Lagekarte — nativ nachgebaut nach `Lagekarte.vue`.
  *
  * <b>Kein Leaflet, kein WebView.</b> Eine Slippy-Karte ist Mathematik plus
@@ -91,115 +91,10 @@ import kotlin.math.tan
  * <b>Kacheln erst nach Einwilligung.</b> Dieselbe Regel wie im Web
  * (Datenschutzerklärung Ziffer 11): Ohne „ja" wird kein einziger Kachel-Abruf
  * gemacht; Marker, Strecken und Radien stehen trotzdem auf dunklem Grund.
+ *
+ * Kachelquellen (`Kartenstil`), Kachelspeicher und die Einwilligungsfrage stehen
+ * seit World in `Kartenflaeche.kt` — dieselben für alle Karten der App.
  */
-enum class Kartenstil(
-    val titel: String,
-    val maxZoom: Int,
-    val quelle: String,
-    /** Die zweite Ebene der Hybridkarte — ohne sie fehlen die Straßennamen. */
-    val beschriftung: String? = null,
-) {
-    Dunkel(
-        "Dunkel",
-        19,
-        "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png?key=$CARTO",
-    ),
-    Hell(
-        "Hell",
-        19,
-        "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}@2x.png?key=$CARTO",
-    ),
-    Satellit(
-        "Satellit",
-        18,
-        // Esri stellt y vor x — die Falle dieser Vorlage.
-        "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-    ),
-    Hybrid(
-        "Hybrid",
-        18,
-        "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-        "https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}@2x.png?key=$CARTO",
-    ),
-    ;
-
-    fun url(vorlage: String, z: Int, x: Int, y: Int): String = vorlage
-        .replace("{s}", "abcd"[abs(x + y) % 4].toString())
-        .replace("{z}", z.toString())
-        .replace("{x}", x.toString())
-        .replace("{y}", y.toString())
-
-    val attribution: String
-        get() = when (this) {
-            Dunkel, Hell -> "© OpenStreetMap, © CARTO"
-            Satellit -> "© Esri, Maxar, Earthstar Geographics"
-            Hybrid -> "© Esri, Maxar, © OpenStreetMap, © CARTO"
-        }
-}
-
-/**
- * Der Kachel-Schlüssel — derselbe wie im Web-Bündel, zur Bauzeit eingebacken.
- * Der Parameter heißt `key`: Mit `api_key` kommt HTTP 200 und eine
- * Wasserzeichen-Kachel, kein Fehler.
- */
-private const val CARTO = "cb1_25ox_1_9cb7568fd1c075dddbb1b974"
-
-/**
- * Der Kachelspeicher — lädt einmal, hält die letzten Kacheln, meldet sich über
- * Compose-State zurück, wenn eine fertig ist.
- */
-private object Kachelspeicher {
-    val fertig = mutableStateMapOf<String, ImageBitmap>()
-
-    /**
-     * Der Zeichen-Anstoß. <b>Das Lesen fehlender Schlüssel aus der State-Map
-     * stößt das Neuzeichnen nicht zuverlässig an</b> — gemessen: Kacheln kamen
-     * an (`fertig true` im Protokoll), der Canvas blieb schwarz, bis irgendein
-     * anderer Zustand ihn neu zeichnete. Dieser Zähler wird bei jeder
-     * angekommenen Kachel erhöht und im Canvas gelesen — das reicht.
-     */
-    var stand by androidx.compose.runtime.mutableStateOf(0)
-        private set
-
-    fun angekommen() {
-        stand += 1
-    }
-    private val unterwegs = java.util.Collections.synchronizedSet(mutableSetOf<String>())
-    private val reihenfolge = ArrayDeque<String>()
-    private val gleichzeitig = Semaphore(6)
-
-    fun anfordern(url: String, bereich: kotlinx.coroutines.CoroutineScope) {
-        if (fertig.containsKey(url) || !unterwegs.add(url)) return
-        android.util.Log.i("Karte", "hole $url")
-        bereich.launch(Dispatchers.IO) {
-            gleichzeitig.withPermit {
-                val bild = runCatching {
-                    val verbindung = URL(url).openConnection() as HttpURLConnection
-                    verbindung.connectTimeout = 8_000
-                    verbindung.readTimeout = 8_000
-                    verbindung.inputStream.use { BitmapFactory.decodeStream(it) }
-                }.onFailure {
-                    android.util.Log.w("Karte", "Kachel $url", it)
-                }.getOrNull()?.asImageBitmap()
-
-                android.util.Log.i("Karte", "fertig ${bild != null} $url")
-                if (bild != null) {
-                    withContext(Dispatchers.Main) {
-                        fertig[url] = bild
-                        angekommen()
-                        reihenfolge.addLast(url)
-                        // Die ältesten fliegen raus — 120 Kacheln sind mehr als
-                        // zwei volle Bildschirme.
-                        while (reihenfolge.size > 120) {
-                            fertig.remove(reihenfolge.removeFirst())
-                        }
-                    }
-                }
-                unterwegs.remove(url)
-            }
-        }
-    }
-}
 
 // ------------------------------------------------------------- Web-Mercator
 
@@ -691,30 +586,14 @@ fun Lagekarte(
 
         // ----------------------------------------------------- Einwilligung
         if (freigabe == null) {
-            Column(
-                verticalArrangement = Arrangement.spacedBy(Abstand.Normal, Alignment.CenterVertically),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Farben.BgTief.copy(alpha = 0.92f))
-                    .padding(Abstand.Gross),
-            ) {
-                Text(
-                    text = "Die Kartenkacheln kommen von CARTO und Esri — dabei geht deine IP-Adresse an deren Server.",
-                    style = Schrift.Klein,
-                    color = Farben.Text,
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Normal)) {
-                    Knopf("Karte laden", {
-                        freigabe = "ja"
-                        bereich.launch { ablage.karteFreigabeSetzen("ja") }
-                    }, kompakt = true)
-                    Knopf("Ohne Karte", {
-                        freigabe = "nein"
-                        bereich.launch { ablage.karteFreigabeSetzen("nein") }
-                    }, art = Knopfart.Leise, kompakt = true)
-                }
-            }
+            KartenFreigabe(
+                abdunkeln = false,
+                beiAntwort = { ja ->
+                    val wert = if (ja) "ja" else "nein"
+                    freigabe = wert
+                    bereich.launch { ablage.karteFreigabeSetzen(wert) }
+                },
+            )
         }
     }
 }

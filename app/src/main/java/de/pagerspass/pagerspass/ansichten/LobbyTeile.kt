@@ -477,7 +477,7 @@ private fun Chatzeile(n: Lobbynachricht, eigeneKennung: String) {
                 style = Schrift.Klein,
                 color = if (n.vonId == eigeneKennung) Farben.Amber else Farben.TextLeise,
             )
-            SehrLeise(uhrzeit(n.zeit), mono = true)
+            SehrLeise(lobbyUhrzeit(n.zeit), mono = true)
         }
         Text(
             text = mitErwaehnungen(n.text),
@@ -500,7 +500,7 @@ private fun mitErwaehnungen(text: String): AnnotatedString = buildAnnotatedStrin
 
 private val UHR = DateTimeFormatter.ofPattern("HH:mm")
 
-private fun uhrzeit(roh: String): String = runCatching {
+private fun lobbyUhrzeit(roh: String): String = runCatching {
     UHR.format(OffsetDateTime.parse(roh).atZoneSameInstant(ZoneId.systemDefault()))
 }.getOrDefault("")
 

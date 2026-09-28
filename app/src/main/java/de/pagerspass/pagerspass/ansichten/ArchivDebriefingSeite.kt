@@ -471,7 +471,7 @@ private fun Einsatzkarte(
             Column(modifier = Modifier.weight(1f)) {
                 Text(e.stichwortText, style = Schrift.Normal.copy(fontWeight = FontWeight.SemiBold), color = Farben.Text)
                 SehrLeise(
-                    "${e.einsatznummer} · ${orgName(e.organisation)} · ${uhrzeitKurz(e.eingangUm)} · " +
+                    "${e.einsatznummer} · ${orgName(e.organisation)} · ${buchUhrzeit(e.eingangUm)} · " +
                         einsatzZustand(e.state),
                     mono = true,
                 )
@@ -498,7 +498,7 @@ private fun Einsatzkarte(
                     .fillMaxWidth()
                     .background(if (stoerung) Farben.HauchSignal else Color.Transparent, Rundung.Winzig),
             ) {
-                Text(uhrzeitKurz(c.zeit), style = Schrift.MonoKlein, color = Farben.TextSehrLeise)
+                Text(buchUhrzeit(c.zeit), style = Schrift.MonoKlein, color = Farben.TextSehrLeise)
                 Text(c.text, style = Schrift.Klein, color = if (stoerung) Farben.SignalHell else Farben.TextLeise)
             }
         }
@@ -531,7 +531,7 @@ private fun Anrufjournal(
                     .padding(vertical = Abstand.Winzig),
             ) {
                 Text("Notruf ${a.nummer}", style = Schrift.MonoKlein.copy(fontWeight = FontWeight.Bold), color = Farben.Text)
-                Text(uhrzeitKurz(a.eingangUm), style = Schrift.MonoKlein, color = Farben.TextSehrLeise)
+                Text(buchUhrzeit(a.eingangUm), style = Schrift.MonoKlein, color = Farben.TextSehrLeise)
                 Text(
                     ausgangname(a.ausgang) + (nummer?.let { " · $it" } ?: ""),
                     style = Schrift.MonoKlein,
@@ -572,7 +572,7 @@ private fun Anrufjournal(
 @Composable
 private fun Protokollzeile(m: Funkzeile) {
     Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
-        Text(uhrzeitKurz(m.zeit), style = Schrift.MonoKlein, color = Farben.TextSehrLeise)
+        Text(buchUhrzeit(m.zeit), style = Schrift.MonoKlein, color = Farben.TextSehrLeise)
         Text(
             m.von,
             style = Schrift.MonoKlein.copy(fontWeight = FontWeight.Bold),

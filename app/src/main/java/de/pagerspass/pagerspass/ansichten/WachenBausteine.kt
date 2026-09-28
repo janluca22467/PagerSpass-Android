@@ -83,7 +83,7 @@ import kotlin.math.roundToInt
 
 /**
  * Die Bausteine der Wachenseiten — Emblem, Stufe, Tag, Dienstplan, Logbuch,
- * Laufbahn. Übertragen aus `web/src/components/gemeinschaft/*` und
+ * Laufbahn. Übertragen aus `web/src/components/gemeinschaft/` (alle Dateien) und
  * `web/src/utils/wachenschmuck.ts`.
  *
  * <b>Hier steht, was mehr als eine Wachenseite braucht</b> — der Kopf der Wache
@@ -155,6 +155,9 @@ internal fun tagKurz(roh: String?): String = formatiert(roh, "dd.MM.yy")
 
 /** „27. September 2026" — „Auf der Wache seit". */
 internal fun tagLang(roh: String?): String = formatiert(roh, "d. MMMM yyyy")
+
+/** „27.09." — im Coin-Auszug. */
+internal fun tagMonat(roh: String?): String = formatiert(roh, "dd.MM.")
 
 /** „19:30". */
 internal fun wachenuhr(roh: String?): String = formatiert(roh, "HH:mm")
@@ -1115,3 +1118,7 @@ internal fun Platzziffer(text: String, hervor: Boolean = false) {
         modifier = Modifier.widthIn(min = 26.dp),
     )
 }
+
+/** „noch 1 200 bis Stufe 13" — die kurze Form fürs Band. */
+internal fun stufenziel(bis: Int?, naechste: Int): String =
+    if (bis == null) "höchste Stufe erreicht" else "noch ${zahl(bis)} bis Stufe $naechste"
