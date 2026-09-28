@@ -13,7 +13,6 @@ import java.nio.ByteOrder
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.max
 import kotlin.math.min
-import kotlin.math.roundToInt
 
 /**
  * Eine Tondatei hörbar machen — das Gegenstück zu `ctx.decodeAudioData` im Web.
@@ -398,6 +397,3 @@ class Klangaufnahme {
         const val RATE = 44_100
     }
 }
-
-/** Gerundet auf ganze Hundertstel — für die Anzeige der Schnittmarken. */
-internal fun Double.hundertstel(): Double = (this * 100).roundToInt() / 100.0
