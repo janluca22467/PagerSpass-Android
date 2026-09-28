@@ -311,6 +311,20 @@ object Zeichen {
         "M14.5 13.5h4",
         staerke = 1.7f,
     )
+
+    /**
+     * Begleiter — der QR-Code: drei Ecken und ein loses Feld. Nur mit Premium in
+     * der Leiste, wie `/scan` in `MobilTableiste.vue`.
+     */
+    val WegScan = strich(
+        "weg-scan",
+        rundesRechteck(4f, 4f, 6.5f, 6.5f, 1.2f),
+        rundesRechteck(13.5f, 4f, 6.5f, 6.5f, 1.2f),
+        rundesRechteck(4f, 13.5f, 6.5f, 6.5f, 1.2f),
+        "M14 14h2.6v2.6H14Z",
+        "M17.5 17.5H20V20h-2.5Z",
+        staerke = 1.7f,
+    )
 }
 
 /**

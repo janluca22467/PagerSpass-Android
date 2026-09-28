@@ -39,7 +39,9 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
 import de.pagerspass.pagerspass.ui.bausteine.Markenzahl
 import de.pagerspass.pagerspass.ui.theme.Abstand
 import de.pagerspass.pagerspass.ui.theme.Dauer
@@ -59,7 +61,7 @@ import de.pagerspass.pagerspass.ui.zeichen.Zeichen
  * man im Dienst wirklich braucht — Dienst, Dienstbuch, Wache, Freunde, Shop,
  * Konto —, immer an derselben Stelle. Am Rechner übernimmt das eine Leiste am
  * Kopf; die ist zum Zielen mit der Maus gebaut und am Handy zu klein und zu
- * weit weg.
+ * weit weg. Mit Premium kommt als siebter der Begleiter („Scan") dazu.
  *
  * <b>Wo die Leiste nicht hingehört, entscheidet nicht sie selbst</b>, sondern der
  * Rahmen (siehe `PagerSpassApp`): im Raum nicht (dort hat jede Ansicht ihre
@@ -73,7 +75,15 @@ fun Tableiste(
     beiWahl: (Weg) -> Unit,
     modifier: Modifier = Modifier,
     marken: Map<Weg, Int> = emptyMap(),
+    begleiter: Boolean = false,
 ) {
+    // Der Scan-Reiter hängt an Premium wie der Begleiter selbst: Ohne Abo erzeugt
+    // der Rechner keinen QR-Code, und ein Reiter, der in eine Ladenwand führt,
+    // wäre hier unten der teuerste Platz dafür.
+    val wege = if (begleiter) Weg.entries else Weg.entries.filter { it != Weg.Begleiter }
+    val sieben = wege.size > 6
+    val breite = LocalConfiguration.current.screenWidthDp.dp
+
     // Der Streifen unter der Leiste gehört bei randlosen Geräten dem Gerät,
     // nicht der Wache — bedienbar ist er nicht, farbig gefüllt gehört er
     // trotzdem.
@@ -82,10 +92,21 @@ fun Tableiste(
     // Auf einer Handbreit verdrängen sechs volle Namen einander. Die kurze
     // Fassung ist im Spiel eindeutig; der volle Name bleibt für
     // Vorleseprogramme erhalten.
-    val eng = LocalConfiguration.current.screenWidthDp.dp < 560.dp
+    val eng = breite < 560.dp
+
+    // Zu siebt wird es eng: Unter 365 Punkten gibt die Leiste Fugen und Ränder
+    // her, damit jedes Ziel seine 44 behält, und unter 341 trägt das Zeichen
+    // allein — der Name bleibt für Vorleseprogramme erhalten.
+    val randlos = sieben && breite < 365.dp
+    val ohneText = sieben && breite <= 340.dp
+    val sperrung = when {
+        !sieben -> null
+        randlos -> (-0.05).em
+        else -> (-0.03).em
+    }
 
     Row(
-        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        horizontalArrangement = Arrangement.spacedBy(if (randlos) 0.dp else 2.dp),
         verticalAlignment = Alignment.CenterVertically,
         modifier = modifier
             .fillMaxWidth()
@@ -108,14 +129,16 @@ fun Tableiste(
                     strokeWidth = strich,
                 )
             }
-            .padding(horizontal = 4.dp)
+            .padding(horizontal = if (randlos) 0.dp else 4.dp)
             .padding(bottom = geraeterand),
     ) {
-        Weg.entries.forEach { weg ->
+        wege.forEach { weg ->
             Wegknopf(
                 weg = weg,
                 hier = weg == hier,
                 eng = eng,
+                ohneText = ohneText,
+                sperrung = sperrung,
                 marke = marken[weg] ?: 0,
                 beiDruck = { beiWahl(weg) },
             )
@@ -124,7 +147,7 @@ fun Tableiste(
 }
 
 /**
- * Die sechs Wege der Leiste.
+ * Die sechs Wege der Leiste — sieben mit Premium, dann kommt der Begleiter dazu.
  *
  * Sie stehen als Aufzählung und nicht als sechs Aufrufe, weil mehr als die
  * Leiste sie braucht: Der Rahmen rechnet aus ihnen, wo man gerade ist, und die
@@ -141,6 +164,7 @@ enum class Weg(
     val titel: String,
     val kurz: String,
     val zeichen: ImageVector,
+    val vorlesen: String = titel,
 ) {
     Dienst("dienst", "Dienst", "Dienst", Zeichen.WegDienst),
     Dienstbuch("dienstbuch", "Dienstbuch", "Buch", Zeichen.WegBuch),
@@ -148,6 +172,9 @@ enum class Weg(
     Freunde("freunde", "Freunde", "Freunde", Zeichen.WegFreunde),
     Shop("shop", "Shop", "Shop", Zeichen.WegShop),
     Konto("konto", "Konto", "Konto", Zeichen.WegKonto),
+
+    /** Nur mit Premium sichtbar — `/scan` im Web; die Route ist die Begleiter-Kopplung. */
+    Begleiter("begleiter", "Begleiter", "Scan", Zeichen.WegScan, "Begleiter koppeln — QR-Code scannen"),
 }
 
 /**
@@ -167,6 +194,8 @@ private fun RowScope.Wegknopf(
     weg: Weg,
     hier: Boolean,
     eng: Boolean,
+    ohneText: Boolean,
+    sperrung: TextUnit?,
     marke: Int,
     beiDruck: () -> Unit,
 ) {
@@ -224,7 +253,7 @@ private fun RowScope.Wegknopf(
                 interactionSource = beruehrung,
             )
             .semantics {
-                contentDescription = if (marke > 0) "${weg.titel} — $marke offen" else weg.titel
+                contentDescription = if (marke > 0) "${weg.titel} — $marke offen" else weg.vorlesen
             }
             .padding(horizontal = Abstand.Haar, vertical = Abstand.Winzig),
     ) {
@@ -237,15 +266,19 @@ private fun RowScope.Wegknopf(
                 imageVector = weg.zeichen,
                 contentDescription = null,
                 tint = farbe,
-                modifier = Modifier.size(22.dp),
+                // Ohne Beschriftung darf das Zeichen die Höhe haben, die es
+                // vorher mit ihr teilte.
+                modifier = Modifier.size(if (ohneText) 26.dp else 22.dp),
             )
-            Text(
-                text = if (eng) weg.kurz else weg.titel,
-                style = Schrift.Weg,
-                color = farbe,
-                maxLines = 1,
-                overflow = TextOverflow.Clip,
-            )
+            if (!ohneText) {
+                Text(
+                    text = if (eng) weg.kurz else weg.titel,
+                    style = if (sperrung != null) Schrift.Weg.copy(letterSpacing = sperrung) else Schrift.Weg,
+                    color = farbe,
+                    maxLines = 1,
+                    overflow = TextOverflow.Clip,
+                )
+            }
         }
 
         // Die Marke sitzt oben rechts über dem Zeichen, nicht in der Ecke der

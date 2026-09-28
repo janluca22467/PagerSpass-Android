@@ -16,6 +16,7 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import de.pagerspass.pagerspass.ansichten.Analyseblende
+import de.pagerspass.pagerspass.ansichten.BegleiterKopplung
 import de.pagerspass.pagerspass.ansichten.BetriebsmitteilungenSeite
 import de.pagerspass.pagerspass.ansichten.CodeSeite
 import de.pagerspass.pagerspass.ansichten.DiscordSeite
@@ -382,29 +383,41 @@ private fun ohneAnmeldung(route: String): Boolean {
         basis == Kontorouten.KUENDIGEN ||
         basis == Kontorouten.WIDERRUFEN ||
         basis == Kontorouten.NEWSLETTER ||
-        basis.startsWith("${Kontorouten.CODE}/")
+        basis.startsWith("${Kontorouten.CODE}/") ||
+        // Begleiter: der Link vom Rechner koppelt ohne Konto (router.ts, `begleiter`).
+        basis.startsWith(FUNKPRAEFIX)
 }
+
+/** Der Anfang eines Begleiter-Links — `Extraswege.FUNK` ohne Platzhalter. */
+private const val FUNKPRAEFIX = "funk/"
 
 /**
  * Der Rahmen um die Anmeldeseite — mit den Seiten, die ohne Konto erreichbar sein
  * müssen: Rechtstexte (§ 5 DDG, und die Zustimmung verlinkt dorthin), Kündigen
  * und Widerrufen (§ 312k, § 356a BGB), Newsletter abmelden (§ 7 UWG) und die
- * Seite eines Creator-Codes.
+ * Seite eines Creator-Codes. Dazu der Begleiter-Link vom Rechner: Der Token
+ * gehört einem Platz, den ein Premium-Konto freigegeben hat — das Handy braucht
+ * im Web dafür kein Konto und hier auch nicht.
  *
  * <b>Eine Seite tief, mit Zurück.</b> Hier gibt es keine Leiste und keinen
  * Verlauf; jede dieser Seiten führt zur Anmeldung zurück.
  *
  * @param login Die Anmeldeseite; sie bekommt den Weg zu diesen Seiten mit.
+ * @param begleiter Für den Begleiter-Link; ohne ihn wartet der Link auf die Anmeldung.
  */
 @Composable
-fun Draussen(sitzung: Sitzung, login: @Composable (beiSeite: (String) -> Unit) -> Unit) {
+fun Draussen(
+    sitzung: Sitzung,
+    begleiter: Begleiter? = null,
+    login: @Composable (beiSeite: (String) -> Unit) -> Unit,
+) {
     var seite by rememberSaveable { mutableStateOf<String?>(null) }
     val ziel by Einsprung.ziel.collectAsStateWithLifecycle()
 
     // Was ohne Anmeldung geht, wird gleich geöffnet; alles andere wartet.
     LaunchedEffect(ziel) {
         val route = ziel ?: return@LaunchedEffect
-        if (ohneAnmeldung(route)) {
+        if (ohneAnmeldung(route) && (begleiter != null || !route.startsWith(FUNKPRAEFIX))) {
             Einsprung.erledigt(route)
             seite = route
         }
@@ -466,8 +479,35 @@ fun Draussen(sitzung: Sitzung, login: @Composable (beiSeite: (String) -> Unit) -
             )
         }
 
+        gerade.startsWith(FUNKPRAEFIX) && begleiter != null -> FunkDraussen(
+            begleiter = begleiter,
+            token = teile.getOrNull(1).orEmpty(),
+            beiZurueck = zurueck,
+        )
+
         else -> login { seite = it }
     }
+}
+
+/**
+ * Der Begleiter-Link ohne Konto — dieselbe Seite wie der Weg `funk/{token}` in
+ * `ExtrasWege`. Sie koppelt sofort; steht die Kopplung, übernimmt der
+ * Begleiterrahmen den ganzen Schirm (siehe `PagerSpassApp`).
+ */
+@Composable
+private fun FunkDraussen(begleiter: Begleiter, token: String, beiZurueck: () -> Unit) {
+    val begleiterstand by begleiter.stand.collectAsStateWithLifecycle()
+
+    LaunchedEffect(token) { if (token.isNotBlank()) begleiter.linkOeffnen(token) }
+
+    BegleiterKopplung(
+        laeuft = begleiterstand.laeuft,
+        fehler = begleiterstand.fehler,
+        beiKoppeln = { begleiter.koppeln(it) },
+        beiZurueck = beiZurueck,
+        // Der Link selbst braucht kein Premium und kein Konto.
+        premium = true,
+    )
 }
 
 /**

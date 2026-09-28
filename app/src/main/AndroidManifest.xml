@@ -135,6 +135,22 @@
                 <data android:pathPrefix="/funk/" />
             </intent-filter>
         </activity>
+
+        <!--
+            Teilen als Datei: Schichtkarte (PNG) und Schichtenauszug (CSV) gehen wie im
+            Web (`navigator.share({ files })`) als Datei ins Teilen-Blatt, nicht als Text.
+            Herausgegeben wird nur der Cache-Ordner `geteilt/` (res/xml/dateien.xml),
+            und nur mit befristeter Leseerlaubnis — siehe `ui/teilen/Dateiteilen.kt`.
+        -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.dateien"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/dateien" />
+        </provider>
     </application>
 
 </manifest>

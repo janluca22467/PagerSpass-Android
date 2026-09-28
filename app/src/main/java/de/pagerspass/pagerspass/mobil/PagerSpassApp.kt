@@ -107,6 +107,9 @@ fun PagerSpassApp(
         // Stand weggeworfen — beim Abmelden wie beim Kontowechsel.
         val konto = stand.konto ?: run {
             sozial.trennen()
+            // Begleiter: Ein Funkplatz, der ohne Konto gekoppelt war, kommt auch
+            // ohne Konto zurück — wie das Neuladen von `/funk/…` im Web.
+            begleiter.wiederAufnehmen()
             return@LaunchedEffect
         }
         runde.wiederAufnehmen(konto.anzeigename)
@@ -174,7 +177,11 @@ fun PagerSpassApp(
 
             // Bereich Konto: Die Anmeldeseite steht in `Draussen` — mit den Seiten, die
             // ohne Konto erreichbar sein müssen (Rechtstexte, Verträge, Newsletter, Code).
-            !stand.angemeldet -> Draussen(sitzung) { beiSeite ->
+            // Begleiter: Wer ohne Konto über den Link gekoppelt hat, ist Funkplatz —
+            // der Link braucht im Web keine Anmeldung (router.ts, `begleiter`).
+            !stand.angemeldet && begleiterstand.gekoppelt -> Begleiterrahmen(begleiterstand, begleiter)
+
+            !stand.angemeldet -> Draussen(sitzung, begleiter) { beiSeite ->
                 LoginSeite(
                     wege = sitzung.kontowege,
                     laeuft = stand.laeuft,
@@ -595,6 +602,8 @@ private fun Angemeldet(
                 marken = marken(daten, kreisstand),
                 beiWahl = { weg -> zurWahl(steuerung, weg) },
                 modifier = Modifier.align(Alignment.BottomCenter),
+                // Begleiter: der siebte Weg „Scan" nur mit Premium (MobilTableiste.vue).
+                begleiter = stand.konto?.premiumAktiv == true,
             )
         }
     }
@@ -651,7 +660,8 @@ private const val UNTERSEITE_PROFIL = "profil"
 private const val UNTERSEITE_PRIVATSPHAERE = "privatsphaere"
 private const val UNTERSEITE_POSTFACH = "postfach"
 private const val UNTERSEITE_MITTEILUNGEN = "mitteilungen"
-private const val UNTERSEITE_BEGLEITER = "begleiter"
+/** Auch der Einsprung braucht ihn — `/scan` im Web. */
+internal const val UNTERSEITE_BEGLEITER = "begleiter"
 private const val UNTERSEITE_OEFFENTLICH = "oeffentlicheRunden"
 private const val UNTERSEITE_TAGESSCHICHT = "tagesschicht"
 

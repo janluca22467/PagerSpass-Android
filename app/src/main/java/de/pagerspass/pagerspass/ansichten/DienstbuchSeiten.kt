@@ -1,6 +1,5 @@
 package de.pagerspass.pagerspass.ansichten
 
-import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -62,6 +61,7 @@ import de.pagerspass.pagerspass.ui.bausteine.Reiterreihe
 import de.pagerspass.pagerspass.ui.bausteine.SehrLeise
 import de.pagerspass.pagerspass.ui.bausteine.Seite
 import de.pagerspass.pagerspass.ui.bausteine.Textweg
+import de.pagerspass.pagerspass.ui.teilen.Dateiteilen
 import de.pagerspass.pagerspass.ui.theme.Abstand
 import de.pagerspass.pagerspass.ui.theme.Farben
 import de.pagerspass.pagerspass.ui.theme.Rundung
@@ -931,18 +931,19 @@ fun DienstbuchSchichten(
                 aktiv = gefiltert.isNotEmpty(),
                 kompakt = true,
             )
-            // Am Handy übers Teilen-Blatt — dorthin, wo die Datei weiter soll.
+            // Am Handy übers Teilen-Blatt — dorthin, wo die Datei weiter soll. Als
+            // Datei, nicht als Text: Wie im Web (`navigator.share({ files })`) soll
+            // eine `.csv` ankommen, die sich in der Tabelle öffnen lässt.
             Knopf(
                 aufschrift = "Teilen",
                 beiDruck = {
-                    val senden = Intent(Intent.ACTION_SEND).apply {
-                        type = "text/csv"
-                        putExtra(Intent.EXTRA_SUBJECT, "PagerSpass-Schichten")
-                        putExtra(Intent.EXTRA_TEXT, auszugAlsCsv(gefiltert, ::orgVon))
-                    }
-                    runCatching {
-                        zusammenhang.startActivity(Intent.createChooser(senden, "PagerSpass-Schichten"))
-                    }
+                    auszugsfehler = Dateiteilen.teilen(
+                        zusammenhang = zusammenhang,
+                        name = "pagerspass-schichten-${LocalDate.now()}.csv",
+                        art = "text/csv",
+                        titel = "PagerSpass-Schichten",
+                        inhalt = auszugAlsCsv(gefiltert, ::orgVon).toByteArray(Charsets.UTF_8),
+                    ).exceptionOrNull()?.let { it.message ?: "Der Auszug ließ sich nicht teilen." }
                 },
                 art = Knopfart.Leise,
                 aktiv = gefiltert.isNotEmpty(),
