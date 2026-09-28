@@ -86,8 +86,10 @@ class FahrzeugGriffe(
     val patient: Patientengriffe = Patientengriffe(),
     val einzelruf: BegleiterGriffe = BegleiterGriffe(),
     val einzelrufZulassen: (Boolean) -> Unit = {},
-    /** Funk, Einsatzstelle, Alarmdurchsage — 0–1. */
-    val pegel: (Float, Float, Float) -> Unit = { _, _, _ -> },
+    /** Der Tonregler auf die Lautsprecher der Runde (`Runde.tonAnwenden`). */
+    val ton: (de.pagerspass.pagerspass.mobil.Tonstand) -> Unit = {},
+    /** Das Mikrofon im Einzelruf zwischen zwei Menschen — an mit der Annahme, aus mit dem Ende. */
+    val einzelrufMikrofon: (Boolean) -> Unit = {},
     /** Der QR-Zugang zum Funkbegleiter — liefert den Link fürs Handy. */
     val begleiterZugang: suspend () -> Result<String> = { Result.failure(IllegalStateException("Kein Zugang.")) },
     val premium: () -> Unit = {},
@@ -191,14 +193,13 @@ fun FahrzeugSeite(
         }
     }
 
-    // Die Pegel der Runde folgen dem Tonregler — auch die Durchsage der Leitstelle.
-    LaunchedEffect(tonwahl.funkpegel, tonwahl.dmoStumm, tonwahl.durchsage, tonwahl.melder, tonwahl.geraetAus) {
-        griffe.pegel(
-            tonwahl.funkpegel,
-            if (tonwahl.dmoStumm) 0f else tonwahl.funkpegel,
-            if (tonwahl.durchsage && !tonwahl.geraetAus) tonwahl.melder else 0f,
-        )
-    }
+    // Der Tonregler ist derselbe wie am Leitstellentisch (`Tonregler.kt`): Dreht jemand
+    // dort, zieht der Spiegel hier nach — und die Pegel der Runde folgen, auch die
+    // Durchsage der Leitstelle beim Alarm.
+    val tonstand by de.pagerspass.pagerspass.mobil.rememberTonstand()
+    LaunchedEffect(tonstand) { tonwahl.uebernehmen(tonstand) }
+    val rundenton = tonwahl.rundenton
+    LaunchedEffect(rundenton) { griffe.ton(rundenton) }
 
     val quittieren: () -> Unit = {
         if (melder.meldungSteht && !melder.quittiert) {
@@ -377,7 +378,7 @@ fun FahrzeugSeite(
                 }
             }
 
-            FahrzeugEinzelruf(stand, tonwahl, griffe.einzelruf)
+            FahrzeugEinzelruf(stand, tonwahl, griffe.einzelruf, griffe.einzelrufMikrofon)
 
             val teile = buildList {
                 when (ersterReiter) {

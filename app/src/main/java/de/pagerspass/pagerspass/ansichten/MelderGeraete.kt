@@ -691,20 +691,6 @@ private fun Farbmelder(
 /** Ob das Gerät ausgeschaltet ist — steht im Kopfwort. */
 private fun menueAus(menue: Meldermenue): Boolean = menue.kopfwort == "Aus"
 
-/** Das Formzeichen der Dringlichkeit — `prioZeichen` in types.ts. */
-internal fun prioZeichen(prio: Int): String = when {
-    prio >= 3 -> "▲▲"
-    prio <= 1 -> "▽"
-    else -> ""
-}
-
-/** Und das Wort dazu. */
-internal fun prioWort(prio: Int): String = when {
-    prio >= 3 -> "Priorität hoch"
-    prio <= 1 -> "Priorität gering"
-    else -> "Priorität normal"
-}
-
 /** Das Alarmfax — druckt die Meldung; abreißen quittiert. */
 @Composable
 private fun Alarmfax(anzeige: Melderanzeige, griffe: Meldergriffe) {

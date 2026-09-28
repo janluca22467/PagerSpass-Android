@@ -208,7 +208,7 @@ private fun Transportziel(raum: Raumzustand, e: Einsatz, f: Rundenfahrzeug, @Sup
                 lat != null && lon != null -> {
                     val meter = restEntfernungMeter(lat, lon, f.route, f.routeIndex, klinik.lat, klinik.lon)
                     val prio = if (f.sondersignalAus) 1 else e.prioritaet
-                    " — noch ${formatEntfernung(meter)} · ca. ${formatAnfahrtszeit(meter / tempoMs(f.organisation, prio, raum))}"
+                    " — noch ${formatEntfernung(meter)} · ca. ${formatAnfahrtszeit(meter / tempoMs(raum, f.organisation, prio))}"
                 }
                 else -> " — Anfahrt läuft"
             }
@@ -277,10 +277,6 @@ private fun Loeschwasser(raum: Raumzustand, e: Einsatz, f: Rundenfahrzeug, beiWa
         }
     }
 }
-
-/** „3,5" oder „12" — Hektar, wie sie überall im Spiel geschrieben werden. */
-internal fun hektarText(hektar: Double): String =
-    if (hektar >= 10) hektar.roundToInt().toString() else "%.1f".format(java.util.Locale.GERMAN, hektar)
 
 /** Die brennende Fläche — die eine Zahl, die schlechter wird, während man daneben steht. */
 @Composable

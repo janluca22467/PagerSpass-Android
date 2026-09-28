@@ -106,27 +106,8 @@ fun lageGrossGenug(einsatz: Einsatz): Boolean =
 
 private val RANG = mapOf("Rot" to 0, "Gelb" to 1, "Gruen" to 2, "Schwarz" to 3)
 
-/** Die Ausweichleiter: Traumazentrum zuerst, dann Chirurgie, zuletzt Grundversorgung. */
-private val AUSWEICHSTUFEN = mapOf(
-    "Rot" to listOf("Trauma", "Chirurgie", "Grundversorgung"),
-    "Gelb" to listOf("Chirurgie", "Grundversorgung"),
-    "Gruen" to listOf("Grundversorgung"),
-    "Schwarz" to emptyList(),
-)
-
-private val VERSORGUNG_WORT = mapOf(
-    "Grundversorgung" to "Grundversorgung",
-    "Chirurgie" to "Chirurgie",
-    "Neurologie" to "Stroke Unit",
-    "Kardiologie" to "Herzkatheter",
-    "Trauma" to "Traumazentrum",
-    "Verbrennung" to "Verbrennungszentrum",
-    "Kinder" to "Kinderklinik",
-)
-
-/** Welches Bett dieses Haus einem Patienten dieser Kategorie stellt — `manvFach`. */
-private fun manvFach(k: Klinik, kategorie: String): String? =
-    AUSWEICHSTUFEN[kategorie].orEmpty().firstOrNull { it in k.abteilungen && it !in k.abgemeldet }
+// Die Ausweichleiter (`manvFach`) und die Namen der Fachabteilungen (`versorgungText`)
+// stehen in `Leitstellenhilfen.kt` — dieselbe Leiter wie am Leitstellentisch.
 
 /** Was trotz „Transport" niemanden in eine Klinik fährt. */
 private val KEIN_PATIENTENTRANSPORT = listOf("betreuung", "ortung")
@@ -397,7 +378,7 @@ private fun Patientenzeile(
                     if (k.imUmland) teile += "Umland" + (k.entfernungKm?.let { " ${it.toInt()} km" } ?: "")
                     kategorie?.let { manvFach(k, it) }?.let { fach ->
                         val betten = k.freieBetten[fach]
-                        teile += (VERSORGUNG_WORT[fach] ?: fach) + (betten?.let { ", $it frei" } ?: "")
+                        teile += versorgungText(fach) + (betten?.let { ", $it frei" } ?: "")
                     }
                     teile.joinToString(" · ")
                 }

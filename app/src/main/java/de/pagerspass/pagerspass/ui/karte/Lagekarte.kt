@@ -50,6 +50,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import de.pagerspass.pagerspass.ansichten.rememberKennung
 import de.pagerspass.pagerspass.netz.Ablage
 import de.pagerspass.pagerspass.netz.Einsatz
 import de.pagerspass.pagerspass.netz.Raumzustand
@@ -59,6 +60,11 @@ import de.pagerspass.pagerspass.ui.bausteine.Knopfart
 import de.pagerspass.pagerspass.ui.theme.Abstand
 import de.pagerspass.pagerspass.ui.theme.Farben
 import de.pagerspass.pagerspass.ui.theme.Schrift
+import de.pagerspass.pagerspass.ui.fahrzeug.bauplanFuer
+import de.pagerspass.pagerspass.ui.fahrzeug.blitzmusterVon
+import de.pagerspass.pagerspass.ui.fahrzeug.fahrzeugZeichnen
+import de.pagerspass.pagerspass.ui.fahrzeug.fahrzeughofZeichnen
+import de.pagerspass.pagerspass.ui.fahrzeug.rememberFahrzeuguhr
 import de.pagerspass.pagerspass.ui.theme.flaeche
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -176,6 +182,17 @@ fun Lagekarte(
     var ebenenwahl by remember { mutableStateOf(false) }
     val ebenen = remember { Kartenebenen() }
 
+    // --- Leitstelle: Riss mit Kurs und Blaulicht, Kennung am Schild, Ortungskreise.
+    val kennung = rememberKennung(raum)
+    val kurse = remember { mutableMapOf<String, Float>() }
+    val letztePositionen = remember { mutableMapOf<String, Pair<Double, Double>>() }
+    val blaulichtDa = raum.vehicles.any { it.lat != null && ausgerueckt(it) && mitBlaulicht(it) }
+    // Die Uhr nur, solange irgendwo ein Blaulicht blitzt — sonst zeichnet die Karte
+    // nicht jeden Rahmen neu.
+    val uhr = if (blaulichtDa) rememberFahrzeuguhr() else null
+    val ortungen = ortungenVon(raum)
+    val ohneKoordinaten = raum.incidents.count { !it.abgeschlossen && it.lat == null }
+
     // Beim ersten Zeichnen mit Ziel: Fahrzeug und Einsatz gemeinsam ins Bild —
     // das einmalige Auto-Zentrieren der NavigationKarte.
     var zentriert by remember { mutableStateOf(false) }
@@ -192,6 +209,21 @@ fun Lagekarte(
             }
         }
         zentriert = true
+    }
+
+    val ortungsIds = ortungen.map { it.id }
+    var gesehenOrtungen by remember { mutableStateOf<Set<String>>(emptySet()) }
+    LaunchedEffect(ortungsIds, groesse) {
+        if (groesse == IntSize.Zero) return@LaunchedEffect
+        val neu = ortungen.filter { it.id !in gesehenOrtungen }
+        neu.lastOrNull()?.let { o ->
+            val grad = o.radius / 111_320.0
+            zuschneiden(
+                listOf(o.lat - grad to o.lon - grad, o.lat + grad to o.lon + grad),
+                groesse,
+            ) { la, lo, z -> mitteLat = la; mitteLon = lo; zoom = z }
+        }
+        gesehenOrtungen = ortungsIds.toSet()
     }
 
     fun weltGroesse() = 256.0 * 2.0.pow(zoom)
@@ -424,49 +456,98 @@ fun Lagekarte(
                 }
             }
 
-            // ---------------------------------------------------- Fahrzeuge
-            if (ebenen.fahrzeuge) {
-                raum.vehicles.filter { it.lat != null && ausgerueckt(it) }.forEach { f ->
-                    val o = bildschirm(f.lat!!, f.lon!!)
-                    val farbe = orgFarbe(f.organisation)
-                    val eigen = f.id == eigenesFahrzeugId
+            // ------------------------------------------------ Ortungen
+            // Als Kreis, nicht als Punkt: Die Ungenauigkeit muss man sehen.
+            ortungen.forEach { o ->
+                val ort = bildschirm(o.lat, o.lon)
+                val r = meterZuPx(o.lat, o.radius, zoomFuerZeichnen)
+                drawCircle(Farben.Amber.copy(alpha = 0.08f), radius = r, center = ort)
+                drawCircle(
+                    Farben.Amber,
+                    radius = r,
+                    center = ort,
+                    style = Stroke(1.5.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(12f, 10f))),
+                )
+                val text = messer.measure(
+                    "Ortung Notruf ${o.nummer} (±${o.radius.toInt()} m)",
+                    TextStyle(color = Farben.AmberHell, fontSize = 9.sp),
+                )
+                drawText(text, topLeft = ort - Offset(text.size.width / 2f, r + text.size.height))
+            }
 
-                    drawCircle(Farben.BgTief, radius = 8.dp.toPx(), center = o)
-                    drawCircle(farbe, radius = 6.dp.toPx(), center = o)
-                    if (f.status == 3 && !f.sondersignalAus) {
-                        drawCircle(
-                            Color(0xFF4D8DFF),
-                            radius = 9.dp.toPx(),
-                            center = o,
-                            style = Stroke(2.dp.toPx()),
-                        )
+            // ---------------------------------------------------- Fahrzeuge
+            // Der Riss des Fahrzeugs, gedreht in Fahrtrichtung, mit Blaulicht bei
+            // Status 3 und 7. Wer auf demselben Fleck steht, wird auf einen kleinen
+            // Kreis verteilt — im Bildschirm, damit der Abstand auf jeder Stufe bleibt.
+            if (ebenen.fahrzeuge) {
+                val draussen = raum.vehicles.filter { it.lat != null && ausgerueckt(it) }
+                val stapel = draussen.groupBy { "%.4f,%.4f".format(it.lat, it.lon) }
+                    .mapValues { (_, liste) -> liste.map { it.id }.sorted() }
+                val jetztMs = uhr?.value
+                draussen.forEach { f ->
+                    val lat = f.lat!!
+                    val lon = f.lon!!
+                    val vorher = letztePositionen[f.id]
+                    if (vorher != null && (vorher.first != lat || vorher.second != lon)) {
+                        kurse[f.id] = peilung(vorher.first, vorher.second, lat, lon)
                     }
+                    letztePositionen[f.id] = lat to lon
+
+                    val gruppe = stapel["%.4f,%.4f".format(lat, lon)].orEmpty()
+                    var o = bildschirm(lat, lon)
+                    if (gruppe.size > 1) {
+                        val platz = gruppe.indexOf(f.id).coerceAtLeast(0)
+                        val r = (9 + min(gruppe.size, 8)).dp.toPx()
+                        val w = 2 * PI * platz / gruppe.size - PI / 2
+                        o += Offset((cos(w) * r).toFloat(), (sin(w) * r).toFloat())
+                    }
+                    val eigen = f.id == eigenesFahrzeugId
+                    val bauplan = bauplanFuer(f.typ, f.organisation)
+                    val blau = mitBlaulicht(f)
+                    val hoehe = 30.dp.toPx()
+
                     if (eigen || f.id == gewaehltesFahrzeug) {
-                        drawCircle(
-                            Farben.Amber,
-                            radius = 11.dp.toPx(),
-                            center = o,
-                            style = Stroke(1.5.dp.toPx()),
-                        )
+                        drawCircle(Farben.Amber, radius = 19.dp.toPx(), center = o, style = Stroke(1.5.dp.toPx()))
                     }
+                    if (blau && bauplan.blaulicht && jetztMs != null) {
+                        fahrzeughofZeichnen(o, hoehe * 0.62f, blitzmusterVon(bauplan), jetztMs)
+                    }
+                    fahrzeugZeichnen(
+                        bauplan = bauplan,
+                        mitte = o,
+                        hoehe = hoehe,
+                        drehung = kurse[f.id] ?: 0f,
+                        blaulicht = blau,
+                        jetzt = jetztMs,
+                    )
 
                     val text = messer.measure(
-                        f.kurzname.ifBlank { f.funkrufname },
+                        kennung(f),
                         TextStyle(
-                            color = Farben.Text,
+                            color = if (f.id == gewaehltesFahrzeug) Farben.Amber else Farben.Text,
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Medium,
                         ),
                     )
+                    val schild = o + Offset(-text.size.width / 2f, hoehe / 2f + 2.dp.toPx())
                     drawRect(
                         Farben.BgTief.copy(alpha = 0.75f),
-                        topLeft = o + Offset(-text.size.width / 2f - 3.dp.toPx(), 10.dp.toPx()),
+                        topLeft = schild - Offset(3.dp.toPx(), 0f),
                         size = Size(text.size.width + 6.dp.toPx(), text.size.height.toFloat()),
                     )
-                    drawText(
-                        text,
-                        topLeft = o + Offset(-text.size.width / 2f, 10.dp.toPx()),
-                    )
+                    drawText(text, topLeft = schild)
+
+                    // Die NA-Marke steht am Schild: Ein mitgedrehtes „NA" stünde die
+                    // Hälfte der Zeit auf dem Kopf.
+                    if (raum.vehicles.any { it.notarztBei == f.funkrufname }) {
+                        val na = messer.measure(
+                            "NA",
+                            TextStyle(color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.Bold),
+                        )
+                        val naOrt = schild + Offset(text.size.width + 5.dp.toPx(), 0f)
+                        drawRect(Farben.Signal, topLeft = naOrt, size = Size(na.size.width + 4.dp.toPx(), na.size.height.toFloat()))
+                        drawText(na, topLeft = naOrt + Offset(2.dp.toPx(), 0f))
+                    }
                 }
             }
 
@@ -522,6 +603,14 @@ fun Lagekarte(
                     mitteLat = la; mitteLon = lo; zoom = z
                 }
             }
+            // Zum gewählten Einsatz springen — praktisch, wenn er außerhalb liegt.
+            raum.incidents.firstOrNull { it.id == ausgewaehlt && it.lat != null }?.let { e ->
+                Kartenknopf("◎") {
+                    mitteLat = e.lat!!
+                    mitteLon = e.lon!!
+                    zoom = 15.0
+                }
+            }
             Kartenknopf("◐") { stilwahl = !stilwahl; ebenenwahl = false }
             Kartenknopf("≣") { ebenenwahl = !ebenenwahl; stilwahl = false }
             if (stilwahl) {
@@ -571,6 +660,39 @@ fun Lagekarte(
             }
         }
 
+        // --- Leitstelle: was der Tooltip im Web sagt, steht hier unten links —
+        // am Finger gibt es kein „darüber".
+        Column(
+            verticalArrangement = Arrangement.spacedBy(Abstand.Winzig),
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(Abstand.Normal)
+                .padding(bottom = 16.dp),
+        ) {
+            raum.vehicles.firstOrNull { it.id == gewaehltesFahrzeug }?.let { f ->
+                val begleitung = raum.vehicles.firstOrNull { it.notarztBei == f.funkrufname }?.funkrufname
+                Column(
+                    modifier = Modifier.flaeche(ecke = 9.dp).padding(horizontal = Abstand.Normal, vertical = Abstand.Klein),
+                ) {
+                    Text(f.funkrufname, style = Schrift.MonoKlein, color = Farben.Text)
+                    Text(f.statusText, style = Schrift.Klein, color = Farben.TextLeise)
+                    if (begleitung != null) {
+                        Text("Notarzt an Bord — Begleitung durch $begleitung", style = Schrift.Klein, color = Farben.SignalHell)
+                    }
+                }
+            }
+            if (ohneKoordinaten > 0) {
+                Text(
+                    text = if (ohneKoordinaten == 1) "1 Einsatz ohne Koordinaten" else "$ohneKoordinaten Einsätze ohne Koordinaten",
+                    style = Schrift.Winzig,
+                    color = Farben.TextSehrLeise,
+                    modifier = Modifier
+                        .background(Farben.BgTief.copy(alpha = 0.7f))
+                        .padding(horizontal = 6.dp, vertical = 2.dp),
+                )
+            }
+        }
+
         // Die Quellenangabe muss sichtbar bleiben — ODbL ist keine Kür.
         if (freigabe == "ja") {
             Text(
@@ -595,6 +717,46 @@ fun Lagekarte(
                 },
             )
         }
+    }
+}
+
+// ------------------------------------------------ Leitstelle: Riss und Ortung
+
+/** Ob die Marke blitzt — Status 3 und 7 mit Sondersignal (`faehrtMitSondersignal`). */
+private fun mitBlaulicht(f: Rundenfahrzeug): Boolean =
+    (f.status == 3 || f.status == 7) && !f.sondersignalAus
+
+/** Die Peilung von einem Punkt zum nächsten, in Grad ab Norden. */
+private fun peilung(vonLat: Double, vonLon: Double, nachLat: Double, nachLon: Double): Float {
+    val rad = PI / 180.0
+    val y = sin((nachLon - vonLon) * rad) * cos(nachLat * rad)
+    val x = cos(vonLat * rad) * sin(nachLat * rad) -
+        sin(vonLat * rad) * cos(nachLat * rad) * cos((nachLon - vonLon) * rad)
+    return ((kotlin.math.atan2(y, x) / rad + 360.0) % 360.0).toFloat()
+}
+
+/** Eine fertige, erfolgreiche Ortung — als Kreis auf der Karte. */
+private data class Kartenortung(
+    val id: String,
+    val nummer: Int,
+    val lat: Double,
+    val lon: Double,
+    val radius: Double,
+)
+
+/**
+ * Die Ortungen, die auf die Karte gehören — aus dem laufenden Anruf und aus dem
+ * Journal, solange daraus noch kein Einsatz geworden ist. Sie ist oft die einzige
+ * Spur zu diesem Notfall.
+ */
+private fun ortungenVon(raum: Raumzustand): List<Kartenortung> {
+    val laufende = raum.anrufe.map { Triple(it.id, it.nummer, it.ortung) }
+    val journal = raum.anrufjournal.filter { it.incidentId == null }.map { Triple(it.anrufId, it.nummer, it.ortung) }
+    return (laufende + journal).mapNotNull { (id, nummer, o) ->
+        if (o == null || o.laeuft || o.erfolgreich != true) return@mapNotNull null
+        val lat = o.lat ?: return@mapNotNull null
+        val lon = o.lon ?: return@mapNotNull null
+        Kartenortung(id, nummer, lat, lon, (o.radiusMeter ?: 0).toDouble())
     }
 }
 

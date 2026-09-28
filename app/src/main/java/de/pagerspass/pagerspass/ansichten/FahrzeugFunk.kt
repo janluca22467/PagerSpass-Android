@@ -221,7 +221,9 @@ fun einzelrufstand(stand: Rundenstand, tonwahl: Tonwahl): Begleiterstand = Begle
     raum = stand.raum,
     spielerId = stand.eigeneKennung,
     istFunkplatz = !stand.begleiterGekoppelt,
-    einzelrufHoert = stand.nebenleitung == Nebenleitung.Einzelruf,
+    // Die rastende Taste gibt es nur im Gespräch mit einer Bot-Besatzung — mit einem
+    // Menschen ist das Mikrofon ohnehin offen (`einzelrufMikrofon`).
+    einzelrufHoert = stand.nebenleitung == Nebenleitung.Einzelruf && stand.eigenerEinzelruf?.mitBot == true,
     einzelrufErkennung = stand.einzelrufWirdVerstanden,
     tonFunk = tonwahl.funk,
     stumm = tonwahl.stumm,
@@ -587,8 +589,21 @@ private fun Haltetaste(
 
 /** Ein Rahmen für den Einzelruf am unteren Rand — dieselbe Leiste wie am Begleiter. */
 @Composable
-fun FahrzeugEinzelruf(stand: Rundenstand, tonwahl: Tonwahl, griffe: BegleiterGriffe, modifier: Modifier = Modifier) {
+fun FahrzeugEinzelruf(
+    stand: Rundenstand,
+    tonwahl: Tonwahl,
+    griffe: BegleiterGriffe,
+    beiMikrofon: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val b = einzelrufstand(stand, tonwahl)
+    // Vollduplex zwischen zwei Menschen: Das Mikrofon geht mit der Annahme auf und
+    // mit dem Auflegen zu — derselbe Griff wie am Leitstellentisch.
+    val mikrofon by rememberUpdatedState(beiMikrofon)
+    val ruf = b.laufenderEinzelruf?.takeIf { b.einzelrufHier }
+    val menschlich = ruf != null && !ruf.mitBot
+    LaunchedEffect(ruf?.id, menschlich) { mikrofon(menschlich) }
+    androidx.compose.runtime.DisposableEffect(Unit) { onDispose { mikrofon(false) } }
     if (!b.einzelrufHier) return
     if (b.laufenderEinzelruf == null && b.eingehenderEinzelruf == null && b.ausgehenderEinzelruf == null) return
     Box(modifier = modifier.fillMaxWidth().padding(Abstand.Normal), contentAlignment = Alignment.Center) {

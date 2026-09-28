@@ -1402,21 +1402,50 @@ class Runde(anwendung: Application) : AndroidViewModel(anwendung) {
     /** Das Warnband ist weggetippt oder abgelaufen. */
     fun bevoelkerungswarnungWegnehmen() = _stand.update { it.copy(bevoelkerungswarnung = null) }
 
-    // ------------------------------------------- Fahrzeug: der Tonregler der Runde
+    // ------------------------------------------- Leitstelle: der Tonregler
+    //
+    // Der Stand liegt am Gerät (`Tonregler.kt`); hier wird er nur auf die
+    // Lautsprecher gelegt. Funkregler und „stumm" treffen alle Stimmen, der
+    // Melderregler die gesprochene Alarmmeldung, der DMO-Schalter den
+    // Einsatzstellenfunk — dieselbe Aufteilung wie `melder.ts` im Web.
 
-    /**
-     * Lauter, leiser, still — die Regler des Tonreglers auf die Lautsprecher der
-     * Runde. Der Funkregler trägt Funk, Draht, Einzelruf und Telefon; die
-     * Einsatzstelle hat ihren eigenen (DMO mithören), die Durchsage der Leitstelle
-     * beim Alarm hängt am Melderregler (`durchsageAnwenden` im Web).
-     */
-    fun pegelSetzen(funk: Float, einsatzstelle: Float, durchsage: Float) {
+    fun tonAnwenden(ton: Tonstand) {
+        val funk = ton.funkpegel
         lautsprecher.lautstaerke(funk)
         drahtLautsprecher.lautstaerke(funk)
         einzelrufLautsprecher.lautstaerke(funk)
         telefonLautsprecher.lautstaerke(funk)
-        einsatzstellenLautsprecher.lautstaerke(einsatzstelle)
-        durchsageLautsprecher.lautstaerke(durchsage)
+        einsatzstellenLautsprecher.lautstaerke(if (ton.dmoStumm) 0f else funk)
+        durchsageLautsprecher.lautstaerke(if (ton.durchsage) ton.melder.coerceIn(0f, 1f) else 0f)
+    }
+
+    /**
+     * Das Mikrofon im Einzelruf zwischen zwei Menschen — vollduplex, ohne Taste:
+     * an mit der Annahme, aus mit dem Auflegen (`einzelrufMikroFuer` im Web).
+     *
+     * <b>Ohne die Zwanzig-Sekunden-Grenze der Nebenleitungen</b> — ein Telefonat ist
+     * keine Durchsage. Mit einer Bot-Besatzung läuft es nicht dauerhaft; dort gilt
+     * die rastende Taste (`einzelrufSprechenStarten`).
+     */
+    fun einzelrufMikrofon(an: Boolean) {
+        val s = _stand.value
+        if (!an) {
+            if (s.nebenleitung == Nebenleitung.Einzelruf) {
+                nebenmikrofon.stoppen()
+                _stand.update { it.copy(nebenleitung = null) }
+            }
+            // Was noch im Puffer liegt, gehört zu einem Gespräch, das es nicht mehr gibt.
+            einzelrufLautsprecher.schliessen()
+            return
+        }
+        if (s.nebenleitung != null) return
+        if (s.sendet) sprechenBeenden()
+        val los = nebenmikrofon.starten { paket -> draht.rufen("EinzelrufAudio", wert(paket)) }
+        if (!los) {
+            _stand.update { it.copy(funkhinweis = "Das Mikrofon war nicht zu bekommen.") }
+            return
+        }
+        _stand.update { it.copy(nebenleitung = Nebenleitung.Einzelruf) }
     }
 
     // ------------------------------------------------ Für `Rundenbefehle.kt`

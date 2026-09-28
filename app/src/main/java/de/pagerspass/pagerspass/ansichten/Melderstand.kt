@@ -228,7 +228,7 @@ fun rememberMelderanzeige(
 // ---------------------------------------------------------------- Gerätemenü
 
 /** Eine Zeile im Gerätemenü. */
-data class Menueeintrag(val id: String, val name: String, val wert: String = "")
+data class Meldermenuezeile(val id: String, val name: String, val wert: String = "")
 
 /**
  * Das Gerätemenü (Abo) — `composables/meldermenue.ts`.
@@ -242,10 +242,10 @@ class Meldermenue internal constructor(
     private val seiteStand: androidx.compose.runtime.MutableState<String>,
     private val auswahlStand: androidx.compose.runtime.MutableIntState,
     private val spurStand: androidx.compose.runtime.MutableState<List<String>>,
-    val eintraege: List<Menueeintrag>,
+    val eintraege: List<Meldermenuezeile>,
     val kopfwort: String,
-    private val beiWahl: (seite: String, eintrag: Menueeintrag) -> Unit,
-    private val beiBalken: (seite: String, eintrag: Menueeintrag?) -> Unit,
+    private val beiWahl: (seite: String, eintrag: Meldermenuezeile) -> Unit,
+    private val beiBalken: (seite: String, eintrag: Meldermenuezeile?) -> Unit,
     private val beiLauter: (Float) -> Unit,
     private val beiTaste: () -> Unit,
 ) {
@@ -352,41 +352,41 @@ fun rememberMeldermenue(
     val artName = Melderkatalog.ALARMIERUNGSARTEN.firstOrNull { it.id == art }?.name.orEmpty()
     val tonName = Melderkatalog.TOENE.firstOrNull { it.id == ton }?.name ?: "Eigener Ton"
     val lautWort = "${(tonwahl.melder * 100).toInt()} %"
-    val zurueck = Menueeintrag(Meldermenue.ZURUECK, "Zurück")
+    val zurueck = Meldermenuezeile(Meldermenue.ZURUECK, "Zurück")
 
     val eintraege = when (seite.value) {
         "wurzel" -> listOf(
-            Menueeintrag("alarmierung", "Alarmierung", artName),
-            Menueeintrag("ausschalten", if (tonwahl.geraetAus) "Einschalten" else "Ausschalten"),
-            Menueeintrag("einstellungen", "Einstellungen"),
-            Menueeintrag("meldungen", "Meldungen"),
-            Menueeintrag("profile", "Profile", profil.name),
-            Menueeintrag("probealarm", "Probealarm", if (probe.laeuft != null) "♪" else ""),
-            Menueeintrag(Meldermenue.ZURUECK, "Menü schließen"),
+            Meldermenuezeile("alarmierung", "Alarmierung", artName),
+            Meldermenuezeile("ausschalten", if (tonwahl.geraetAus) "Einschalten" else "Ausschalten"),
+            Meldermenuezeile("einstellungen", "Einstellungen"),
+            Meldermenuezeile("meldungen", "Meldungen"),
+            Meldermenuezeile("profile", "Profile", profil.name),
+            Meldermenuezeile("probealarm", "Probealarm", if (probe.laeuft != null) "♪" else ""),
+            Meldermenuezeile(Meldermenue.ZURUECK, "Menü schließen"),
         )
         "alarmierung" -> Melderkatalog.ALARMIERUNGSARTEN.map {
-            Menueeintrag(it.id, it.name, if (art == it.id) "●" else "")
+            Meldermenuezeile(it.id, it.name, if (art == it.id) "●" else "")
         } + zurueck
         "einstellungen" -> listOf(
-            Menueeintrag("lautstaerke", "Lautstärke", lautWort),
-            Menueeintrag("ton", "Alarmton", tonName),
+            Meldermenuezeile("lautstaerke", "Lautstärke", lautWort),
+            Meldermenuezeile("ton", "Alarmton", tonName),
             zurueck,
         )
         "ton" -> Melderkatalog.TOENE.filter { !it.premium || premium }.map {
-            Menueeintrag(it.id, it.name, if (ton == it.id) "●" else "")
+            Meldermenuezeile(it.id, it.name, if (ton == it.id) "●" else "")
         } + zurueck
         "profile" -> Melderkatalog.PROFILE.map {
-            Menueeintrag(it.id, it.name, if (profilId == it.id) "●" else "")
+            Meldermenuezeile(it.id, it.name, if (profilId == it.id) "●" else "")
         } + zurueck
         "lautstaerke" -> {
             val stufen = (tonwahl.melder * 10).toInt().coerceIn(0, 10)
-            listOf(Menueeintrag("wert", "▮".repeat(stufen) + "▯".repeat(10 - stufen), lautWort))
+            listOf(Meldermenuezeile("wert", "▮".repeat(stufen) + "▯".repeat(10 - stufen), lautWort))
         }
         "meldungen" -> (
             if (verlauf.isEmpty()) {
-                listOf(Menueeintrag("leer", "Keine Meldungen"))
+                listOf(Meldermenuezeile("leer", "Keine Meldungen"))
             } else {
-                verlauf.mapIndexed { i, a -> Menueeintrag("m$i", "${uhrzeit(a.zeit)} ${a.stichwort}") }
+                verlauf.mapIndexed { i, a -> Meldermenuezeile("m$i", "${uhrzeit(a.zeit)} ${a.stichwort}") }
             }
             ) + zurueck
         else -> emptyList()

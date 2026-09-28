@@ -9,7 +9,7 @@ import de.pagerspass.pagerspass.ansichten.ManvGriffe
 import de.pagerspass.pagerspass.ansichten.Patientengriffe
 import de.pagerspass.pagerspass.netz.Ablage
 import de.pagerspass.pagerspass.netz.Begleitergeraete
-import de.pagerspass.pagerspass.netz.Fahrzeugwege
+import de.pagerspass.pagerspass.netz.Leitstellenwege
 import de.pagerspass.pagerspass.netz.Netz
 import kotlinx.coroutines.flow.first
 
@@ -86,13 +86,14 @@ internal fun fahrzeuggriffe(
         einzelrufZulassen = { runde.einzelrufZulassen(it) },
     ),
     einzelrufZulassen = { runde.einzelrufZulassen(it) },
-    pegel = { funk, einsatzstelle, durchsage -> runde.pegelSetzen(funk, einsatzstelle, durchsage) },
+    ton = { runde.tonAnwenden(it) },
+    einzelrufMikrofon = { runde.einzelrufMikrofon(it) },
     begleiterZugang = {
         runCatching {
             val code = runde.stand.value.code
             val ablage = Ablage(zusammenhang)
             val tonwahl = Tonwahl.von(zusammenhang)
-            val zugang = Fahrzeugwege(Netz(ablage)).funkbegleiter(
+            val zugang = Leitstellenwege(Netz(ablage)).funkbegleiterErzeugen(
                 kennung,
                 code,
                 Begleitergeraete(

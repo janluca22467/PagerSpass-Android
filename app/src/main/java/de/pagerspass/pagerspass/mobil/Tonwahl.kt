@@ -22,6 +22,11 @@ import de.pagerspass.pagerspass.ui.schmuck.Melderkatalog
  * dagegen in der [de.pagerspass.pagerspass.netz.Ablage] (siehe `Bedienung.kt`) —
  * sie werden im Konto eingestellt, diese hier im Dienst.
  *
+ * <b>Melder, Funk, Stumm, Durchsage und DMO liegen im [Tonregler]</b> — demselben
+ * Stand, den die Leitstelle dreht; hier stehen sie nur als Spiegel, damit die
+ * Fahrzeugseite sie beim Zeichnen liest. Geschrieben wird immer dorthin. Eigen sind
+ * dieser Klasse nur Bauart, Umgebung und „Gerät aus".
+ *
  * <b>Eine Instanz je Prozess.</b> Der Regler im Kopf des Fahrzeugs und die
  * Blende des Melders lesen dieselben Werte; zwei Instanzen mit je eigenem
  * Zustand liefen auseinander, sobald eine davon dreht.
@@ -30,18 +35,27 @@ import de.pagerspass.pagerspass.ui.schmuck.Melderkatalog
  * schon dastehen muss: Ein Melder, der eine Zehntelsekunde lang mit der Vorgabe
  * piept, bevor die gemerkte Lautstärke eintrifft, piept eben mit der Vorgabe.
  */
-class Tonwahl private constructor(private val ablage: SharedPreferences) {
+class Tonwahl private constructor(
+    private val zusammenhang: Context,
+    private val ablage: SharedPreferences,
+) {
 
     /** `dme`, `app` oder `funk` — wie der Alarm am Platz erscheint. */
     var bauart by mutableStateOf(ablage.getString("bauart", "dme").takeIf { it in BAUARTEN } ?: "dme")
         private set
 
+    private val ton: Tonstand
+        get() {
+            Tonregler.laden(zusammenhang)
+            return Tonregler.stand.value
+        }
+
     /** Der Melderregler, 0–1. */
-    var melder by mutableFloatStateOf(ablage.getFloat("melder", 0.9f))
+    var melder by mutableFloatStateOf(ton.melder)
         private set
 
     /** Stimmen und Gerätetöne des Funkgeräts, 0–1 — auch das Klingeln des Einzelrufs. */
-    var funk by mutableFloatStateOf(ablage.getFloat("funk", 1f))
+    var funk by mutableFloatStateOf(ton.funk)
         private set
 
     /** Sirene, Signalhorn, Bedientöne am Fahrzeug, 0–1. */
@@ -49,15 +63,15 @@ class Tonwahl private constructor(private val ablage: SharedPreferences) {
         private set
 
     /** Alles außer dem Melder stumm. */
-    var stumm by mutableStateOf(ablage.getBoolean("stumm", false))
+    var stumm by mutableStateOf(ton.stumm)
         private set
 
     /** Die gesprochene Meldung der Leitstelle beim Alarm (`AlarmDurchsage`). */
-    var durchsage by mutableStateOf(ablage.getBoolean("durchsage", true))
+    var durchsage by mutableStateOf(ton.durchsage)
         private set
 
     /** Den Sprechfunk der eigenen Einsatzstelle (DMO) nicht mithören. */
-    var dmoStumm by mutableStateOf(ablage.getBoolean("dmoStumm", false))
+    var dmoStumm by mutableStateOf(ton.dmoStumm)
         private set
 
     /**
@@ -75,12 +89,12 @@ class Tonwahl private constructor(private val ablage: SharedPreferences) {
 
     fun melderSetzen(wert: Float) {
         melder = wert.coerceIn(0f, 1f)
-        ablage.edit().putFloat("melder", melder).apply()
+        Tonregler.setzen(zusammenhang, ton.copy(melder = melder))
     }
 
     fun funkSetzen(wert: Float) {
         funk = wert.coerceIn(0f, 1f)
-        ablage.edit().putFloat("funk", funk).apply()
+        Tonregler.setzen(zusammenhang, ton.copy(funk = funk))
     }
 
     fun umgebungSetzen(wert: Float) {
@@ -90,18 +104,34 @@ class Tonwahl private constructor(private val ablage: SharedPreferences) {
 
     fun stummSetzen(wert: Boolean) {
         stumm = wert
-        ablage.edit().putBoolean("stumm", wert).apply()
+        Tonregler.setzen(zusammenhang, ton.copy(stumm = wert))
     }
 
     fun durchsageSetzen(wert: Boolean) {
         durchsage = wert
-        ablage.edit().putBoolean("durchsage", wert).apply()
+        Tonregler.setzen(zusammenhang, ton.copy(durchsage = wert))
     }
 
     fun dmoStummSetzen(wert: Boolean) {
         dmoStumm = wert
-        ablage.edit().putBoolean("dmoStumm", wert).apply()
+        Tonregler.setzen(zusammenhang, ton.copy(dmoStumm = wert))
     }
+
+    /** Den Spiegel nachziehen — die Leitstelle hat am selben Regler gedreht. */
+    fun uebernehmen(t: Tonstand) {
+        melder = t.melder
+        funk = t.funk
+        stumm = t.stumm
+        durchsage = t.durchsage
+        dmoStumm = t.dmoStumm
+    }
+
+    /**
+     * Was auf die Lautsprecher der Runde kommt (`Runde.tonAnwenden`): der Stand des
+     * Reglers — mit ausgeschaltetem Gerät auch ohne die Durchsage beim Alarm.
+     */
+    val rundenton: Tonstand
+        get() = Tonstand(melder = melder, funk = funk, stumm = stumm, durchsage = durchsage && !geraetAus, dmoStumm = dmoStumm)
 
     /**
      * Der Pegel nach einem neuen Profil — `pegelNachfuehren` im Web.
@@ -137,6 +167,7 @@ class Tonwahl private constructor(private val ablage: SharedPreferences) {
 
         fun von(zusammenhang: Context): Tonwahl = einzige ?: synchronized(this) {
             einzige ?: Tonwahl(
+                zusammenhang.applicationContext,
                 zusammenhang.applicationContext.getSharedPreferences("pagerspass-ton", Context.MODE_PRIVATE),
             ).also { einzige = it }
         }

@@ -78,67 +78,10 @@ import kotlin.math.sqrt
  */
 
 // ------------------------------------------------------------------- Anfahrt
-
-/** Luftlinie zwischen zwei Punkten in Metern (Haversine) — `distanzMeter`. */
-internal fun distanzMeter(aLat: Double, aLon: Double, bLat: Double, bLon: Double): Double {
-    val rad = Math.PI / 180
-    val dLat = (bLat - aLat) * rad
-    val dLon = (bLon - aLon) * rad
-    val h = sin(dLat / 2) * sin(dLat / 2) + cos(aLat * rad) * cos(bLat * rad) * sin(dLon / 2) * sin(dLon / 2)
-    return 6_371_000 * 2 * atan2(sqrt(h), sqrt(1 - h))
-}
-
-/**
- * Restentfernung entlang der Straßenroute, sonst Luftlinie — dieselbe Rechnung wie
- * auf der Karte, damit Tastatur und Navigation einander nicht widersprechen.
- */
-internal fun restEntfernungMeter(
-    vonLat: Double,
-    vonLon: Double,
-    route: List<Ort>,
-    routeIndex: Int,
-    zielLat: Double,
-    zielLon: Double,
-): Double {
-    val punkte = route.drop(routeIndex.coerceIn(0, route.size))
-    if (punkte.isEmpty()) return distanzMeter(vonLat, vonLon, zielLat, zielLon)
-    var meter = distanzMeter(vonLat, vonLon, punkte[0].lat, punkte[0].lon)
-    for (i in 1 until punkte.size) {
-        meter += distanzMeter(punkte[i - 1].lat, punkte[i - 1].lon, punkte[i].lat, punkte[i].lon)
-    }
-    return meter
-}
-
-/**
- * Wie schnell das Fahrzeug wirklich vorankommt — Grundtempo mal Wetter mal
- * Zeitfaktor, wie `FahrtDienst` am Server (`fahrtTempoMs`).
- */
-internal fun tempoMs(organisation: String, prioritaet: Int, raum: Raumzustand?): Double {
-    val basis = when (organisation) {
-        "Rettungsdienst" -> 18.0
-        "Polizei" -> 20.0
-        "Feuerwehr" -> 15.0
-        "Thw" -> 12.0
-        else -> 14.0
-    }
-    val prio = when {
-        prioritaet >= 3 -> 1.35
-        prioritaet == 2 -> 1.15
-        else -> 1.0
-    }
-    val zeitfaktor = if (raum?.settings?.zeitmodus == "Simulation") 3.0 else 1.0
-    return basis * prio * (raum?.wetter?.bremsfaktor ?: 1.0) * max(zeitfaktor, 0.01)
-}
-
-internal fun formatEntfernung(meter: Double): String =
-    if (meter < 1000) "${max(1, meter.roundToInt())} m" else "${"%.1f".format(java.util.Locale.GERMAN, meter / 1000)} km"
-
-internal fun formatAnfahrtszeit(sekunden: Double): String {
-    val min = (sekunden / 60).roundToInt()
-    return if (min < 1) "< 1 min" else "$min min"
-}
-
-internal fun zeitMillis(roh: String?): Long? = roh?.let { runCatching { Instant.parse(it).toEpochMilli() }.getOrNull() }
+//
+// Entfernung, Restweg, Tempo und Zeitstempel stehen in `Leitstellenhilfen.kt` —
+// dieselbe Rechnung für beide Plätze, damit Tastatur, Karte und Tableau einander
+// nicht widersprechen.
 
 // ------------------------------------------------------------------ FMS
 
@@ -369,7 +312,7 @@ fun anfahrtszeile(raum: Raumzustand, f: Rundenfahrzeug, e: Einsatz?): Pair<Strin
         if (lat == null || lon == null || wLat == null || wLon == null) return "Rückfahrt zur Wache" to false
         if (distanzMeter(lat, lon, wLat, wLon) <= 50) return "Wache erreicht — Status 2 melden" to true
         val heim = restEntfernungMeter(lat, lon, f.route, f.routeIndex, wLat, wLon)
-        val dauer = heim / tempoMs(f.organisation, 1, raum)
+        val dauer = heim / tempoMs(raum, f.organisation, 1)
         return "Noch ${formatEntfernung(heim)} bis zur Wache · ca. ${formatAnfahrtszeit(dauer)}" to false
     }
     if (f.status != 3 || e?.lat == null || e.lon == null) return null
@@ -378,7 +321,7 @@ fun anfahrtszeile(raum: Raumzustand, f: Rundenfahrzeug, e: Einsatz?): Pair<Strin
     val lon = f.lon
     if (lat == null || lon == null) return "Anfahrt läuft" to false
     val m = restEntfernungMeter(lat, lon, f.route, f.routeIndex, e.lat, e.lon)
-    val sek = m / tempoMs(f.organisation, if (f.sondersignalAus) 1 else e.prioritaet, raum)
+    val sek = m / tempoMs(raum, f.organisation, if (f.sondersignalAus) 1 else e.prioritaet)
     return "Noch ${formatEntfernung(m)} bis zur Einsatzstelle · ca. ${formatAnfahrtszeit(sek)}" to false
 }
 
