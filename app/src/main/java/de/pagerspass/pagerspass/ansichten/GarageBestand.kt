@@ -39,6 +39,7 @@ import de.pagerspass.pagerspass.ui.bausteine.Pillenreihe
 import de.pagerspass.pagerspass.ui.bausteine.SehrLeise
 import de.pagerspass.pagerspass.ui.bausteine.Segment
 import de.pagerspass.pagerspass.ui.bausteine.Ueberschrift
+import de.pagerspass.pagerspass.ui.fahrzeug.FahrzeugSymbol
 import de.pagerspass.pagerspass.ui.theme.Abstand
 import de.pagerspass.pagerspass.ui.theme.Farben
 import de.pagerspass.pagerspass.ui.theme.Rundung
@@ -209,18 +210,32 @@ internal fun Traegertitel(hiOrg: String, name: String) {
 }
 
 /**
- * Eine Fahrzeugkarte: Farbstreifen der Organisation, Typ, Träger mit eigener
- * Farbe, Beschreibung, Besatzung und die ersten drei Fähigkeiten.
+ * Eine Fahrzeugkarte (`FahrzeugKarte.vue` mit `symbol`): Farbstreifen der Organisation,
+ * links die Silhouette von der Lagekarte — dasselbe Fahrzeug, dasselbe Bild —, daneben
+ * Typ, Träger mit eigener Farbe, Beschreibung, Besatzung und die ersten drei Fähigkeiten.
  */
 @Composable
 internal fun FahrzeugKachel(f: Fahrzeugvorlage, modifier: Modifier = Modifier) {
-    Column(
-        verticalArrangement = Arrangement.spacedBy(Abstand.Winzig),
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
+        verticalAlignment = Alignment.Top,
         modifier = modifier
             .clip(Rundung.Klein)
             .flaeche(ecke = 9.dp)
             .drawBehind { drawRect(orgTon(f.organisation), size = Size(3.dp.toPx(), size.height)) }
             .padding(start = Abstand.Normal, end = Abstand.Klein, top = Abstand.Klein, bottom = Abstand.Klein),
+    ) {
+        FahrzeugSymbol(f.typ, f.organisation, Modifier.padding(top = Abstand.Haar), groesse = 38.dp)
+        FahrzeugKachelDaten(f, Modifier.weight(1f))
+    }
+}
+
+/** Die Angaben der Fahrzeugkarte — rechts neben der Silhouette. */
+@Composable
+private fun FahrzeugKachelDaten(f: Fahrzeugvorlage, modifier: Modifier) {
+    Column(
+        verticalArrangement = Arrangement.spacedBy(Abstand.Winzig),
+        modifier = modifier,
     ) {
         Text(
             f.typ,
@@ -260,6 +275,7 @@ internal fun FahrzeugReihe(f: Fahrzeugvorlage) {
             .drawBehind { drawRect(orgTon(f.organisation), size = Size(3.dp.toPx(), size.height)) }
             .padding(start = Abstand.Normal, end = Abstand.Klein, top = Abstand.Klein, bottom = Abstand.Klein),
     ) {
+        FahrzeugSymbol(f.typ, f.organisation, groesse = 26.dp)
         Text(f.typ, style = Schrift.MonoKlein.copy(fontWeight = FontWeight.Bold), color = Farben.Text)
         if (f.hiOrg.isNotBlank() && f.hiOrg != "Keine") Traegertitel(f.hiOrg, traegerName(f.hiOrg))
         Text(
