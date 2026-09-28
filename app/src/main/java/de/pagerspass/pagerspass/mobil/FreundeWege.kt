@@ -10,6 +10,7 @@ import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.composable
 import de.pagerspass.pagerspass.ansichten.BrettInhalt
+import de.pagerspass.pagerspass.ansichten.Buchreiter
 import de.pagerspass.pagerspass.ansichten.EintragInhalt
 import de.pagerspass.pagerspass.ansichten.FreundeListeInhalt
 import de.pagerspass.pagerspass.ansichten.FreundeRahmen
@@ -375,9 +376,9 @@ private class Freundegriffe(
      */
     fun bezug(art: String, id: String) {
         when (art) {
-            "Schicht" -> runCatching { steuerung.navigate("dienstbuch/schichten?schicht=$id") }
+            "Schicht" -> runCatching { steuerung.navigate(schichtweg(id)) }
                 .onFailure { zurWahl(Weg.Dienstbuch) }
-            "Abzeichen" -> runCatching { steuerung.navigate("dienstbuch/abzeichen") }
+            "Abzeichen" -> runCatching { steuerung.navigate(Buchreiter.Abzeichen.weg) }
                 .onFailure { zurWahl(Weg.Dienstbuch) }
             "Gemeinschaft" -> zurWahl(Weg.Wache)
         }

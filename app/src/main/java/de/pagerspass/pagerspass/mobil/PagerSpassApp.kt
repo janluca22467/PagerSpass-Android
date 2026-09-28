@@ -564,7 +564,6 @@ private fun Angemeldet(
                 zumShop = { zurWahl(steuerung, Weg.Shop) },
                 zumStart = { zurWahl(steuerung, Weg.Dienst) },
                 zurWelt = { steuerung.popBackStack() },
-                zumDienstbuch = { zurWahl(steuerung, Weg.Dienstbuch) },
             )
 
             // World: Gründung und Arbeitsplatz (ansichten/welt/WeltSeiten.kt).

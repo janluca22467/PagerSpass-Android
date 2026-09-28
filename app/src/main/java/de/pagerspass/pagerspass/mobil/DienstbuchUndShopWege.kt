@@ -47,7 +47,7 @@ fun NavGraphBuilder.dienstbuchUndShopWege(
         }
     }
 
-    fun schicht(code: String) = steuerung.navigate("$SCHICHT_WEG/$code")
+    fun schicht(code: String) = steuerung.navigate(schichtweg(code))
 
     fun ersteSchicht() = wegWaehlen(steuerung, Weg.Dienst)
 
@@ -227,6 +227,12 @@ fun NavGraphBuilder.dienstbuchUndShopWege(
 
 /** Die Nachbesprechung einer archivierten Schicht — `dienstbuch/schicht/{code}`. */
 const val SCHICHT_WEG = "dienstbuch/schicht"
+
+/**
+ * Der Weg zur Nachbesprechung einer Schicht — für Verweise aus anderen Bereichen
+ * (Brett, Lehrgangszeugnis). Im Web `/dienstbuch/schichten?schicht=CODE`.
+ */
+fun schichtweg(code: String): String = "$SCHICHT_WEG/${android.net.Uri.encode(code)}"
 
 /**
  * Der Profileditor — der Weg, den der Rahmen als `UNTERSEITE_PROFIL` führt. Er
