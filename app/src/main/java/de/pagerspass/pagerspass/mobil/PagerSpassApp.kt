@@ -38,8 +38,6 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import de.pagerspass.pagerspass.ansichten.BestenlisteSeite
-import de.pagerspass.pagerspass.ansichten.KontoSeite
 import android.Manifest
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -391,7 +389,7 @@ private fun Angemeldet(
     val startdaten: Startdaten = viewModel()
     val startstand by startdaten.stand.collectAsStateWithLifecycle()
 
-    // Die Leiste steht auch auf den Unterseiten (Garage, Bestenliste) — sie sind
+    // Die Leiste steht auch auf den Unterseiten (Garage, Laufbahn) — sie sind
     // Teil des Buchs, kein eigener Zweig. Sie fiele erst weg, wenn eine Ansicht
     // ihre eigenen Reiter mitbringt; das ist bisher keine.
     val platz = Mass.LeisteHoehe
@@ -555,15 +553,6 @@ private fun Angemeldet(
                 )
             }
 
-            composable(UNTERSEITE_BESTENLISTE) {
-                BestenlisteSeite(
-                    unterrand = platz,
-                    liste = daten.bestenliste,
-                    beiLaden = { sitzung.bestenlisteLaden() },
-                    beiZurueck = { steuerung.popBackStack() },
-                )
-            }
-
             // Extras: Übungen, Lehrgang, Leitstellenbau, World-Icons, Begleiter-Link
             // (mobil/ExtrasWege.kt).
             extrasWege(
@@ -644,10 +633,6 @@ private fun Angemeldet(
         runde.beitreten(code, stand.konto?.anzeigename.orEmpty())
     }
 
-    daten.bonusgewinn?.let { gewinn ->
-        Bonusblende(gewinn = gewinn, beiSchliessen = { sitzung.bonusgewinnWegnehmen() })
-    }
-
     // Verwarnungen zuerst, dann Verwaltungsnachrichten — eine nach der
     // anderen, bis alle bestätigt sind. Wie die Dialoge des Web.
     daten.verwarnungen.firstOrNull()?.let { v ->
@@ -663,7 +648,6 @@ private fun Angemeldet(
     }
 }
 
-private const val UNTERSEITE_BESTENLISTE = "bestenliste"
 private const val UNTERSEITE_PROFIL = "profil"
 private const val UNTERSEITE_PRIVATSPHAERE = "privatsphaere"
 private const val UNTERSEITE_POSTFACH = "postfach"
@@ -674,7 +658,6 @@ private const val UNTERSEITE_TAGESSCHICHT = "tagesschicht"
 
 /** Zu welchem Weg der Leiste eine Unterseite gehört. */
 private fun unterseitenweg(route: String?): Weg? = when (route) {
-    UNTERSEITE_BESTENLISTE -> Weg.Dienstbuch
     UNTERSEITE_PROFIL, UNTERSEITE_PRIVATSPHAERE, UNTERSEITE_POSTFACH,
     UNTERSEITE_MITTEILUNGEN, UNTERSEITE_BEGLEITER,
     -> Weg.Konto

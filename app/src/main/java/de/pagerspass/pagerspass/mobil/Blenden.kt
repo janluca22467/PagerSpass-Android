@@ -16,7 +16,6 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
-import de.pagerspass.pagerspass.netz.Gluecksradfeld
 import de.pagerspass.pagerspass.ui.bausteine.Blende
 import androidx.compose.ui.text.input.ImeAction
 import de.pagerspass.pagerspass.ui.bausteine.Dialogbreite
@@ -139,41 +138,6 @@ fun Kontoloeschung(
             etikett = "Zur Bestätigung: dein Passwort",
             geheim = true,
             weiterTaste = ImeAction.Done,
-        )
-    }
-}
-
-/**
- * Was der Tagesbonus ausgeworfen hat.
- *
- * <b>Er bekommt eine Blende und keine Zeile.</b> Ein Gewinn, der als Meldung am
- * Bildschirmrand erscheint und nach drei Sekunden verschwindet, ist kein
- * Ereignis, sondern eine Nebenbemerkung — und der Tagesbonus ist der eine
- * Grund, jeden Tag hereinzuschauen.
- */
-@Composable
-fun Bonusblende(gewinn: Gluecksradfeld, beiSchliessen: () -> Unit) {
-    Blende(
-        titel = "Tagesbonus",
-        beiSchliessen = beiSchliessen,
-        breite = Dialogbreite.Schmal,
-        fuss = { Knopf("Danke", beiSchliessen, art = Knopfart.Haupt, breit = true) },
-    ) {
-        Text(
-            text = gewinn.text.ifBlank { "Etwas ist dabei herausgekommen." },
-            style = Schrift.MonoNormal.copy(fontSize = Schrift.TITEL),
-            color = Farben.Amber,
-            textAlign = TextAlign.Center,
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(Farben.BgTief, Rundung.Klein)
-                .border(1.dp, Farben.AmberTief, Rundung.Klein)
-                .padding(Abstand.Gross),
-        )
-        Text(
-            text = "Komm morgen wieder — die Serie zählt weiter.",
-            style = Schrift.Klein,
-            color = Farben.TextLeise,
         )
     }
 }

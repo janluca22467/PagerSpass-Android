@@ -9,8 +9,6 @@ import de.pagerspass.pagerspass.netz.Konten
 import de.pagerspass.pagerspass.netz.Konto
 import de.pagerspass.pagerspass.netz.Kontowege
 import de.pagerspass.pagerspass.netz.Netz
-import de.pagerspass.pagerspass.netz.Privatsphaere
-import de.pagerspass.pagerspass.netz.Profilaenderung
 import de.pagerspass.pagerspass.netz.Rechtsstand
 import de.pagerspass.pagerspass.netz.Server
 import de.pagerspass.pagerspass.netz.Spielwege
@@ -289,13 +287,6 @@ class Sitzung(anwendung: Application) : AndroidViewModel(anwendung) {
         nurWennNoetig = !neu,
     )
 
-    fun bestenlisteLaden(neu: Boolean = false) = laden(
-        holen = { _daten.value.bestenliste },
-        setzen = { _daten.update { d -> d.copy(bestenliste = it) } },
-        tun = { wege.bestenliste(kennung = _stand.value.konto?.kennung) },
-        nurWennNoetig = !neu,
-    )
-
     fun profilLaden(neu: Boolean = false) = laden(
         holen = { _daten.value.profil },
         setzen = { _daten.update { d -> d.copy(profil = it) } },
@@ -305,66 +296,6 @@ class Sitzung(anwendung: Application) : AndroidViewModel(anwendung) {
         },
         nurWennNoetig = !neu,
     )
-
-    /**
-     * Den Schmuck ändern — Wappen, Farbe, Rahmen, Muster, Vorstellung, Name.
-     *
-     * <b>Die Antwort ist das neue Profil</b>, und sie wird sofort gesetzt: Wer
-     * ein Muster wählt, sieht es im selben Augenblick am Banner darüber. Ein
-     * Nachladen wäre eine zweite Anfrage für etwas, das schon da ist.
-     *
-     * Ändert sich dabei der Anzeigename, geht auch das Konto mit — es trägt ihn
-     * ebenfalls, und ein Konto, das noch den alten Namen führt, ließe die
-     * Tableiste und den Startbildschirm zwei verschiedene Personen zeigen.
-     */
-    fun profilAendern(aenderung: Profilaenderung) = arbeiten {
-        val kennung = _stand.value.konto?.kennung ?: return@arbeiten
-        val profil = wege.profilSpeichern(kennung, aenderung)
-        _daten.update { d -> d.copy(profil = Bereich(profil, geladen = true)) }
-
-        if (aenderung.anzeigename != null) {
-            _stand.update { it.copy(konto = it.konto?.copy(anzeigename = profil.anzeigename)) }
-        }
-    }
-
-    /**
-     * Einen Artikel kaufen.
-     *
-     * <b>Der ganze Shop kommt zurück</b> — Credit-Stand, Besitzstand und die
-     * Kaufbarkeit aller anderen Artikel haben sich mitgeändert. Und weil der
-     * Besitzstand auch die Profilseite steuert, ist damit dort sofort offen, was
-     * eben gekauft wurde.
-     */
-    fun artikelKaufen(artikelId: String) = arbeiten {
-        val kennung = kennung()
-        val shop = wege.artikelKaufen(kennung, artikelId)
-        _daten.update { d -> d.copy(shop = Bereich(shop, geladen = true)) }
-        // Der Credit-Stand steht auch am Konto — sonst zeigt der Kopf des Shops
-        // 32 und der Dienstausweis weiter 182.
-        _stand.update { it.copy(konto = it.konto?.copy(credits = shop.credits)) }
-    }
-
-    fun tagesbonusHolen() = arbeiten {
-        val ergebnis = wege.tagesbonus(kennung())
-        _daten.update { d ->
-            d.copy(shop = Bereich(ergebnis.shop, geladen = true), bonusgewinn = ergebnis.gewinn)
-        }
-        _stand.update { it.copy(konto = it.konto?.copy(credits = ergebnis.shop.credits)) }
-    }
-
-    fun bonusgewinnWegnehmen() = _daten.update { it.copy(bonusgewinn = null) }
-
-    /** Ein Fahrzeug aussuchen (Gutschein) oder kaufen (Credits). */
-    fun fahrzeugHolen(vorlage: String, kaufen: Boolean) = arbeiten {
-        val kennung = kennung()
-        val garage = if (kaufen) {
-            wege.fahrzeugKaufen(kennung, vorlage)
-        } else {
-            wege.fahrzeugWaehlen(kennung, vorlage)
-        }
-        _stand.update { it.copy(konto = it.konto?.copy(credits = garage.credits)) }
-        garageLaden(neu = true)
-    }
 
     fun profilbildLaden(neu: Boolean = false) = laden(
         holen = { _daten.value.profilbild },
@@ -402,35 +333,6 @@ class Sitzung(anwendung: Application) : AndroidViewModel(anwendung) {
         profilLaden(neu = true)
     }
 
-    fun privatsphaereLaden(neu: Boolean = false) = laden(
-        holen = { _daten.value.privatsphaere },
-        setzen = { _daten.update { d -> d.copy(privatsphaere = it) } },
-        tun = { wege.privatsphaere(kennung()) },
-        nurWennNoetig = !neu,
-    )
-
-    /**
-     * Eine Einstellung umlegen.
-     *
-     * <b>Sie steht sofort auf dem Schirm und wird dann geschickt.</b> Ein
-     * Schalter, der erst nach der Antwort umspringt, fühlt sich kaputt an —
-     * gerade auf einer Seite mit sechzehn davon. Scheitert der Aufruf, holt die
-     * Antwort den alten Stand zurück, und die Meldung sagt, warum.
-     */
-    fun privatsphaereSetzen(neu: Privatsphaere) = viewModelScope.launch {
-        val vorher = _daten.value.privatsphaere
-        _daten.update { d -> d.copy(privatsphaere = vorher.copy(inhalt = neu)) }
-
-        runCatching { wege.privatsphaereSpeichern(kennung(), neu) }
-            .onSuccess { gespeichert ->
-                _daten.update { d -> d.copy(privatsphaere = Bereich(gespeichert, geladen = true)) }
-            }
-            .onFailure { f ->
-                _daten.update { d -> d.copy(privatsphaere = vorher) }
-                _stand.update { it.copy(fehler = f.message) }
-            }
-    }
-
     fun mitteilungenLaden(neu: Boolean = false) = laden(
         holen = { _daten.value.mitteilungen },
         setzen = { _daten.update { d -> d.copy(mitteilungen = it) } },
@@ -449,190 +351,7 @@ class Sitzung(anwendung: Application) : AndroidViewModel(anwendung) {
         _daten.update { d -> d.copy(mitteilungenGelesen = d.mitteilungenGelesen + id) }
     }
 
-    fun mitteilungsschalterLaden(neu: Boolean = false) = laden(
-        holen = { _daten.value.mitteilungsschalter },
-        setzen = { _daten.update { d -> d.copy(mitteilungsschalter = it) } },
-        tun = { wege.mitteilungseinstellungen(kennung()) },
-        nurWennNoetig = !neu,
-    )
-
-    /** Wie bei der Privatsphäre: sofort umlegen, dann speichern, sonst zurück. */
-    fun mitteilungsschalterSetzen(neu: de.pagerspass.pagerspass.netz.Mitteilungseinstellungen) =
-        viewModelScope.launch {
-            val vorher = _daten.value.mitteilungsschalter
-            _daten.update { d -> d.copy(mitteilungsschalter = vorher.copy(inhalt = neu)) }
-
-            runCatching { wege.mitteilungseinstellungenSpeichern(kennung(), neu) }
-                .onSuccess { gespeichert ->
-                    _daten.update { d ->
-                        d.copy(mitteilungsschalter = Bereich(gespeichert, geladen = true))
-                    }
-                }
-                .onFailure { f ->
-                    _daten.update { d -> d.copy(mitteilungsschalter = vorher) }
-                    _stand.update { it.copy(fehler = f.message) }
-                }
-        }
-
-    // ------------------------------------------------------------------ Brett
-
-    fun brettLaden(reiter: String? = null, neu: Boolean = false) {
-        val kreis = reiter ?: _daten.value.brettReiter
-        if (reiter != null) _daten.update { d -> d.copy(brettReiter = reiter) }
-        laden(
-            holen = { _daten.value.brett },
-            setzen = { _daten.update { d -> d.copy(brett = it) } },
-            tun = { wege.brett(kennung(), kreis) },
-            nurWennNoetig = !neu && reiter == null,
-        )
-    }
-
-    /** Die nächste Seite anhängen — geblättert über `weiter`, nicht Offset. */
-    fun brettMehr() = viewModelScope.launch {
-        val stand = _daten.value.brett.inhalt ?: return@launch
-        val weiter = stand.weiter ?: return@launch
-        runCatching { wege.brett(kennung(), _daten.value.brettReiter, vorNr = weiter) }
-            .onSuccess { seite ->
-                _daten.update { d ->
-                    d.copy(
-                        brett = d.brett.copy(
-                            inhalt = seite.copy(eintraege = stand.eintraege + seite.eintraege),
-                        ),
-                    )
-                }
-            }
-    }
-
-    fun brettSchreiben(text: String, sichtbarkeit: String?) = viewModelScope.launch {
-        runCatching { wege.brettSchreiben(kennung(), text, sichtbarkeit) }
-            .onSuccess { brettLaden(neu = true) }
-            .onFailure { f -> _stand.update { it.copy(fehler = f.message) } }
-    }
-
-    /**
-     * Die Quittung umlegen — <b>sofort auf dem Schirm, dann zum Server.</b>
-     * Ein Herz, das erst nach der Antwort umspringt, fühlt sich kaputt an.
-     */
-    fun brettQuittieren(nr: Long) = viewModelScope.launch {
-        fun de.pagerspass.pagerspass.netz.Bretteintrag.umgelegt() = copy(
-            vonMirQuittiert = !vonMirQuittiert,
-            quittungen = if (vonMirQuittiert) quittungen - 1 else quittungen + 1,
-        )
-        _daten.update { d ->
-            d.copy(
-                brett = d.brett.copy(
-                    inhalt = d.brett.inhalt?.let { s ->
-                        s.copy(eintraege = s.eintraege.map { if (it.nr == nr) it.umgelegt() else it })
-                    },
-                ),
-                brettEintrag = d.brettEintrag.copy(
-                    inhalt = d.brettEintrag.inhalt?.let { if (it.nr == nr) it.umgelegt() else it },
-                ),
-            )
-        }
-        runCatching { wege.brettQuittieren(kennung(), nr) }
-    }
-
-    fun brettEintragLaden(nr: Long) = viewModelScope.launch {
-        _daten.update { d -> d.copy(brettEintrag = Bereich(laedt = true)) }
-        runCatching {
-            val eintrag = wege.bretteintrag(kennung(), nr)
-            val kommentare = wege.brettKommentare(kennung(), nr)
-            _daten.update { d ->
-                d.copy(
-                    brettEintrag = Bereich(eintrag, geladen = true),
-                    brettKommentare = kommentare,
-                )
-            }
-        }.onFailure { f ->
-            _daten.update { d ->
-                d.copy(brettEintrag = Bereich(fehler = f.message, geladen = true))
-            }
-        }
-    }
-
-    fun brettKommentieren(nr: Long, text: String) = viewModelScope.launch {
-        runCatching { wege.brettKommentieren(kennung(), nr, text) }
-            .onSuccess { neu ->
-                _daten.update { d -> d.copy(brettKommentare = d.brettKommentare + neu) }
-            }
-            .onFailure { f -> _stand.update { it.copy(fehler = f.message) } }
-    }
-
     // ------------------------------------------------------------- Die Wache
-
-    fun wacheDetailLaden(id: String) = viewModelScope.launch {
-        runCatching { wege.gemeinschaftDetail(kennung(), id) }
-            .onSuccess { detail ->
-                _daten.update { d -> d.copy(wacheDetail = Bereich(detail, geladen = true)) }
-            }
-            .onFailure { f ->
-                _daten.update { d ->
-                    d.copy(wacheDetail = Bereich(fehler = f.message, geladen = true))
-                }
-            }
-    }
-
-    /**
-     * Der gemeinsame Mantel für Wachen-Aktionen: tun, dann Detail und Liste
-     * frisch holen. Der Server prüft die Rollen — die App zeigt seine Antwort.
-     */
-    private fun wachenAktion(id: String?, tun: suspend () -> Unit) = viewModelScope.launch {
-        runCatching { tun() }
-            .onFailure { f -> _stand.update { it.copy(fehler = f.message) } }
-        wacheLaden(neu = true)
-        id?.let { wacheDetailLaden(it) }
-    }
-
-    fun antragEntscheiden(id: String, nr: Long, annehmen: Boolean) =
-        wachenAktion(id) { wege.gemeinschaftsantragEntscheiden(kennung(), nr, annehmen) }
-
-    /** Die eigene Bewerbung zurückziehen — dieselbe Leitung, `annehmen = false`. */
-    fun bewerbungZurueckziehen(nr: Long) = viewModelScope.launch {
-        runCatching { wege.gemeinschaftsantragEntscheiden(kennung(), nr, false) }
-        wachenantraegeLaden(neu = true)
-    }
-
-    fun einladungAnnehmen(nr: Long) = wachenAktion(null) {
-        wege.gemeinschaftsantragEntscheiden(kennung(), nr, true)
-    }
-
-    fun rolleSetzen(id: String, wen: String, rolle: String) =
-        wachenAktion(id) { wege.gemeinschaftRolle(kennung(), id, wen, rolle) }
-
-    fun leitungUebergeben(id: String, an: String) =
-        wachenAktion(id) { wege.gemeinschaftLeitung(kennung(), id, an) }
-
-    fun mitgliedEntfernen(id: String, wen: String) =
-        wachenAktion(id) { wege.gemeinschaftEntfernen(kennung(), id, wen) }
-
-    fun austreten(id: String) = wachenAktion(null) {
-        wege.gemeinschaftEntfernen(kennung(), id, kennung())
-    }
-
-    fun wacheEinladen(id: String, wen: String) =
-        wachenAktion(id) { wege.gemeinschaftEinladen(kennung(), id, wen) }
-
-    fun pinnwandSetzen(id: String, text: String?) =
-        wachenAktion(id) { wege.gemeinschaftPinnwand(kennung(), id, text) }
-
-    fun terminAnlegen(id: String, titel: String, wann: String) =
-        wachenAktion(id) { wege.terminAnlegen(kennung(), id, titel, wann) }
-
-    fun terminAntworten(id: String, nr: Long, antwort: String) =
-        wachenAktion(id) { wege.terminAntworten(kennung(), nr, antwort) }
-
-    fun terminAbsagen(id: String, nr: Long) =
-        wachenAktion(id) { wege.terminAbsagen(kennung(), nr) }
-
-    fun zeileMelden(id: String, nr: Long, grund: String?) =
-        wachenAktion(id) { wege.chatzeileMelden(kennung(), nr, grund) }
-
-    fun zeileEntfernen(id: String, nr: Long) =
-        wachenAktion(id) { wege.chatzeileEntfernen(kennung(), nr) }
-
-    fun meldungErledigt(id: String, nr: Long) =
-        wachenAktion(id) { wege.meldungErledigt(kennung(), nr) }
 
     fun clanrundeStarten(id: String) = viewModelScope.launch {
         runCatching { wege.clanrundeStarten(kennung(), id) }
@@ -642,28 +361,6 @@ class Sitzung(anwendung: Application) : AndroidViewModel(anwendung) {
             }
             .onFailure { f -> _stand.update { it.copy(fehler = f.message) } }
     }
-
-    fun gruenden(name: String, beschreibung: String?) = wachenAktion(null) {
-        wege.gemeinschaftGruenden(kennung(), name, beschreibung)
-    }
-
-    fun beitrittMitCode(code: String) = wachenAktion(null) {
-        wege.gemeinschaftBeitrittMitCode(kennung(), code)
-    }
-
-    fun bewerben(id: String, nachricht: String?) = viewModelScope.launch {
-        runCatching { wege.gemeinschaftBewerben(kennung(), id, nachricht) }
-            .onFailure { f -> _stand.update { it.copy(fehler = f.message) } }
-        wacheLaden(neu = true)
-        wachenantraegeLaden(neu = true)
-    }
-
-    fun wachenantraegeLaden(neu: Boolean = false) = laden(
-        holen = { _daten.value.wachenantraege },
-        setzen = { _daten.update { d -> d.copy(wachenantraege = it) } },
-        tun = { wege.gemeinschaftsantraege(kennung()) },
-        nurWennNoetig = !neu,
-    )
 
     fun einladungenLaden(neu: Boolean = false) = laden(
         holen = { _daten.value.einladungen },
@@ -693,33 +390,6 @@ class Sitzung(anwendung: Application) : AndroidViewModel(anwendung) {
     fun adminNachrichtBestaetigen(nr: Int) = viewModelScope.launch {
         runCatching { wege.adminNachrichtBestaetigen(kennung(), nr) }
         _daten.update { d -> d.copy(adminNachrichten = d.adminNachrichten.filter { it.nr != nr }) }
-    }
-
-    /** Eine Freundschaftsanfrage annehmen oder ablehnen — danach neu laden. */
-    fun freundAntworten(wen: String, annehmen: Boolean) = viewModelScope.launch {
-        runCatching { wege.freundAntworten(kennung(), wen, annehmen) }
-            .onFailure { f -> _stand.update { it.copy(fehler = f.message) } }
-        freundeLaden(neu = true)
-    }
-
-    // Freunde (Sozial-Port) ----------------------------------------------------
-
-    /**
-     * Eine Freundschaftsanfrage stellen — der öffentliche Weg für jeden
-     * „+ Freund"-Knopf außerhalb des Freundebereichs (Lobby, Dienstbuch,
-     * Nachbesprechung). Hatte der andere schon gefragt, sind beide sofort
-     * verbunden. Eine Ablehnung des Servers steht danach als Fehler da.
-     *
-     * @param wen Die Kennung des anderen Kontos, nicht sein Benutzername.
-     * @param beiErfolg Bekommt den neuen Stand — `Angefragt` oder `Bestaetigt`.
-     */
-    fun freundAnfragen(wen: String, beiErfolg: (String) -> Unit = {}) = viewModelScope.launch {
-        runCatching { de.pagerspass.pagerspass.netz.Freundewege(netz).anfragen(kennung(), wen) }
-            .onSuccess { antwort ->
-                freundeLaden(neu = true)
-                beiErfolg(antwort.stand)
-            }
-            .onFailure { f -> _stand.update { it.copy(fehler = f.message) } }
     }
 
     /**

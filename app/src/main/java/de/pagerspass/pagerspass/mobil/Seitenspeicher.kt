@@ -1,15 +1,12 @@
 package de.pagerspass.pagerspass.mobil
 
 import de.pagerspass.pagerspass.netz.Abzeichen
-import de.pagerspass.pagerspass.netz.Bestenlistenplatz
 import de.pagerspass.pagerspass.netz.Freund
 import de.pagerspass.pagerspass.netz.Garage
 import de.pagerspass.pagerspass.netz.Gemeinschaft
-import de.pagerspass.pagerspass.netz.Gluecksradfeld
 import de.pagerspass.pagerspass.netz.Profilbildstand
 import de.pagerspass.pagerspass.netz.Betreibermitteilung
 import de.pagerspass.pagerspass.netz.Katalog
-import de.pagerspass.pagerspass.netz.Privatsphaere
 import de.pagerspass.pagerspass.netz.Profil
 import de.pagerspass.pagerspass.netz.Landkreis
 import de.pagerspass.pagerspass.netz.Schicht
@@ -40,7 +37,6 @@ data class Seitenstand(
     val shop: Bereich<Shop?> = Bereich(),
     val wache: Bereich<Wachendaten> = Bereich(),
     val garage: Bereich<Garagendaten> = Bereich(),
-    val bestenliste: Bereich<List<Bestenlistenplatz>> = Bereich(),
     /**
      * Der Katalog — einmal geholt und behalten.
      *
@@ -51,13 +47,9 @@ data class Seitenstand(
     val katalog: Bereich<Katalog?> = Bereich(),
     /** Das eigene Profil — Schmuck, Vorstellung, Vitrine. */
     val profil: Bereich<Profil?> = Bereich(),
-    val privatsphaere: Bereich<Privatsphaere?> = Bereich(),
     val mitteilungen: Bereich<List<Betreibermitteilung>> = Bereich(),
     /** Welche Betreibermitteilungen weggeklickt sind — nur auf diesem Gerät. */
     val mitteilungenGelesen: Set<String> = emptySet(),
-    /** Die sechs Mitteilungs-Schalter des Kontos. */
-    val mitteilungsschalter: Bereich<de.pagerspass.pagerspass.netz.Mitteilungseinstellungen?> =
-        Bereich(),
     /** Offene Rundeneinladungen — die Karten auf dem Start. */
     val einladungen: Bereich<List<de.pagerspass.pagerspass.netz.Einladung>> = Bereich(),
     /** Unbestätigte Verwarnungen — Blende bis zur Kenntnisnahme. */
@@ -69,25 +61,12 @@ data class Seitenstand(
         Bereich(),
     /** Der Stand der Schicht des Tages. */
     val tagesschicht: Bereich<de.pagerspass.pagerspass.netz.Tagesschicht?> = Bereich(),
-    /** Das Brett — je gewähltem Kreis eine Seite, `weiter` blättert. */
-    val brett: Bereich<de.pagerspass.pagerspass.netz.BrettSeite> = Bereich(),
-    val brettReiter: String = "Freunde",
-    /** Ein einzelner Eintrag mit seinen Kommentaren. */
-    val brettEintrag: Bereich<de.pagerspass.pagerspass.netz.Bretteintrag?> = Bereich(),
-    val brettKommentare: List<de.pagerspass.pagerspass.netz.Brettkommentar> = emptyList(),
     /** Der volle Blick auf die eigene Wache. */
     val wacheDetail: Bereich<de.pagerspass.pagerspass.netz.GemeinschaftDetail?> = Bereich(),
     /** Die eigenen offenen Bewerbungen und Einladungen. */
     val wachenantraege: Bereich<List<de.pagerspass.pagerspass.netz.Gemeinschaftsantrag>> =
         Bereich(),
     val profilbild: Bereich<Profilbildstand?> = Bereich(),
-    /**
-     * Was der Tagesbonus zuletzt ausgeworfen hat.
-     *
-     * Er steht hier und nicht im Sitzungsstand, weil er zum Shop gehört und mit
-     * ihm verschwindet — nicht zur Anmeldung.
-     */
-    val bonusgewinn: Gluecksradfeld? = null,
 )
 
 /**
