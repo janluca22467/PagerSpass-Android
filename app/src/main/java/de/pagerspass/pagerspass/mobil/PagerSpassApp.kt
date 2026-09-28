@@ -595,6 +595,8 @@ private fun Angemeldet(
                 marken = marken(daten, kreisstand),
                 beiWahl = { weg -> zurWahl(steuerung, weg) },
                 modifier = Modifier.align(Alignment.BottomCenter),
+                // Begleiter: der siebte Weg „Scan" nur mit Premium (MobilTableiste.vue).
+                begleiter = stand.konto?.premiumAktiv == true,
             )
         }
     }
