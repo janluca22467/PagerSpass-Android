@@ -133,7 +133,7 @@ internal fun Telefonfenster(
     griffe: LeitstellenGriffe,
 ) {
     val weg by rememberEingabeweg()
-    val mitMikrofon = rememberMikrofonfrage()
+    val mikrofonDa = rememberMikrofonpruefung()
     val aktuellerAnruf by rememberUpdatedState(anruf)
     var freitext by remember { mutableStateOf("") }
     var gesperrt by remember(anruf.id) { mutableStateOf<Set<String>>(emptySet()) }
@@ -226,14 +226,13 @@ internal fun Telefonfenster(
                         .pointerInput(Unit) {
                             detectTapGestures(
                                 onPress = {
-                                    var los = false
-                                    mitMikrofon {
+                                    if (mikrofonDa()) {
                                         fehler = null
-                                        los = griffe.notrufSprechenStarten()
+                                        val los = griffe.notrufSprechenStarten()
                                         if (!los) fehler = "Kein Mikrofonzugriff. Tippen geht trotzdem."
+                                        tryAwaitRelease()
+                                        if (los) griffe.notrufSprechenBeenden(aktuellerAnruf.id)
                                     }
-                                    tryAwaitRelease()
-                                    if (los) griffe.notrufSprechenBeenden(aktuellerAnruf.id)
                                 },
                             )
                         },

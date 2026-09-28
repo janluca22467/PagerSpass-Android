@@ -1,5 +1,9 @@
 package de.pagerspass.pagerspass.ansichten
 
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -12,6 +16,8 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.addPathNodes
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
 import androidx.compose.ui.unit.dp
 import de.pagerspass.pagerspass.mobil.Fahrzeugkennung
 import de.pagerspass.pagerspass.mobil.rememberKennungsform
@@ -82,6 +88,26 @@ internal fun minSek(sekunden: Long): String {
 internal fun wartezeit(seit: String?, jetzt: Long): String {
     val dann = zeitMillis(seit) ?: return "0:00"
     return minSek((jetzt - dann) / 1000)
+}
+
+/**
+ * Ob das Mikrofon erlaubt ist — und wenn nicht, die Frage danach.
+ *
+ * <b>Für die gehaltenen Tasten</b> (Alarmmeldung, Notrufsprechen): Dort darf die
+ * Erlaubnis nicht erst nach dem Loslassen ankommen und dann ein Mikrofon öffnen,
+ * das niemand mehr schließt. Ohne Erlaubnis wird nur gefragt; gesprochen wird beim
+ * nächsten Druck.
+ */
+@Composable
+internal fun rememberMikrofonpruefung(): () -> Boolean {
+    val zusammenhang = LocalContext.current
+    val frage = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    return {
+        val da = ContextCompat.checkSelfPermission(zusammenhang, Manifest.permission.RECORD_AUDIO) ==
+            PackageManager.PERMISSION_GRANTED
+        if (!da) frage.launch(Manifest.permission.RECORD_AUDIO)
+        da
+    }
 }
 
 // ------------------------------------------------------ Weg und Anfahrt

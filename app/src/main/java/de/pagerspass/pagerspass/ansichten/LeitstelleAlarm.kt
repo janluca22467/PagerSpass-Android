@@ -96,7 +96,7 @@ internal fun Alarmblende(
     val bereich = rememberCoroutineScope()
     val kennung = rememberKennung(raum)
     val kennzahl = kennungIstKennzahl()
-    val mitMikrofon = rememberMikrofonfrage()
+    val mikrofonDa = rememberMikrofonpruefung()
 
     var gewaehlt by remember(einsatz.id) { mutableStateOf<Set<String>>(emptySet()) }
     var angefasst by remember(einsatz.id) { mutableStateOf(false) }
@@ -146,9 +146,7 @@ internal fun Alarmblende(
     DisposableEffect(Unit) {
         onDispose {
             val id = aufnahme.meldungId
-            if (aufnahme.spricht && id != null) {
-                bereich.launch { aktuelleGriffe.alarmMeldungBeenden(id) }
-            }
+            if (aufnahme.spricht && id != null) aktuelleGriffe.alarmMeldungAbschliessen(id)
             if (id != null) aktuelleGriffe.alarmMeldungVerwerfen(id)
         }
     }
@@ -245,7 +243,7 @@ internal fun Alarmblende(
         val id = aufnahme.meldungId
         if (aufnahme.spricht && id != null) {
             aufnahme.spricht = false
-            bereich.launch { aktuelleGriffe.alarmMeldungBeenden(id) }
+            aktuelleGriffe.alarmMeldungAbschliessen(id)
         }
         // Ohne Text keine Stimme — dieselbe Regel, die der Server durchsetzt.
         val mitgegeben = if (meldung.isNotBlank()) aufnahme.meldungId else null
@@ -323,13 +321,13 @@ internal fun Alarmblende(
                         .pointerInput(Unit) {
                             detectTapGestures(
                                 onPress = {
-                                    var los = false
-                                    mitMikrofon {
+                                    // Ohne Erlaubnis wird nur gefragt — gesprochen wird
+                                    // beim nächsten Druck, nicht nach dem Loslassen.
+                                    if (mikrofonDa()) {
                                         sprechenStarten()
-                                        los = true
+                                        tryAwaitRelease()
+                                        sprechenBeenden()
                                     }
-                                    tryAwaitRelease()
-                                    if (los) sprechenBeenden()
                                 },
                             )
                         }

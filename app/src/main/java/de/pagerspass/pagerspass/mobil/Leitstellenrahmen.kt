@@ -133,6 +133,7 @@ internal fun Leitstellenplatz(
         alarmMeldungStarten = { runde.alarmMeldungSprechenStarten(it) },
         alarmMeldungBeenden = { runde.alarmMeldungSprechenBeenden(it) },
         alarmMeldungVerwerfen = { runde.alarmMeldungVerwerfen(it) },
+        alarmMeldungAbschliessen = { id -> bereich.launch { runde.alarmMeldungSprechenBeenden(id) } },
         schichtordnung = { name, anzahl, faehigkeiten -> runde.aaoVorlageSpeichern(name, anzahl, faehigkeiten) },
         ordnungenLaden = { daten.ordnungenLaden(kennung, aktuellerStand.raum?.settings?.landkreisId) },
         ordnungSichern = { daten.ordnungSichern(kennung, aktuellerStand.raum?.settings?.landkreisId, it) },

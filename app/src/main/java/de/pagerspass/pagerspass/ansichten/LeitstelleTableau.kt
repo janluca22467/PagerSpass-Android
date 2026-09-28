@@ -76,6 +76,7 @@ internal fun Fahrzeugtableau(
     val jetzt = rememberJetzt()
     val kennung = rememberKennung(raum)
     val kennzahl = kennungIstKennzahl()
+    val mitMikrofon = rememberMikrofonfrage()
 
     var suche by remember { mutableStateOf("") }
     var reiter by remember { mutableStateOf("alle") }
@@ -200,7 +201,9 @@ internal fun Fahrzeugtableau(
                             val t = System.currentTimeMillis()
                             if (!amTelefon && t >= anrufGesperrtBis) {
                                 anrufGesperrtBis = t + 1_500
-                                griffe.einzelrufStarten(f.id)
+                                // Erst das Mikrofon, dann der Ruf — mit einem Menschen
+                                // ist es ein Telefonat.
+                                mitMikrofon { griffe.einzelrufStarten(f.id) }
                             }
                         },
                         beiStreife = { griffe.streife(f.id, !f.aufStreife) },

@@ -71,6 +71,11 @@ data class LeitstellenGriffe(
     val alarmMeldungStarten: (meldungId: String) -> Boolean = { false },
     val alarmMeldungBeenden: suspend (meldungId: String) -> Boolean = { false },
     val alarmMeldungVerwerfen: (meldungId: String) -> Unit = {},
+    /**
+     * Die Aufnahme abschließen, ohne auf die Antwort zu warten — für den Augenblick,
+     * in dem der Dialog schon geht: Sein eigener Ablauf wäre dann mit ihm beendet.
+     */
+    val alarmMeldungAbschliessen: (meldungId: String) -> Unit = {},
     // ------------------------------------------ Alarm- und Ausrückeordnung
     /** Eine Ordnung für diese Schicht — `SaveAaoVorlage` am Hub. */
     val schichtordnung: (name: String, anzahl: Int, faehigkeiten: List<String>) -> Unit = { _, _, _ -> },

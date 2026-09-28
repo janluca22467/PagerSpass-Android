@@ -391,7 +391,6 @@ private fun Funkchat(
     // Das angefangene Wort nach „@" — daraus werden die Vorschläge.
     val token = Regex("@([^\\s@]*)$").find(eingabe)?.groupValues?.get(1)
     val rufnamen = buildList {
-        meinRufname?.let { }
         raum.vehicles.forEach { v -> add(v.funkrufname to kennung(v).takeIf { it != v.funkrufname }.orEmpty()) }
     }.filter { it.first.isNotBlank() && it.first != meinRufname }
     val vorschlaege = token?.let { t ->
@@ -650,6 +649,7 @@ private val LAUTSTUFEN = listOf(0f, 0.25f, 0.5f, 0.75f, 1f)
 @Composable
 private fun Handfunkgeraet(stand: Rundenstand, raum: Raumzustand, griffe: LeitstellenGriffe) {
     val ton by rememberTonstand()
+    val mitMikrofon = rememberMikrofonfrage()
     val ich = stand.eigeneKennung
     val istLeitstelle = stand.ich?.istLeitstelle == true
     val meinRufname = raum.settings.leitstelle.orEmpty()
@@ -741,7 +741,8 @@ private fun Handfunkgeraet(stand: Rundenstand, raum: Raumzustand, griffe: Leitst
                 },
             )
             Menueseite.Einzelruf -> {
-                griffe.einzelrufStarten(if (e.id == "ls") null else e.id)
+                val ziel = if (e.id == "ls") null else e.id
+                mitMikrofon { griffe.einzelrufStarten(ziel) }
                 seite = Menueseite.Zu
             }
             Menueseite.Gruppen -> {
@@ -768,7 +769,8 @@ private fun Handfunkgeraet(stand: Rundenstand, raum: Raumzustand, griffe: Leitst
 
     fun gruen() {
         if (eingehend != null) {
-            griffe.einzelrufAnnehmen(eingehend.id)
+            val ruf = eingehend.id
+            mitMikrofon { griffe.einzelrufAnnehmen(ruf) }
             return
         }
         if (menueOffen) {
