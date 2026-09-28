@@ -426,7 +426,7 @@ private fun Aufstellung(
                     )
                     .padding(horizontal = Abstand.Klein, vertical = Abstand.Winzig),
             ) {
-                if (vorlage != null) Fahrzeugsinnbild(vorlage.organisation, groesse = 24.dp)
+                if (vorlage != null) Fahrzeugsinnbild(vorlage.organisation, groesse = 24.dp, typ = vorlage.typ)
                 Text(
                     text = vorlage?.typ ?: id,
                     style = Schrift.MonoKlein,
@@ -505,7 +505,7 @@ private fun Fahrzeugkarte(vorlage: Fahrzeugvorlage, aktiv: Boolean, beiDruck: ()
                 .height(56.dp)
                 .background(orgfarbe, Rundung.Winzig),
         )
-        Fahrzeugsinnbild(vorlage.organisation, groesse = 34.dp)
+        Fahrzeugsinnbild(vorlage.organisation, groesse = 38.dp, typ = vorlage.typ)
         Column(
             verticalArrangement = Arrangement.spacedBy(Abstand.Haar),
             modifier = Modifier.weight(1f).padding(vertical = Abstand.Klein),
