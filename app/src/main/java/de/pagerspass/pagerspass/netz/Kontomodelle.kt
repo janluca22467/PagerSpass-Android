@@ -18,37 +18,8 @@ import kotlinx.serialization.Serializable
 
 // -------------------------------------------------------------------- Premium
 
-/** Die Grenzen, die ein Abo verschiebt — vier Zahlen, sonst nichts. */
-@Serializable
-data class PremiumGrenzen(
-    val aaoVorlagen: Int = 0,
-    val szenarien: Int = 0,
-    val leitstellen: Int = 0,
-    val rundenvorlagen: Int = 0,
-)
-
-/**
- * Der Stand des eigenen Abos.
- *
- * `status` ist `Free`, `Active`, `PastDue` oder `Canceled`; `plan` ist `None`,
- * `Monthly` oder `Yearly`. <b>`bis` ist das Ende des bezahlten Zeitraums</b> und
- * bleibt auch dann stehen, wenn das Abo längst beendet ist — ein Datum sagt also
- * nur etwas, solange `aktiv` gilt.
- */
-@Serializable
-data class PremiumStand(
-    val status: String = "Free",
-    val plan: String = "None",
-    val aktiv: Boolean = false,
-    val seit: String? = null,
-    val bis: String? = null,
-    val kaufVerfuegbar: Boolean = false,
-    val publishableKey: String = "",
-    val monatspreisCent: Int = 0,
-    val jahrespreisCent: Int = 0,
-    val grenzen: PremiumGrenzen = PremiumGrenzen(),
-    val vorteile: List<String> = emptyList(),
-)
+// Der Stand des Abos steht als `Abostand` in `Shopmodelle.kt` — Laden und
+// Kontozentrale lesen dieselbe Antwort.
 
 /** Eine Adresse, an die der Browser weitergeht — Kasse, Abo-Verwaltung, Discord. */
 @Serializable
@@ -166,26 +137,6 @@ data class Einwilligung(
     val elternzustimmungUm: String? = null,
     val widerrufenUm: String? = null,
     val fassung: String = "",
-    val elternbogen: String? = null,
-)
-
-/**
- * Die Frage vor dem Betreten einer übertragenen Runde.
- *
- * Sie kommt entweder mit einem abgewiesenen Beitritt (`ok: false` samt
- * `einwilligung`) oder wird aus dem Raumzustand gerechnet, wenn die Leitstelle
- * den Streamer-Modus einschaltet, während man schon sitzt.
- */
-@Serializable
-data class Einwilligungsbedarf(
-    val raumCode: String = "",
-    val streamerName: String = "",
-    val plattform: String = "Andere",
-    val kanal: String = "",
-    val aufzeichnung: Boolean = false,
-    val fassung: String = Rechtsstand.UEBERTRAGUNG_FASSUNG,
-    val mindestalterAllein: Int = Rechtsstand.MINDESTALTER_EINWILLIGUNG,
-    val wartetAufEltern: Boolean = false,
     val elternbogen: String? = null,
 )
 

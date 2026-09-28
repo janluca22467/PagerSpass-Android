@@ -35,7 +35,7 @@ import de.pagerspass.pagerspass.netz.Ablage
 import de.pagerspass.pagerspass.netz.Konto
 import de.pagerspass.pagerspass.netz.Kontowege
 import de.pagerspass.pagerspass.netz.Postfach
-import de.pagerspass.pagerspass.netz.PremiumStand
+import de.pagerspass.pagerspass.netz.Abostand
 import de.pagerspass.pagerspass.netz.Profil
 import de.pagerspass.pagerspass.netz.Rechtsstand
 import de.pagerspass.pagerspass.netz.Werbung
@@ -342,9 +342,9 @@ private fun Premiumkarte(
     val zusammenhang = LocalContext.current
     val bereich = rememberCoroutineScope()
     val v = rememberVorgang()
-    var stand by remember { mutableStateOf<PremiumStand?>(null) }
+    var stand by remember { mutableStateOf<Abostand?>(null) }
 
-    fun uebernehmen(neu: PremiumStand) {
+    fun uebernehmen(neu: Abostand) {
         stand = neu
         beiKontoAendern {
             it.copy(

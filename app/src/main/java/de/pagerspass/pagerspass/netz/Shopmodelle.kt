@@ -112,9 +112,3 @@ data class Abostand(
     val grenzen: Abogrenzen = Abogrenzen(),
     val vorteile: List<String> = emptyList(),
 )
-
-/** Eine Adresse, zu der der Server schickt — Stripe-Kasse oder Kundenportal. */
-@Serializable
-data class Kassenadresse(
-    val url: String = "",
-)
