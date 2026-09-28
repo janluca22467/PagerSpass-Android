@@ -207,9 +207,9 @@ object Einsprung {
                 else -> "freunde"
             }
 
-            "gemeinschaft" -> if (zweites == "shop") "gemeinschaft/shop" else "gemeinschaft"
+            "gemeinschaft" -> if (zweites == "shop") WACHE_SHOP else Weg.Wache.adresse
             "gemeinschaften" -> when {
-                zweites == "rangliste" -> "gemeinschaften/rangliste"
+                zweites == "rangliste" -> WACHE_RANGLISTE
                 !abfrage["code"].isNullOrBlank() -> "gemeinschaften?code=${stueck(abfrage.getValue("code"))}"
                 else -> "gemeinschaften"
             }
@@ -218,7 +218,7 @@ object Einsprung {
             "oeffentliche-runden" -> "oeffentlicheRunden"
             "raum" -> zweites?.let { "raum/${stueck(it.uppercase())}" }
             "funk" -> zweites?.let { "funk/${stueck(it)}" }
-            "scan" -> "scan"
+            "scan" -> UNTERSEITE_BEGLEITER
 
             else -> null
         }

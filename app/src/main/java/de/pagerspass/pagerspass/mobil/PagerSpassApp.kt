@@ -651,7 +651,8 @@ private const val UNTERSEITE_PROFIL = "profil"
 private const val UNTERSEITE_PRIVATSPHAERE = "privatsphaere"
 private const val UNTERSEITE_POSTFACH = "postfach"
 private const val UNTERSEITE_MITTEILUNGEN = "mitteilungen"
-private const val UNTERSEITE_BEGLEITER = "begleiter"
+/** Auch der Einsprung braucht ihn — `/scan` im Web. */
+internal const val UNTERSEITE_BEGLEITER = "begleiter"
 private const val UNTERSEITE_OEFFENTLICH = "oeffentlicheRunden"
 private const val UNTERSEITE_TAGESSCHICHT = "tagesschicht"
 
