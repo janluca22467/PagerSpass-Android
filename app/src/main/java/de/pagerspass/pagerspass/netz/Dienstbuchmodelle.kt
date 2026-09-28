@@ -236,11 +236,3 @@ data class Dienstauswertung(
     val verlauf: List<Dienstwoche> = emptyList(),
     val fahrzeuge: List<Dienstfahrzeug> = emptyList(),
 )
-
-// ---------------------------------------------------------------- Freunde
-
-/** Die Antwort auf eine Freundschaftsanfrage. */
-@Serializable
-data class Anfrageergebnis(
-    val stand: String = "",
-)

@@ -24,7 +24,7 @@ class Kontowege(private val netz: Netz) {
 
     // ------------------------------------------------------------- Premium
 
-    suspend fun premium(kennung: String): PremiumStand =
+    suspend fun premium(kennung: String): Abostand =
         netz.hole("/api/konto/${teil(kennung)}/premium")
 
     /**
@@ -42,7 +42,7 @@ class Kontowege(private val netz: Netz) {
         )
 
     /** Die Rückkehr von der Bezahlseite: Sitzung abschließen, Premium steht. */
-    suspend fun premiumAbschliessen(kennung: String, sessionId: String): PremiumStand =
+    suspend fun premiumAbschliessen(kennung: String, sessionId: String): Abostand =
         netz.hole(
             "/api/konto/${teil(kennung)}/premium/checkout/abschliessen",
             "POST",
@@ -259,9 +259,9 @@ class Kontowege(private val netz: Netz) {
         netz.ohneAntwort("/api/konto/${teil(kennung)}/sitzungen/andere-beenden", "POST")
 
     /**
-     * Die Privatsphäre — derselbe Weg wie in `Spielwege`, hier noch einmal, weil
-     * die Seite ihren Stand selbst führt (wie im Web): jüngste Anfrage gewinnt,
-     * bei einem Fehler nur die eigene Änderung zurück, dann den echten Stand holen.
+     * Die Privatsphäre. Die Seite führt ihren Stand selbst (wie im Web): jüngste
+     * Anfrage gewinnt, bei einem Fehler nur die eigene Änderung zurück, dann den
+     * echten Stand holen.
      */
     suspend fun privatsphaere(kennung: String): Privatsphaere =
         netz.hole("/api/konto/${teil(kennung)}/privatsphaere")
@@ -300,24 +300,6 @@ class Kontowege(private val netz: Netz) {
     /** Alle Einwilligungen dieses Kontos — samt widerrufener und abgelaufener. */
     suspend fun einwilligungen(kennung: String): List<Einwilligung> =
         netz.hole("/api/streaming/${teil(kennung)}/einwilligungen")
-
-    /**
-     * Erteilt die Einwilligung für die Runde mit diesem Code.
-     *
-     * <b>Hier geht kein Kanal raus</b> — den nimmt der Server aus der Runde. Die
-     * Fassung ist die, die der Dialog angezeigt hat; stimmt sie nicht mit der des
-     * Servers, wird abgewiesen.
-     */
-    suspend fun einwilligungErteilen(kennung: String, raumCode: String, volljaehrig: Boolean): Einwilligung =
-        netz.hole(
-            "/api/streaming/${teil(kennung)}/einwilligung",
-            "POST",
-            buildJsonObject {
-                put("raumCode", raumCode)
-                put("volljaehrig", volljaehrig)
-                put("fassung", Rechtsstand.UEBERTRAGUNG_FASSUNG)
-            }.toString(),
-        )
 
     /** Nimmt eine Einwilligung zurück — „jederzeit" im Sinne von Art. 7 Abs. 3 DSGVO. */
     suspend fun einwilligungWiderrufen(kennung: String, id: String) =

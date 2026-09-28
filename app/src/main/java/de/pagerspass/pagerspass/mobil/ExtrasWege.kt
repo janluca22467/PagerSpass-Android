@@ -57,10 +57,9 @@ object Extraswege {
 /**
  * Die Ziele der Extras in den `NavHost` hängen.
  *
- * @param zumShop führt in den Shop — der Ausweg ohne Premium.
+ * @param zumShop führt in den Premium-Bereich des Shops — der Ausweg ohne Premium.
  * @param zumStart führt zurück zum Startbildschirm — der Ausweg mit offener Einweisung.
  * @param zurWelt der Weg „Zurück zur Welt" aus der Icon-Bibliothek.
- * @param zumDienstbuch die Prüfungsschicht im Dienstbuch ansehen.
  */
 fun NavGraphBuilder.extrasWege(
     steuerung: NavHostController,
@@ -71,7 +70,6 @@ fun NavGraphBuilder.extrasWege(
     zumShop: () -> Unit,
     zumStart: () -> Unit,
     zurWelt: () -> Unit,
-    zumDienstbuch: () -> Unit,
 ) {
     // ------------------------------------------------------------- Übungen
 
@@ -169,7 +167,8 @@ fun NavGraphBuilder.extrasWege(
             beiPruefung = { lehrgang, modul ->
                 werk.pruefung(lehrgang, modul) { code -> runde.beitreten(code, name.ifBlank { "Prüfling" }) }
             },
-            beiSchicht = { zumDienstbuch() },
+            // Das Zeugnis zeigt die Nachbesprechung der Prüfungsschicht.
+            beiSchicht = { code -> steuerung.navigate(schichtweg(code)) },
             beiZurueck = { steuerung.popBackStack() },
         )
     }

@@ -4,7 +4,6 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
-import android.content.Intent
 import androidx.core.app.NotificationCompat
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
@@ -13,7 +12,6 @@ import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
-import de.pagerspass.pagerspass.MainActivity
 import de.pagerspass.pagerspass.R
 import de.pagerspass.pagerspass.netz.Ablage
 import de.pagerspass.pagerspass.netz.Netz
@@ -99,20 +97,27 @@ object Mitteilungsabruf {
         return berlin.timeInMillis - jetzt
     }
 
+    /**
+     * Eine Systemmeldung zeigen, die beim Antippen an [route] führt.
+     *
+     * <b>Die Kennung ist zugleich der Anfragecode des `PendingIntent`.</b> Mit
+     * einem festen Code teilten sich alle Meldungen einen Intent, und
+     * `FLAG_UPDATE_CURRENT` schriebe jeder früheren das Ziel der jüngsten ein.
+     */
     internal fun melden(
         zusammenhang: Context,
         kennung: Int,
         titel: String,
         text: String,
+        route: String,
     ) {
         if (!Meldermeldung.erlaubt(zusammenhang)) return
         val verwalter = zusammenhang.getSystemService(NotificationManager::class.java) ?: return
 
         val oeffnen = PendingIntent.getActivity(
             zusammenhang,
-            0,
-            Intent(zusammenhang, MainActivity::class.java)
-                .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
+            kennung,
+            Einsprung.absicht(zusammenhang, route),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
@@ -163,6 +168,8 @@ class Abrufwerker(
                         schluessel.hashCode(),
                         "Einladung — ${e.ort.ifBlank { e.roomCode }}",
                         "${e.vonName} lädt dich in eine Runde ein",
+                        // Die Einladungen stehen unter Freunde → Kontakte, samt Annehmen.
+                        route = FreundeWeg.KONTAKTE,
                     )
                 }
             }
@@ -179,6 +186,8 @@ class Abrufwerker(
                     schluessel.hashCode(),
                     "Verwarnung",
                     v.grund.take(140),
+                    // Die Blende zum Bestätigen steht über dem Startbildschirm.
+                    route = Weg.Dienst.adresse,
                 )
             }
         }
@@ -192,6 +201,7 @@ class Abrufwerker(
                     schluessel.hashCode(),
                     n.titel.ifBlank { "Nachricht der Verwaltung" },
                     n.text.take(140),
+                    route = Weg.Dienst.adresse,
                 )
             }
         }
@@ -224,6 +234,7 @@ class Erinnerungswerker(
             "tageserinnerung".hashCode(),
             "PagerSpass",
             "Die Schicht des Tages wartet — einmal fahren, Punkte mitnehmen.",
+            route = Weg.Dienst.adresse,
         )
         return Result.success()
     }

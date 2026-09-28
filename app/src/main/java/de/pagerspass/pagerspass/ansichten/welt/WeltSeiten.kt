@@ -69,7 +69,7 @@ fun istWeltweg(route: String?): Boolean = route == WEG_WELT || route == WEG_WELT
  * den Start. Der Eintrag auf dem Startbildschirm prüft dasselbe schon vorher — ein
  * Eintrag ist aber keine Zugangssperre.
  *
- * @param beiShop Ohne Premium: in den Laden (Hinweis `world-premium` im Web).
+ * @param beiShop Ohne Premium: in den Premium-Bereich des Ladens (Hinweis `world-premium` im Web).
  * @param beiStart Mit offener Einweisung: auf den Start (Hinweis `einweisung`).
  * @param beiProfil Ein Benutzername wurde angetippt — das Profil dazu.
  */

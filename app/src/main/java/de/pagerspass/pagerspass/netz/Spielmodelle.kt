@@ -28,7 +28,8 @@ data class Schicht(
     val funkrufname: String? = null,
     val fahrzeugtyp: String? = null,
     val einsaetze: Int = 0,
-    val hilfsfristSekunden: Int? = null,
+    /** Ø Hilfsfrist in Sekunden — der Server schickt eine Kommazahl (`423.5`). */
+    val hilfsfristSekunden: Double? = null,
     val punkte: Int = 0,
 )
 

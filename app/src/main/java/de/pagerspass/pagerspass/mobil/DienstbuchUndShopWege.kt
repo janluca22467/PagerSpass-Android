@@ -47,7 +47,7 @@ fun NavGraphBuilder.dienstbuchUndShopWege(
         }
     }
 
-    fun schicht(code: String) = steuerung.navigate("$SCHICHT_WEG/$code")
+    fun schicht(code: String) = steuerung.navigate(schichtweg(code))
 
     fun ersteSchicht() = wegWaehlen(steuerung, Weg.Dienst)
 
@@ -229,10 +229,28 @@ fun NavGraphBuilder.dienstbuchUndShopWege(
 const val SCHICHT_WEG = "dienstbuch/schicht"
 
 /**
+ * Der Weg zur Nachbesprechung einer Schicht — für Verweise aus anderen Bereichen
+ * (Brett, Lehrgangszeugnis). Im Web `/dienstbuch/schichten?schicht=CODE`.
+ */
+fun schichtweg(code: String): String = "$SCHICHT_WEG/${android.net.Uri.encode(code)}"
+
+/**
  * Der Profileditor — der Weg, den der Rahmen als `UNTERSEITE_PROFIL` führt. Er
  * steht hier noch einmal, weil die Konstante dort privat ist.
  */
 private const val PROFIL_WEG = "profil"
+
+/**
+ * In den Premium-Bereich des Ladens — der Ausweg, wenn World, die Icons oder der
+ * Begleiter ohne Abo aufgerufen werden. Im Web `shop?hinweis=world-premium`, das
+ * ebenfalls gleich im Schaufenster landet statt in der Übersicht.
+ */
+fun zumPremiumLaden(steuerung: NavHostController) {
+    steuerung.navigate(Ladenbereich.Premium.weg) {
+        popUpTo(steuerung.graph.startDestinationId) { saveState = true }
+        launchSingleTop = true
+    }
+}
 
 /** Ob eine Route zum Dienstbuch oder zum Shop gehört — für die Markierung der Leiste. */
 fun dienstbuchOderShopWeg(route: String?): Weg? = when {

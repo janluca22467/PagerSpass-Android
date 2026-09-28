@@ -10,10 +10,12 @@ import de.pagerspass.pagerspass.netz.Buchungsposten
 import de.pagerspass.pagerspass.netz.Codegutschrift
 import de.pagerspass.pagerspass.netz.Dienstauswertung
 import de.pagerspass.pagerspass.netz.Dienstbuchwege
+import de.pagerspass.pagerspass.netz.Freundewege
 import de.pagerspass.pagerspass.netz.Dienstschicht
 import de.pagerspass.pagerspass.netz.Fahrzeugvorlage
 import de.pagerspass.pagerspass.netz.Gluecksradergebnis
 import de.pagerspass.pagerspass.netz.Konto
+import de.pagerspass.pagerspass.netz.Kontowege
 import de.pagerspass.pagerspass.netz.Kontofreischaltung
 import de.pagerspass.pagerspass.netz.Kontofreischaltungen
 import de.pagerspass.pagerspass.netz.Laufbahnstufe
@@ -63,6 +65,8 @@ class Dienstbuchstelle(
     private val garageNeu: () -> Unit,
 ) {
     private val wege = Dienstbuchwege(netz)
+    private val freundewege = Freundewege(netz)
+    private val kontowege = Kontowege(netz)
 
     private val _stand = MutableStateFlow(Dienstbuchstand())
     val stand: StateFlow<Dienstbuchstand> = _stand.asStateFlow()
@@ -341,7 +345,7 @@ class Dienstbuchstelle(
      * Nachbesprechung. Die Seite merkt sich selbst, wen sie schon angefragt hat.
      */
     suspend fun freundAnfragen(wen: String): Result<Unit> = runCatching {
-        wege.freundAnfragen(kennung(), wen)
+        freundewege.anfragen(kennung(), wen)
         Unit
     }
 
@@ -354,7 +358,7 @@ class Dienstbuchstelle(
         _stand.update { it.copy(abo = vorher.copy(laedt = true, fehler = null)) }
 
         bereich.launch {
-            runCatching { wege.premium(kennung) }
+            runCatching { kontowege.premium(kennung) }
                 .onSuccess { a -> _stand.update { it.copy(abo = Bereich(a, geladen = true)) } }
                 .onFailure { f ->
                     _stand.update {
@@ -428,7 +432,7 @@ class Dienstbuchstelle(
 
     /** Die Kasse öffnen — heraus kommt die Adresse der Stripe-Sitzung. */
     suspend fun premiumKasse(plan: String, sofortAusfuehren: Boolean): Result<String> = runCatching {
-        val url = wege.premiumKasse(kennung(), plan, sofortAusfuehren).url
+        val url = kontowege.premiumKasse(kennung(), plan, sofortAusfuehren).url
         if (url.isBlank()) throw Netzfehler("Die Kasse ließ sich nicht öffnen.")
         url
     }
@@ -438,7 +442,7 @@ class Dienstbuchstelle(
      * Rückkehradresse in die App leitet.
      */
     suspend fun premiumAbschliessen(sitzung: String): Result<Abostand> = runCatching {
-        val abo = wege.premiumAbschliessen(kennung(), sitzung)
+        val abo = kontowege.premiumAbschliessen(kennung(), sitzung)
         _stand.update { it.copy(abo = Bereich(abo, geladen = true)) }
         abo
     }

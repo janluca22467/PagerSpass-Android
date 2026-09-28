@@ -16,9 +16,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
@@ -29,23 +27,18 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import de.pagerspass.pagerspass.netz.Einwilligungsbedarf
-import de.pagerspass.pagerspass.netz.Kontowege
 import de.pagerspass.pagerspass.netz.Rechtsstand
 import de.pagerspass.pagerspass.netz.Server
-import de.pagerspass.pagerspass.netz.plattformname
 import de.pagerspass.pagerspass.ui.bausteine.Blende
 import de.pagerspass.pagerspass.ui.bausteine.Codefeld
 import de.pagerspass.pagerspass.ui.bausteine.Dialogbreite
 import de.pagerspass.pagerspass.ui.bausteine.Etikett
 import de.pagerspass.pagerspass.ui.bausteine.Feld
-import de.pagerspass.pagerspass.ui.bausteine.Hakenzeile
 import de.pagerspass.pagerspass.ui.bausteine.Kasten
 import de.pagerspass.pagerspass.ui.bausteine.Knopf
 import de.pagerspass.pagerspass.ui.bausteine.Knopfart
 import de.pagerspass.pagerspass.ui.bausteine.Ladezeile
 import de.pagerspass.pagerspass.ui.bausteine.Leerhinweis
-import de.pagerspass.pagerspass.ui.bausteine.Marke
 import de.pagerspass.pagerspass.ui.bausteine.SehrLeise
 import de.pagerspass.pagerspass.ui.bausteine.Seite
 import de.pagerspass.pagerspass.ui.bausteine.Seitenkopf
@@ -604,204 +597,5 @@ fun EmailPflichtblende(
             Codefeld(wert = code, beiAenderung = { code = it.filter(Char::isDigit) }, etikett = "Code aus der E-Mail")
         }
         v.fehler?.let { Warnzeile(it) }
-    }
-}
-
-// ------------------------------------------------------- Übertragung
-
-/**
- * Die Frage vor dem Betreten einer übertragenen Schicht — `StreamerDialog.vue`.
- *
- * <b>Für die Runde gedacht.</b> Aufgerufen wird sie von dort, wo der Beitritt
- * mit `ok: false` und `einwilligung` abgewiesen wurde, oder wo der eigene Platz
- * nachträglich gefragt wird (Streamer-Modus eingeschaltet, während man sitzt):
- *
- * ```kotlin
- * frage?.let { f ->
- *     Streamerblende(
- *         frage = f,
- *         wege = sitzung.kontowege,
- *         kennung = konto.kennung,
- *         beiEingewilligt = { runde.beitreten(code, name) },   // oder: StreamerfreigabeNachtragen
- *         beiAbgelehnt = { frage = null },                     // wer schon saß: runde.verlassen()
- *     )
- * }
- * ```
- *
- * <b>Zwei Zustände, ein Dialog.</b> Nach der Antwort eines Minderjährigen bleibt
- * er offen und zeigt den Bogen für die Erziehungsberechtigten — der Vorgang ist
- * nicht abgeschlossen, sondern weitergereicht. „Ist er schon da?" fragt denselben
- * Weg noch einmal; erst wenn die Einwilligung gilt, kommt [beiEingewilligt].
- *
- * <b>Beide Knöpfe gleich groß.</b> Eine Einwilligung, bei der das „Ja" leuchtet
- * und das „Nein" ein grauer Link ist, ist keine freie Entscheidung. Und: kein
- * Zurück — wer nicht einwilligen will, drückt „Nicht einwilligen".
- */
-@Composable
-fun Streamerblende(
-    frage: Einwilligungsbedarf,
-    wege: Kontowege,
-    kennung: String,
-    beiEingewilligt: () -> Unit,
-    beiAbgelehnt: () -> Unit,
-) {
-    val zusammenhang = LocalContext.current
-    val zwischenablage = LocalClipboardManager.current
-    val bereich = rememberCoroutineScope()
-    val v = rememberVorgang()
-
-    // Drei Zustände und nicht zwei: `null` heißt „noch nicht geantwortet".
-    var volljaehrig by remember(frage.raumCode) { mutableStateOf<Boolean?>(null) }
-    var gelesen by remember(frage.raumCode) { mutableStateOf(false) }
-    // Steht ein Bogen, ist die Frage weitergereicht und nicht mehr zu beantworten.
-    // Leer (aber nicht `null`) heißt: Es wartet, nur ohne Link.
-    var elternbogen by remember(frage.raumCode) { mutableStateOf(frage.elternbogen) }
-    var kopiert by remember { mutableStateOf(false) }
-
-    val wohin = "${plattformname(frage.plattform)} · ${frage.kanal}"
-    val wartetAufEltern = elternbogen != null
-    val bereit = volljaehrig != null && gelesen && !v.laeuft
-
-    Blende(
-        titel = "Diese Schicht wird übertragen",
-        beiSchliessen = {},
-        breite = Dialogbreite.Breit,
-        schliessenMoeglich = false,
-        fuss = {
-            Knopf("Nicht einwilligen", beiAbgelehnt, aktiv = !v.laeuft)
-            if (!wartetAufEltern) {
-                Knopf(
-                    if (v.laeuft) "Wird gespeichert…" else "Einwilligen und beitreten",
-                    {
-                        val alt = volljaehrig == true
-                        bereich.vorgang(v, "Das hat gerade nicht geklappt.") {
-                            val erteilt = wege.einwilligungErteilen(kennung, frage.raumCode, alt)
-                            if (erteilt.gilt) {
-                                beiEingewilligt()
-                            } else {
-                                elternbogen = erteilt.elternbogen ?: ""
-                            }
-                        }
-                    },
-                    art = Knopfart.Haupt,
-                    aktiv = bereit,
-                )
-            }
-        },
-    ) {
-        Etikett("Einwilligung")
-
-        // Der Steckbrief zuerst: Er ist der Gegenstand der Einwilligung.
-        Kasten(abstandInnen = Abstand.Klein) {
-            Steckbriefzeile("Wer überträgt", frage.streamerName)
-            Steckbriefzeile("Wohin", wohin)
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(Abstand.Normal),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                SehrLeise("Bleibt es stehen?", modifier = Modifier.weight(1f))
-                Marke(
-                    text = if (frage.aufzeichnung) "Ja — wird aufgezeichnet" else "Nein — nur live",
-                    farbe = if (frage.aufzeichnung) Farben.SignalHell else Farben.GruenHell,
-                )
-            }
-        }
-
-        if (wartetAufEltern) {
-            Kasten(marke = true, wartet = true, abstandInnen = Abstand.Klein) {
-                Text(
-                    text = hervorgehoben(
-                        "**Jetzt sind deine Eltern dran.** Gib diesen Link an einen " +
-                            "Erziehungsberechtigten weiter. Er füllt dort einen kurzen Bogen aus und " +
-                            "unterschreibt. Sobald er eingegangen ist, kommst du in die Runde.",
-                    ),
-                    style = Schrift.Normal,
-                    color = Farben.TextLeise,
-                )
-                val link = elternbogen.orEmpty()
-                if (link.isNotBlank()) {
-                    Text(text = link, style = Schrift.MonoKlein, color = Farben.BlauHell)
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
-                    if (link.isNotBlank()) {
-                        Knopf(
-                            if (kopiert) "Kopiert" else "Link kopieren",
-                            {
-                                zwischenablage.setText(AnnotatedString(link))
-                                kopiert = true
-                            },
-                            kompakt = true,
-                        )
-                        Knopf("Teilen", { textTeilen(zusammenhang, link, "Bogen für die Erziehungsberechtigten") }, kompakt = true)
-                    }
-                    Knopf(
-                        "Ist er schon da?",
-                        {
-                            bereich.vorgang(v) {
-                                val stand = wege.einwilligungErteilen(kennung, frage.raumCode, false)
-                                if (stand.gilt) {
-                                    beiEingewilligt()
-                                } else {
-                                    v.fehler = "Der Bogen ist noch nicht eingegangen."
-                                }
-                            }
-                        },
-                        kompakt = true,
-                        aktiv = !v.laeuft,
-                    )
-                }
-                SehrLeise(
-                    "Der Link gilt für diesen einen Vorgang. Du findest ihn außerdem jederzeit unter " +
-                        "„Konto → Privatsphäre → Übertragungen\".",
-                )
-            }
-        } else {
-            val (fertig, text) = rememberRechtstext(Rechtsstand.UEBERTRAGUNG)
-            when {
-                !fertig -> Ladezeile()
-                // Die Fassungszeile hängt nur an der Leseseite; hier steht sie unten
-                // im Fuß — sonst stünde sie zweimal da.
-                text != null -> Rechtstext(
-                    text.lines().filterNot { it.startsWith("Stand: Fassung") }.joinToString("\n"),
-                )
-            }
-
-            Etikett("Wie alt bist du?")
-            Hakenzeile(
-                text = "Ich bin ${frage.mindestalterAllein} oder älter",
-                an = volljaehrig == true,
-                beiWechsel = { volljaehrig = true },
-            )
-            Hakenzeile(
-                text = "Ich bin jünger — dann brauchen wir noch die Unterschrift eines " +
-                    "Erziehungsberechtigten; du bekommst danach einen Link dafür.",
-                an = volljaehrig == false,
-                beiWechsel = { volljaehrig = false },
-            )
-
-            Hakenzeile(
-                text = hervorgehoben(
-                    "Ich habe den Text gelesen und willige ein, dass mein Name, meine Stimme und " +
-                        "was ich in dieser Runde schreibe über **$wohin** öffentlich übertragen " +
-                        (if (frage.aufzeichnung) "und aufgezeichnet " else "") + "werden.",
-                ),
-                an = gelesen,
-                beiWechsel = { gelesen = it },
-            )
-        }
-
-        v.fehler?.let { Warnzeile(it) }
-        SehrLeise(
-            "Fassung ${Rechtsstand.UEBERTRAGUNG_FASSUNG} · nachzulesen unter „Übertragung einer Schicht\"",
-            mono = true,
-        )
-    }
-}
-
-@Composable
-private fun Steckbriefzeile(wer: String, was: String) {
-    Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Normal)) {
-        SehrLeise(wer, modifier = Modifier.weight(0.4f))
-        Text(was, style = Schrift.Normal, color = Farben.Text, modifier = Modifier.weight(0.6f))
     }
 }

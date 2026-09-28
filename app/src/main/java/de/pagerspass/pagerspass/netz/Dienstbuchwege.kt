@@ -115,18 +115,6 @@ class Dienstbuchwege(private val netz: Netz) {
         }.toString(),
     )
 
-    // ----------------------------------------------------------------- Freunde
-
-    /**
-     * Eine Freundschaftsanfrage stellen — aus der Mannschaftsliste der Laufbahn
-     * und der Nachbesprechung.
-     */
-    suspend fun freundAnfragen(kennung: String, wen: String): Anfrageergebnis = netz.hole(
-        "/api/freunde/${teil(kennung)}/anfrage",
-        "POST",
-        buildJsonObject { put("kennung", wen) }.toString(),
-    )
-
     // -------------------------------------------------------------------- Shop
 
     suspend fun shop(kennung: String): Shop = netz.hole("/api/konto/${teil(kennung)}/shop")
@@ -177,42 +165,6 @@ class Dienstbuchwege(private val netz: Netz) {
         "/api/konto/${teil(kennung)}/garage/kauf",
         "POST",
         buildJsonObject { put("templateId", vorlage) }.toString(),
-    )
-
-    // ----------------------------------------------------------------- Premium
-
-    suspend fun premium(kennung: String): Abostand =
-        netz.hole("/api/konto/${teil(kennung)}/premium")
-
-    /**
-     * Die Kasse öffnen — der Server legt die Stripe-Sitzung an und antwortet mit
-     * ihrer Adresse.
-     *
-     * `sofortAusfuehren` ist die ausdrückliche Erklärung zum sofortigen Beginn
-     * (§ 357a BGB). Der Server prüft sie noch einmal; hier wird sie nur
-     * weitergereicht.
-     */
-    suspend fun premiumKasse(kennung: String, plan: String, sofortAusfuehren: Boolean): Kassenadresse =
-        netz.hole(
-            "/api/konto/${teil(kennung)}/premium/checkout",
-            "POST",
-            buildJsonObject {
-                put("plan", plan)
-                put("sofortAusfuehren", sofortAusfuehren)
-            }.toString(),
-        )
-
-    /**
-     * Die Rückkehr aus der Kasse bestätigen.
-     *
-     * Stripe schickt nach `…/konto?premium=erfolg&session_id=…`; wer diese Adresse
-     * in die App leitet, reicht die Sitzungskennung hier durch und bekommt den
-     * frischen Abo-Stand.
-     */
-    suspend fun premiumAbschliessen(kennung: String, sitzung: String): Abostand = netz.hole(
-        "/api/konto/${teil(kennung)}/premium/checkout/abschliessen",
-        "POST",
-        buildJsonObject { put("sessionId", sitzung) }.toString(),
     )
 }
 

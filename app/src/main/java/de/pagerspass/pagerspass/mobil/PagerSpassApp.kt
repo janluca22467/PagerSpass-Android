@@ -38,8 +38,6 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import de.pagerspass.pagerspass.ansichten.BestenlisteSeite
-import de.pagerspass.pagerspass.ansichten.KontoSeite
 import android.Manifest
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -391,7 +389,7 @@ private fun Angemeldet(
     val startdaten: Startdaten = viewModel()
     val startstand by startdaten.stand.collectAsStateWithLifecycle()
 
-    // Die Leiste steht auch auf den Unterseiten (Garage, Bestenliste) — sie sind
+    // Die Leiste steht auch auf den Unterseiten (Garage, Laufbahn) — sie sind
     // Teil des Buchs, kein eigener Zweig. Sie fiele erst weg, wenn eine Ansicht
     // ihre eigenen Reiter mitbringt; das ist bisher keine.
     val platz = Mass.LeisteHoehe
@@ -463,7 +461,7 @@ private fun Angemeldet(
                     // World: mit Premium in die Welt, sonst in den Laden.
                     beiWelt = {
                         if (stand.konto?.premiumAktiv == true) steuerung.navigate(WEG_WELT)
-                        else zurWahl(steuerung, Weg.Shop)
+                        else zumPremiumLaden(steuerung)
                     },
                     // --- Runde, Teil 1 — BEGINN: Startbildschirm ---------------
                     zusatz = startzusatz(
@@ -474,7 +472,7 @@ private fun Angemeldet(
                         runde = runde,
                         sitzung = sitzung,
                         oeffnen = { browser.openUri(it) },
-                        zumShop = { zurWahl(steuerung, Weg.Shop) },
+                        zumShop = { zumPremiumLaden(steuerung) },
                     ),
                     // --- Runde, Teil 1 — ENDE ---------------------------------
                 )
@@ -522,7 +520,7 @@ private fun Angemeldet(
                     beiZurueck = { steuerung.popBackStack() },
                     // Begleiter: Koppeln nur mit Premium, wie `/scan` im Web.
                     premium = stand.konto?.premiumAktiv == true,
-                    beiShop = { zurWahl(steuerung, Weg.Shop) },
+                    beiShop = { zumPremiumLaden(steuerung) },
                 )
             }
 
@@ -555,15 +553,6 @@ private fun Angemeldet(
                 )
             }
 
-            composable(UNTERSEITE_BESTENLISTE) {
-                BestenlisteSeite(
-                    unterrand = platz,
-                    liste = daten.bestenliste,
-                    beiLaden = { sitzung.bestenlisteLaden() },
-                    beiZurueck = { steuerung.popBackStack() },
-                )
-            }
-
             // Extras: Übungen, Lehrgang, Leitstellenbau, World-Icons, Begleiter-Link
             // (mobil/ExtrasWege.kt).
             extrasWege(
@@ -572,17 +561,16 @@ private fun Angemeldet(
                 sitzung = sitzung,
                 runde = runde,
                 begleiter = begleiter,
-                zumShop = { zurWahl(steuerung, Weg.Shop) },
+                zumShop = { zumPremiumLaden(steuerung) },
                 zumStart = { zurWahl(steuerung, Weg.Dienst) },
                 zurWelt = { steuerung.popBackStack() },
-                zumDienstbuch = { zurWahl(steuerung, Weg.Dienstbuch) },
             )
 
             // World: Gründung und Arbeitsplatz (ansichten/welt/WeltSeiten.kt).
             weltSeiten(
                 sitzung = sitzung,
                 steuerung = steuerung,
-                beiShop = { zurWahl(steuerung, Weg.Shop) },
+                beiShop = { zumPremiumLaden(steuerung) },
                 beiStart = { zurWahl(steuerung, Weg.Dienst) },
                 beiProfil = { name -> navigieren(steuerung, FreundeWeg.profil(name)) },
                 beiImWeb = { seite -> imWeb(seite) },
@@ -644,10 +632,6 @@ private fun Angemeldet(
         runde.beitreten(code, stand.konto?.anzeigename.orEmpty())
     }
 
-    daten.bonusgewinn?.let { gewinn ->
-        Bonusblende(gewinn = gewinn, beiSchliessen = { sitzung.bonusgewinnWegnehmen() })
-    }
-
     // Verwarnungen zuerst, dann Verwaltungsnachrichten — eine nach der
     // anderen, bis alle bestätigt sind. Wie die Dialoge des Web.
     daten.verwarnungen.firstOrNull()?.let { v ->
@@ -663,7 +647,6 @@ private fun Angemeldet(
     }
 }
 
-private const val UNTERSEITE_BESTENLISTE = "bestenliste"
 private const val UNTERSEITE_PROFIL = "profil"
 private const val UNTERSEITE_PRIVATSPHAERE = "privatsphaere"
 private const val UNTERSEITE_POSTFACH = "postfach"
@@ -674,7 +657,6 @@ private const val UNTERSEITE_TAGESSCHICHT = "tagesschicht"
 
 /** Zu welchem Weg der Leiste eine Unterseite gehört. */
 private fun unterseitenweg(route: String?): Weg? = when (route) {
-    UNTERSEITE_BESTENLISTE -> Weg.Dienstbuch
     UNTERSEITE_PROFIL, UNTERSEITE_PRIVATSPHAERE, UNTERSEITE_POSTFACH,
     UNTERSEITE_MITTEILUNGEN, UNTERSEITE_BEGLEITER,
     -> Weg.Konto
