@@ -240,6 +240,18 @@ fun schichtweg(code: String): String = "$SCHICHT_WEG/${android.net.Uri.encode(co
  */
 private const val PROFIL_WEG = "profil"
 
+/**
+ * In den Premium-Bereich des Ladens — der Ausweg, wenn World, die Icons oder der
+ * Begleiter ohne Abo aufgerufen werden. Im Web `shop?hinweis=world-premium`, das
+ * ebenfalls gleich im Schaufenster landet statt in der Übersicht.
+ */
+fun zumPremiumLaden(steuerung: NavHostController) {
+    steuerung.navigate(Ladenbereich.Premium.weg) {
+        popUpTo(steuerung.graph.startDestinationId) { saveState = true }
+        launchSingleTop = true
+    }
+}
+
 /** Ob eine Route zum Dienstbuch oder zum Shop gehört — für die Markierung der Leiste. */
 fun dienstbuchOderShopWeg(route: String?): Weg? = when {
     route == null -> null

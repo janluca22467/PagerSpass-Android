@@ -57,7 +57,7 @@ object Extraswege {
 /**
  * Die Ziele der Extras in den `NavHost` hängen.
  *
- * @param zumShop führt in den Shop — der Ausweg ohne Premium.
+ * @param zumShop führt in den Premium-Bereich des Shops — der Ausweg ohne Premium.
  * @param zumStart führt zurück zum Startbildschirm — der Ausweg mit offener Einweisung.
  * @param zurWelt der Weg „Zurück zur Welt" aus der Icon-Bibliothek.
  */

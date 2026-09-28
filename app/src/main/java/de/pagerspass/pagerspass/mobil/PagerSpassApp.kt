@@ -461,7 +461,7 @@ private fun Angemeldet(
                     // World: mit Premium in die Welt, sonst in den Laden.
                     beiWelt = {
                         if (stand.konto?.premiumAktiv == true) steuerung.navigate(WEG_WELT)
-                        else zurWahl(steuerung, Weg.Shop)
+                        else zumPremiumLaden(steuerung)
                     },
                     // --- Runde, Teil 1 — BEGINN: Startbildschirm ---------------
                     zusatz = startzusatz(
@@ -472,7 +472,7 @@ private fun Angemeldet(
                         runde = runde,
                         sitzung = sitzung,
                         oeffnen = { browser.openUri(it) },
-                        zumShop = { zurWahl(steuerung, Weg.Shop) },
+                        zumShop = { zumPremiumLaden(steuerung) },
                     ),
                     // --- Runde, Teil 1 — ENDE ---------------------------------
                 )
@@ -520,7 +520,7 @@ private fun Angemeldet(
                     beiZurueck = { steuerung.popBackStack() },
                     // Begleiter: Koppeln nur mit Premium, wie `/scan` im Web.
                     premium = stand.konto?.premiumAktiv == true,
-                    beiShop = { zurWahl(steuerung, Weg.Shop) },
+                    beiShop = { zumPremiumLaden(steuerung) },
                 )
             }
 
@@ -561,7 +561,7 @@ private fun Angemeldet(
                 sitzung = sitzung,
                 runde = runde,
                 begleiter = begleiter,
-                zumShop = { zurWahl(steuerung, Weg.Shop) },
+                zumShop = { zumPremiumLaden(steuerung) },
                 zumStart = { zurWahl(steuerung, Weg.Dienst) },
                 zurWelt = { steuerung.popBackStack() },
             )
@@ -570,7 +570,7 @@ private fun Angemeldet(
             weltSeiten(
                 sitzung = sitzung,
                 steuerung = steuerung,
-                beiShop = { zurWahl(steuerung, Weg.Shop) },
+                beiShop = { zumPremiumLaden(steuerung) },
                 beiStart = { zurWahl(steuerung, Weg.Dienst) },
                 beiProfil = { name -> navigieren(steuerung, FreundeWeg.profil(name)) },
                 beiImWeb = { seite -> imWeb(seite) },
