@@ -42,7 +42,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import de.pagerspass.pagerspass.ansichten.DebriefingSeite
 import de.pagerspass.pagerspass.ansichten.FahrzeugSeite
-import de.pagerspass.pagerspass.ansichten.LeitstelleSeite
 import de.pagerspass.pagerspass.ansichten.LobbyGriffe
 import de.pagerspass.pagerspass.ansichten.LobbySeite
 import de.pagerspass.pagerspass.ansichten.ManvGriffe
@@ -193,41 +192,12 @@ internal fun Rundenrahmen(
                 beiVerlassen = { runde.verlassen() },
             )
 
-            laeuft && ich?.istLeitstelle == true -> LeitstelleSeite(
+            // Leitstelle: der ganze Tisch samt Griffen steht in `Leitstellenrahmen.kt`.
+            laeuft && ich?.istLeitstelle == true -> Leitstellenplatz(
                 stand = stand,
-                katalog = seiten.katalog.inhalt,
-                beiEinsatzAnlegen = { stichwort, meldebild, adresse, meldender, anrufId ->
-                    runde.einsatzAnlegen(
-                        stichwort = stichwort.stichwort,
-                        stichwortText = stichwort.stichwortText,
-                        meldebild = meldebild,
-                        adresse = adresse,
-                        organisation = stichwort.organisation,
-                        prioritaet = stichwort.prioritaet,
-                        meldender = meldender,
-                        empfohleneFahrzeuge = stichwort.empfohleneFahrzeuge,
-                        empfohleneFaehigkeiten = stichwort.empfohleneFaehigkeiten,
-                        anrufId = anrufId,
-                    )
-                },
-                beiAlarmieren = { einsatz, fahrzeuge -> runde.alarmieren(einsatz, fahrzeuge) },
-                beiVorschlag = { runde.alarmvorschlag(it) },
-                beiSchliessen = { runde.einsatzSchliessen(it) },
-                beiSprechwunsch = { runde.sprechwunschBeantworten(it) },
-                beiAnrufAnnehmen = { runde.anrufAnnehmen(it) },
-                beiAnrufFrage = { anruf, frage -> runde.anrufFragen(anruf, frage) },
-                beiAnrufBeenden = { runde.anrufBeenden(it) },
-                beiAnrufAbweisen = { runde.anrufAbweisen(it) },
-                beiVorschlagVerwerfen = { runde.vorschlagVerwerfen(it) },
-                beiUmstufen = { einsatz, p -> runde.umstufen(einsatz, p) },
-                beiFunk = { text, an -> runde.funken(text, an) },
-                beiSprechstart = { runde.sprechenStarten() },
-                beiSprechende = { runde.sprechenBeenden() },
-                // Lücke A3: Der Leitstellendraht war nie verdrahtet.
-                beiDraht = { runde.drahtSenden(it) },
-                beiUeberspringen = { runde.ausbildungUeberspringen() },
-                beiDienstende = { runde.dienstBeenden() },
-                beiVerlassen = verlassen,
+                sitzung = sitzung,
+                runde = runde,
+                hilfe = { browser.openUri(rundenhilfe(raum, ich, stand.zuschauer)) },
             )
 
             // Nur wer einen Platz hat, fährt — alle anderen wählen in der Lobby.
