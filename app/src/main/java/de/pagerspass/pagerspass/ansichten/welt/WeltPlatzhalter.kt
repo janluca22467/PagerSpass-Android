@@ -17,16 +17,6 @@ private fun NochNicht(was: String) {
 }
 
 @Composable
-fun WeltBauBlende(
-    welt: Welt,
-    stand: Weltzustand,
-    katalog: Katalog?,
-    modi: Kartenmodi,
-    griffe: Weltgriffe,
-    nurFahrzeug: Boolean,
-) = NochNicht(if (nurFahrzeug) "Der Fahrzeugkauf" else "Das Bauen")
-
-@Composable
 fun WeltWachenBlende(welt: Welt, stand: Weltzustand, griffe: Weltgriffe) = NochNicht("Die Wachenliste")
 
 @Composable
@@ -59,6 +49,3 @@ fun WeltEinstellungBlende(
 
 @Composable
 fun WeltLeiheBlende(welt: Welt, stand: Weltzustand, katalog: Katalog?, griffe: Weltgriffe) = NochNicht("Die Leihe")
-
-@Composable
-fun WeltMehrBlende(stand: Weltzustand, griffe: Weltgriffe) = NochNicht("Das Mehr-Menü")
