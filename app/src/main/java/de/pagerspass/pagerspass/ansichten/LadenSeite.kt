@@ -31,6 +31,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
@@ -74,6 +75,7 @@ import de.pagerspass.pagerspass.ui.schmuck.Wappen
 import de.pagerspass.pagerspass.ui.schmuck.kopfband
 import de.pagerspass.pagerspass.ui.theme.Abstand
 import de.pagerspass.pagerspass.ui.theme.Farben
+import de.pagerspass.pagerspass.ui.fahrzeug.FahrzeugSymbol
 import de.pagerspass.pagerspass.ui.theme.Rundung
 import de.pagerspass.pagerspass.ui.theme.Schrift
 import de.pagerspass.pagerspass.ui.theme.Ziel
@@ -892,6 +894,27 @@ private fun Tagesangebotskarte(
             .flaechenmarke(wartet = true)
             .padding(Abstand.Gross),
     ) {
+        // Die Bühne: der Riss unter einem Lichtkegel in der Farbe der Organisation.
+        val ton = if (organisation != null) orgTon(organisation) else Farben.Amber
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(100.dp)
+                .clip(Rundung.Klein)
+                .drawBehind {
+                    drawRect(
+                        Brush.radialGradient(
+                            0f to ton.copy(alpha = 0.24f),
+                            0.72f to ton.copy(alpha = 0f),
+                            center = Offset(size.width / 2f, size.height * 0.45f),
+                            radius = 90.dp.toPx(),
+                        ),
+                    )
+                },
+        ) {
+            if (organisation != null) FahrzeugSymbol(typ, organisation, groesse = 84.dp)
+        }
         Text("−25 % · nur heute", style = Schrift.MonoKlein, color = Farben.AmberHell)
         Text(typ, style = Schrift.MonoNormal.copy(fontWeight = FontWeight.Bold, fontSize = Schrift.TITEL), color = Farben.Text)
         Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein), verticalAlignment = Alignment.CenterVertically) {
