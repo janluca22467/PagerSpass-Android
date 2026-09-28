@@ -6,8 +6,11 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Canvas
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.CanvasDrawScope
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
@@ -15,6 +18,7 @@ import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.translate
 import kotlin.math.PI
+import kotlin.math.ceil
 import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.min
@@ -105,6 +109,56 @@ fun DrawScope.fahrzeugZeichnen(
     kaestchen: Rasterkaestchen = kaestchenEng(bauplan),
 ) {
     if (hoehe <= 0f || kaestchen.laenge <= 0f || deckkraft <= 0f) return
+    val bewegt = jetzt != null &&
+        ((blaulicht && bauplan.blaulicht) || bauplan.form == Form.Heli || bauplan.form == Form.Boot)
+    if (bewegt) {
+        rissLive(bauplan, mitte, hoehe, drehung, blaulicht, jetzt, deckkraft, kaestchen)
+        return
+    }
+    // Was stillsteht, zeichnet sich einmal und wird danach nur noch als Bild gesetzt: Ein
+    // Riss sind gut hundert Bauteile mit eigenen Verläufen, und auf der Weltkarte stehen
+    // davon Hunderte gleichzeitig — dieselbe Rechnung, die im Web die geteilten `<defs>`
+    // begründet (`utils/fahrzeugDefs.ts`).
+    val bild = rissbild(bauplan, hoehe, kaestchen)
+    rotate(drehung, pivot = mitte) {
+        drawImage(bild, topLeft = Offset(mitte.x - bild.width / 2f, mitte.y - bild.height / 2f), alpha = deckkraft)
+    }
+}
+
+/** Der Schlüssel eines fertigen Rissbilds: welcher Plan, wie groß, welches Kästchen. */
+private data class Bildschluessel(val bauplan: Bauplan, val hoehe: Int, val kaestchen: Rasterkaestchen)
+
+/** Die zuletzt gebrauchten Rissbilder — ein kleiner Vorrat, der Älteste geht zuerst. */
+private val bildvorrat = object : LinkedHashMap<Bildschluessel, ImageBitmap>(64, 0.75f, true) {
+    override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Bildschluessel, ImageBitmap>?): Boolean =
+        size > 160
+}
+
+/** Der ruhende Riss als Bild, genau so groß, wie er gesetzt wird — im Kästchen beschnitten wie das `<svg>`. */
+private fun DrawScope.rissbild(bauplan: Bauplan, hoehe: Float, kaestchen: Rasterkaestchen): ImageBitmap {
+    val h = ceil(hoehe).toInt().coerceAtLeast(1)
+    val schluessel = Bildschluessel(bauplan, h, kaestchen)
+    return bildvorrat.getOrPut(schluessel) {
+        val w = ceil(h * kaestchen.breite / kaestchen.laenge).toInt().coerceAtLeast(1)
+        val bild = ImageBitmap(w, h)
+        CanvasDrawScope().draw(this, layoutDirection, Canvas(bild), Size(w.toFloat(), h.toFloat())) {
+            rissLive(bauplan, Offset(w / 2f, h / 2f), h.toFloat(), 0f, false, null, 1f, kaestchen)
+        }
+        bild
+    }
+}
+
+/** Die eigentliche Zeichnung, Teil für Teil — ohne Vorrat. */
+private fun DrawScope.rissLive(
+    bauplan: Bauplan,
+    mitte: Offset,
+    hoehe: Float,
+    drehung: Float,
+    blaulicht: Boolean,
+    jetzt: Long?,
+    deckkraft: Float,
+    kaestchen: Rasterkaestchen,
+) {
     val massstab = hoehe / kaestchen.laenge
     translate(mitte.x, mitte.y) {
         rotate(drehung, pivot = Offset.Zero) {
@@ -148,7 +202,7 @@ fun DrawScope.fahrzeughofZeichnen(
     deckkraft: Float = 1f,
 ) {
     val an = hofphase(muster, jetzt)
-    val staerke = (0.3f + 0.7f * an) * deckkraft
+    val staerke = (0.12f + 0.88f * an) * deckkraft
     if (staerke <= 0f || radius <= 0f) return
     drawCircle(
         brush = Brush.radialGradient(
