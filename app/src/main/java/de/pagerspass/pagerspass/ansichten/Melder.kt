@@ -1,7 +1,5 @@
 package de.pagerspass.pagerspass.ansichten
 
-import android.media.AudioManager
-import android.media.ToneGenerator
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -36,8 +34,6 @@ import de.pagerspass.pagerspass.ui.theme.Abstand
 import de.pagerspass.pagerspass.ui.theme.Farben
 import de.pagerspass.pagerspass.ui.theme.Rundung
 import de.pagerspass.pagerspass.ui.theme.Schrift
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 
 /**
  * Der Melder — das Alarmbild, das den Dienst unterbricht.
@@ -48,10 +44,11 @@ import kotlinx.coroutines.isActive
  * nicht:</b> Der Alarm bleibt am Fahrzeug offen (`alarmOffen`), und die
  * Leitstelle sieht weiter, dass niemand reagiert hat.
  *
- * <b>Der Ton kommt vom Gerät, nicht aus einer Datei.</b> Fünf kurze Töne, eine
- * Pause, von vorn — die Kadenz eines Funkmeldeempfängers. `ToneGenerator` auf
- * dem Alarmkanal des Systems heißt: Er folgt der Alarm-Lautstärke des Geräts,
- * nicht der Medienlautstärke, die beim Spielen oft auf null steht.
+ * <b>Der Ton ist der gewählte.</b> Bis hierher piepte die Blende fünfmal mit dem
+ * `ToneGenerator` des Systems; jetzt spielt sie den Alarmton aus dem Konto
+ * (`Melderwerk`, dieselben Zahlen wie im Web), endlos und auf dem Alarmkanal —
+ * und hält sich an die Alarmierungsart: Vibration heißt stumm, stumm heißt
+ * weder Ton noch Motor.
  */
 @Composable
 fun Melderblende(
@@ -61,26 +58,26 @@ fun Melderblende(
     // Begleiter (Tonregler): der Melderregler, 0–100 — wie bisher 90, wenn keiner dreht.
     lautstaerke: Int = 90,
 ) {
-    // Der Piepton, bis jemand reagiert.
-    LaunchedEffect(alarm.incidentId, lautstaerke) {
-        val ton = runCatching {
-            ToneGenerator(AudioManager.STREAM_ALARM, lautstaerke.coerceIn(0, ToneGenerator.MAX_VOLUME))
-        }.getOrNull()
-        try {
-            while (isActive) {
-                repeat(5) {
-                    ton?.startTone(ToneGenerator.TONE_PROP_BEEP2, 160)
-                    delay(240)
-                }
-                delay(1_200)
-            }
-        } finally {
-            ton?.release()
-        }
+    // Der Alarmton, bis jemand reagiert — der im Konto gewählte, in der
+    // Dringlichkeit der Meldung, und nur, wenn die Alarmierungsart ihn vorsieht.
+    val werk = de.pagerspass.pagerspass.mobil.rememberMelderwerk()
+    val ton by de.pagerspass.pagerspass.mobil.rememberMelderTon()
+    val art by de.pagerspass.pagerspass.mobil.rememberAlarmierungsart()
+    val pegel = if (art == "vibration" || art == "stumm") 0f else lautstaerke.coerceIn(0, 100) / 100f
+    LaunchedEffect(alarm.incidentId, alarm.zeit, ton, pegel) {
+        werk.alarmStarten(ton, alarm.prioritaet, pegel)
+    }
+    LaunchedEffect(alarm.incidentId, alarm.zeit) {
+        if (art == "voll" || art == "vibration") werk.vibrationAlarm()
     }
 
     // Aufräumen, falls der Rahmen die Blende abbaut, ohne dass jemand tippte.
-    DisposableEffect(Unit) { onDispose { } }
+    DisposableEffect(Unit) {
+        onDispose {
+            werk.alarmStoppen()
+            werk.vibrationAus()
+        }
+    }
 
     val puls = rememberInfiniteTransition(label = "alarm")
     val glut by puls.animateFloat(
