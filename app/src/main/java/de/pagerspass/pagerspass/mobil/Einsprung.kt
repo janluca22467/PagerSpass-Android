@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import de.pagerspass.pagerspass.MainActivity
+import de.pagerspass.pagerspass.ansichten.Ladenbereich
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -159,7 +160,10 @@ object Einsprung {
             "bestenliste" -> "dienstbuch/laufbahn"
             "garage" -> "dienstbuch/garage"
 
-            "uebungen" -> zweites?.let { "uebungen/${stueck(it)}" } ?: "uebungen"
+            // Das Web öffnet eine Übung über `?id=` (UebungenView.vue, `ausAdresseOeffnen`);
+            // der Pfad mit Kennung dahinter bleibt für ältere Links stehen.
+            "uebungen" -> (zweites ?: abfrage["id"]?.takeIf { it.isNotBlank() })
+                ?.let { "uebungen/${stueck(it)}" } ?: "uebungen"
             "lehrgang" -> "lehrgang"
             "leitstellenbau" -> "leitstellenbau"
 
@@ -176,7 +180,7 @@ object Einsprung {
                 else -> kontoRoute(abfrage)
             }
 
-            "shop" -> "shop"
+            "shop" -> ladenRoute(abfrage)
 
             "discord" -> buildString {
                 append("discord")
@@ -236,6 +240,18 @@ object Einsprung {
             append("konto?premium=${stueck(premium)}")
             if (sitzung != null) append("&session_id=${stueck(sitzung)}")
         }
+    }
+
+    /**
+     * Der Laden mit Bereich: `/shop?bereich=premium` → `shop/premium`, und der
+     * alte Hinweis aus der Welt (`?hinweis=world-premium`) ebenfalls ins Premium —
+     * dieselbe Regel wie `bereichAusWeg` in `ShopView.vue`. Ein unbekannter Name
+     * fällt still auf die Übersicht zurück.
+     */
+    private fun ladenRoute(abfrage: Map<String, String>): String {
+        val gewuenscht = abfrage["bereich"]
+        Ladenbereich.entries.firstOrNull { it.name.lowercase() == gewuenscht }?.let { return it.weg }
+        return if (abfrage["hinweis"] == "world-premium") Ladenbereich.Premium.weg else Ladenbereich.Uebersicht.weg
     }
 
     /**
