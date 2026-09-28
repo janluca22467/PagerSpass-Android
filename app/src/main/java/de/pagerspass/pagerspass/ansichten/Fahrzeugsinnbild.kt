@@ -1,49 +1,38 @@
 package de.pagerspass.pagerspass.ansichten
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.size
-import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import de.pagerspass.pagerspass.ui.fahrzeug.FahrzeugSymbol
 import de.pagerspass.pagerspass.ui.theme.Farben
-import de.pagerspass.pagerspass.ui.theme.Rundung
-import de.pagerspass.pagerspass.ui.zeichen.Zeichen
 
 /**
- * Das Sinnbild eines Fahrzeugs — der Platzhalter für den gezeichneten Riss.
+ * Das Sinnbild eines Fahrzeugs — sein gezeichneter Riss (`FahrzeugSymbol.vue` im Web,
+ * hier `ui/fahrzeug/FahrzeugSymbol`).
  *
- * <b>Im Web steht hier eine Silhouette</b> (`FahrzeugSymbol.vue`, gebaut aus
- * `utils/fahrzeugRiss.ts` und `fahrzeugBauplan.ts`, gut zweitausend Zeilen je Typ
- * gezeichneter Aufbauten). Die App hat diesen Riss nicht; bis er kommt, trägt das
- * Sinnbild wenigstens die Auskunft, die an der Silhouette zuerst gelesen wird: die
- * Farbe der Organisation. Rot ist Feuerwehr, bevor man die Marke liest.
+ * Der Riss hängt am Typ: Jeder Katalogtyp hat seinen Bauplan mit Aufbau, Dachmodulen,
+ * Lackierung und Markierung. Ohne `typ` (oder bei einem Typ, den der Katalog nicht
+ * kennt) steht das Standardfahrzeug der Organisation da — ein LF 10, ein RTW, ein GKW,
+ * ein Streifenwagen —, damit wenigstens die Farbe stimmt, die an der Silhouette zuerst
+ * gelesen wird.
+ *
+ * @param groesse Die Länge des Fahrzeugs; die Breite ergibt sich aus dem Riss.
+ * @param quer Liegt quer in der Zeile, Front nach rechts (die Listen des Icon-Editors).
  */
 @Composable
 fun Fahrzeugsinnbild(
     organisation: String,
     modifier: Modifier = Modifier,
     groesse: Dp = 28.dp,
+    typ: String = "",
+    quer: Boolean = false,
 ) {
-    val farbe = organisationsfarbeVon(organisation)
-    Box(
-        contentAlignment = Alignment.Center,
-        modifier = modifier
-            .size(groesse)
-            .background(farbe.copy(alpha = 0.16f), Rundung.Winzig)
-            .border(1.dp, farbe.copy(alpha = 0.7f), Rundung.Winzig),
-    ) {
-        Icon(
-            imageVector = Zeichen.Fahrzeug,
-            contentDescription = null,
-            tint = farbe,
-            modifier = Modifier.size(groesse * 0.72f),
-        )
+    Box(contentAlignment = Alignment.Center, modifier = modifier) {
+        FahrzeugSymbol(typ = typ, organisation = organisation, groesse = groesse, quer = quer)
     }
 }
 

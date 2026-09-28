@@ -3,6 +3,7 @@ package de.pagerspass.pagerspass.ansichten
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
@@ -18,10 +19,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
@@ -34,6 +38,7 @@ import de.pagerspass.pagerspass.ui.bausteine.Feld
 import de.pagerspass.pagerspass.ui.bausteine.Knopf
 import de.pagerspass.pagerspass.ui.bausteine.Knopfart
 import de.pagerspass.pagerspass.ui.bausteine.SehrLeise
+import de.pagerspass.pagerspass.ui.fahrzeug.FahrzeugSymbol
 import de.pagerspass.pagerspass.ui.theme.Abstand
 import de.pagerspass.pagerspass.ui.theme.Farben
 import de.pagerspass.pagerspass.ui.theme.Rundung
@@ -139,7 +144,10 @@ fun Autohaus(
                     if (gruppe.traeger.size > 1) Traegertitel(cluster.hiOrg, cluster.name)
                     cluster.fahrzeuge.forEach { f ->
                         val aktiv = imFenster?.id == f.id
-                        Column(
+                        // Ein Stellplatz: der Riss, daneben Typ und Kategorie.
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
+                            verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clip(Rundung.Winzig)
@@ -158,12 +166,15 @@ fun Autohaus(
                                 )
                                 .padding(start = Abstand.Normal, top = Abstand.Winzig, bottom = Abstand.Winzig),
                         ) {
-                            Text(
-                                f.typ,
-                                style = Schrift.MonoKlein.copy(fontWeight = FontWeight.Bold),
-                                color = if (aktiv) Farben.Amber else Farben.Text,
-                            )
-                            Text(f.kategorie, style = Schrift.Winzig, color = Farben.TextSehrLeise)
+                            FahrzeugSymbol(f.typ, f.organisation, groesse = 30.dp)
+                            Column {
+                                Text(
+                                    f.typ,
+                                    style = Schrift.MonoKlein.copy(fontWeight = FontWeight.Bold),
+                                    color = if (aktiv) Farben.Amber else Farben.Text,
+                                )
+                                Text(f.kategorie, style = Schrift.Winzig, color = Farben.TextSehrLeise)
+                            }
                         }
                     }
                 }
@@ -218,6 +229,27 @@ private fun Schaufenster(
             .flaeche(ecke = 12.dp, randfarbe = farbe.copy(alpha = 0.6f))
             .padding(Abstand.Gross),
     ) {
+        // Die Bühne: ein ruhiger Lichtkegel in der Farbe der Organisation, damit das
+        // Fahrzeug steht wie unter einem Strahler — und nicht wie ein Symbol in einer Liste.
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(Rundung.Normal)
+                .drawBehind {
+                    drawRect(
+                        Brush.radialGradient(
+                            0f to farbe.copy(alpha = 0.22f),
+                            0.7f to farbe.copy(alpha = 0f),
+                            center = Offset(size.width / 2f, size.height * 0.45f),
+                            radius = 120.dp.toPx(),
+                        ),
+                    )
+                }
+                .padding(top = Abstand.Normal, bottom = Abstand.Gross),
+        ) {
+            FahrzeugSymbol(f.typ, f.organisation, groesse = 120.dp)
+        }
         Etikett("${orgName(f.organisation)} · ${f.kategorie}")
         if (istTagesangebot) {
             Text("Tagesangebot · 25 % Rabatt", style = Schrift.MonoKlein, color = Farben.AmberHell)

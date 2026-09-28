@@ -238,7 +238,7 @@ private fun Typzeile(typ: Icontyp, icon: Packicon?, server: String, beiDruck: ()
                     )
                 }
             } else {
-                Fahrzeugsinnbild(typ.organisation, groesse = 30.dp)
+                Fahrzeugsinnbild(typ.organisation, groesse = 36.dp, typ = typ.typ, quer = true)
             }
         }
         Text(
@@ -348,9 +348,8 @@ private fun Typenblatt(
                 .background(Farben.BgTief, Rundung.Klein)
                 .border(1.dp, Farben.Rand, Rundung.Klein),
         ) {
-            // Der gezeichnete Riss des Webs fehlt der App noch — das Sinnbild
-            // steht an seiner Stelle (siehe `Fahrzeugsinnbild`).
-            Fahrzeugsinnbild(typ.organisation, groesse = 72.dp)
+            // Der Riss des Spiels — das, was ohne eigenes Icon zu sehen wäre.
+            Fahrzeugsinnbild(typ.organisation, groesse = 72.dp, typ = typ.typ)
         }
 
         stand.hinweis?.let { Text(it, style = Schrift.Klein, color = Farben.GruenHell) }
