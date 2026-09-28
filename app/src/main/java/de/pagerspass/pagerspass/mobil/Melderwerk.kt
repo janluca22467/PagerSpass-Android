@@ -49,6 +49,11 @@ class Melderwerk(private val zusammenhang: Context) {
 
     private val bereich = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
+    // Tonwerkstatt: Die eigenen Töne müssen dastehen, bevor der erste Alarm nach ihnen fragt.
+    init {
+        Eigentoene.sicherstellen(zusammenhang)
+    }
+
     @Volatile
     private var spur: AudioTrack? = null
     private var auftrag: Job? = null

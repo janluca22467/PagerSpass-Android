@@ -56,7 +56,16 @@ object Meldertonprobe {
         val bis: Double? = null,
     )
 
-    private class Zyklus(val dauer: Double, val ereignisse: List<Ereignis>)
+    /**
+     * Ein Durchlauf. `klang` trägt den eingespielten Klang, wenn dieser Ton einer ist
+     * — statt der Ereignisse, nicht neben ihnen (`puffer` im Web).
+     */
+    private class Zyklus(
+        val dauer: Double,
+        val ereignisse: List<Ereignis>,
+        val klang: FloatArray? = null,
+        val klangPegel: Double = 0.0,
+    )
 
     // Die drei Register aus sounds.ts — Piezo, Membran, Gerät.
     private const val PIEZO_TIEF = 2300.0
@@ -99,6 +108,48 @@ object Meldertonprobe {
         val S = Form.Sinus
         val W = Form.Saege
         val D = Form.Dreieck
+
+        // Tonwerkstatt: die eigenen Töne — gezeichnet (`eigen:`) oder eingespielt (`klang:`).
+        /*
+         * Der eingespielte Klang zuerst. Liegt er nicht bereit (frisch gestartet, Datei
+         * noch nicht decodiert, nicht mehr lesbar), fällt die Rechnung durch bis zum
+         * Zweiklang am Ende — lieber der Standardton als Stille. Die Dringlichkeit
+         * verkürzt die Ruhe und nicht den Klang: Eine Aufnahme schneller abzuspielen
+         * hieße, sie höher zu machen.
+         */
+        if (art.startsWith("klang:")) {
+            Eigentoene.klangstueck(art.removePrefix("klang:"))?.let { stueck ->
+                return Zyklus(
+                    dauer = max(0.1, stueck.proben.size.toDouble() / ABTASTRATE + stueck.pause * t),
+                    ereignisse = emptyList(),
+                    klang = stueck.proben,
+                    klangPegel = Eigentoene.klangPegel(stueck, p),
+                )
+            }
+        }
+
+        // Der selbst gebaute Ton: dieselben beiden Größen wie jeder Zweig darunter —
+        // `t` beschleunigt ihn mit der Dringlichkeit, `p` bleibt der aus der Rechnung.
+        if (art == "eigen" || art.startsWith("eigen:")) {
+            val plan = Eigentoene.planZuArt(art)
+            val schritt = plan.abstand * t
+            val form = when (plan.form) {
+                "sine" -> S
+                "triangle" -> D
+                "sawtooth" -> W
+                else -> R
+            }
+            return Zyklus(
+                // Der Boden von einer Zehntelsekunde bleibt — ein kürzerer Zyklus
+                // füllte den Puffer in einer Schleife, die nie fertig wird.
+                dauer = max(0.1, Eigentoene.laenge(plan.schritte) * schritt),
+                // Leere Felder erzeugen keinen Ton — sie verschieben nur die folgenden.
+                ereignisse = plan.schritte.mapIndexedNotNull { i, frequenz ->
+                    frequenz?.let { Ereignis(it.toDouble(), i * schritt, plan.dauer * t, p, form) }
+                },
+            )
+        }
+        // Ende Tonwerkstatt
 
         return when (art) {
             "dreiklang" -> Zyklus(
@@ -415,6 +466,9 @@ object Meldertonprobe {
     /** Wie lange eine Probe dieses Tons dauert — in Sekunden. */
     fun probedauer(art: String): Double = max(PROBE_MINDEST, zyklus(art).dauer + PROBE_PUFFER)
 
+    /** Wie lang ein Durchlauf dieses Tons ist, in Sekunden — `tonZyklusMs` im Web. */
+    fun zyklusdauer(art: String, prioritaet: Int = 1): Double = zyklus(art, prioritaet).dauer
+
     /**
      * Den Ton in einen Puffer rechnen: so viele Zyklen hintereinander, wie in die
      * Probe passen, am Ende abgeschnitten.
@@ -427,6 +481,14 @@ object Meldertonprobe {
 
         for (runde in 0 until runden) {
             val beginn = runde * zyklus.dauer
+            zyklus.klang?.let { proben ->
+                val von = (beginn * ABTASTRATE).roundToInt()
+                for (i in proben.indices) {
+                    val stelle = von + i
+                    if (stelle >= laenge) break
+                    summe[stelle] += proben[i] * zyklus.klangPegel
+                }
+            }
             for (e in zyklus.ereignisse) {
                 if (e.dauer <= 0.0 || e.pegel <= 0.0) continue
                 val von = ((beginn + e.versatz) * ABTASTRATE).roundToInt()
@@ -529,11 +591,15 @@ class Tonprobe internal constructor(private val bereich: CoroutineScope) {
         if (laeuft == art) beenden() else spielen(art)
     }
 
-    fun spielen(art: String) {
+    /**
+     * @param dauer Wie lange die Probe läuft; ohne Angabe die Probedauer der Tonwahl.
+     *   Die Tonwerkstatt spielt genau einen Durchlauf und eine Viertelsekunde.
+     */
+    fun spielen(art: String, dauer: Double? = null) {
         beenden()
         laeuft = art
         auftrag = bereich.launch {
-            val sekunden = Meldertonprobe.probedauer(art)
+            val sekunden = dauer ?: Meldertonprobe.probedauer(art)
             val puffer = withContext(Dispatchers.Default) { Meldertonprobe.rechnen(art, sekunden) }
             val neu = runCatching { Meldertonprobe.abspielen(puffer) }.getOrNull()
             if (neu == null) {
@@ -566,6 +632,9 @@ class Tonprobe internal constructor(private val bereich: CoroutineScope) {
 /** Eine Probe, die mit der Seite geht: Wer sie verlässt, nimmt keinen Ton mit. */
 @Composable
 fun rememberTonprobe(): Tonprobe {
+    // Die eigenen Töne müssen dastehen, bevor eine Probe nach ihnen fragt.
+    val zusammenhang = androidx.compose.ui.platform.LocalContext.current
+    remember(zusammenhang) { Eigentoene.sicherstellen(zusammenhang) }
     val bereich = rememberCoroutineScope()
     val probe = remember { Tonprobe(bereich) }
     DisposableEffect(probe) { onDispose { probe.beenden() } }
