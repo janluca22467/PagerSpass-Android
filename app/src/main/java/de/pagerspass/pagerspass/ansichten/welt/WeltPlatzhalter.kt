@@ -17,26 +17,10 @@ private fun NochNicht(was: String) {
 }
 
 @Composable
-fun WeltWachenBlende(welt: Welt, stand: Weltzustand, griffe: Weltgriffe) = NochNicht("Die Wachenliste")
-
-@Composable
-fun WeltWachenseiteBlende(welt: Welt, stand: Weltzustand, katalog: Katalog?, wacheId: String?, griffe: Weltgriffe) =
-    NochNicht("Die Wachenseite")
-
-@Composable
 fun WeltChatBlende(welt: Welt, stand: Weltzustand, griffe: Weltgriffe) = NochNicht("Der Chat")
 
 @Composable
 fun WeltGrosslageBlende(welt: Welt, stand: Weltzustand, griffe: Weltgriffe) = NochNicht("Der Großeinsatz")
-
-@Composable
-fun WeltKasseBlende(welt: Welt, stand: Weltzustand) = NochNicht("Die Kasse")
-
-@Composable
-fun WeltRanglisteBlende(welt: Welt, stand: Weltzustand, griffe: Weltgriffe) = NochNicht("Die Rangliste")
-
-@Composable
-fun WeltLaufbahnBlende(welt: Welt, stand: Weltzustand) = NochNicht("Die Laufbahn")
 
 @Composable
 fun WeltEinstellungBlende(
