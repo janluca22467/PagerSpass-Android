@@ -61,6 +61,10 @@ import de.pagerspass.pagerspass.ansichten.LoginSeite
 import de.pagerspass.pagerspass.ansichten.PrivatsphaereSeite
 import de.pagerspass.pagerspass.ansichten.ProfilSeite
 import de.pagerspass.pagerspass.ansichten.StartSeite
+// World
+import de.pagerspass.pagerspass.ansichten.welt.WEG_WELT
+import de.pagerspass.pagerspass.ansichten.welt.istWeltweg
+import de.pagerspass.pagerspass.ansichten.welt.weltSeiten
 import de.pagerspass.pagerspass.netz.Rechtsstand
 import de.pagerspass.pagerspass.netz.Server
 import de.pagerspass.pagerspass.ui.theme.Abstand
@@ -444,7 +448,6 @@ private fun Angemeldet(
                             } else {
                                 runde.beitreten(e.roomCode, stand.konto?.anzeigename.orEmpty())
                             }
-                            }
                         }
                     },
                     beiEinladungAblehnen = { e -> sozial.einladungBeantworten(e.nr, false) },
@@ -457,6 +460,11 @@ private fun Angemeldet(
                     // Übungen und Lehrgang: in der App statt im Browser.
                     beiLehrgang = { steuerung.navigate(Extraswege.LEHRGANG) },
                     beiUebungen = { steuerung.navigate(Extraswege.UEBUNGEN) },
+                    // World: mit Premium in die Welt, sonst in den Laden.
+                    beiWelt = {
+                        if (stand.konto?.premiumAktiv == true) steuerung.navigate(WEG_WELT)
+                        else zurWahl(steuerung, Weg.Shop)
+                    },
                     // --- Runde, Teil 1 — BEGINN: Startbildschirm ---------------
                     zusatz = startzusatz(
                         stand = stand,
@@ -569,6 +577,16 @@ private fun Angemeldet(
                 zurWelt = { steuerung.popBackStack() },
                 zumDienstbuch = { zurWahl(steuerung, Weg.Dienstbuch) },
             )
+
+            // World: Gründung und Arbeitsplatz (ansichten/welt/WeltSeiten.kt).
+            weltSeiten(
+                sitzung = sitzung,
+                steuerung = steuerung,
+                beiShop = { zurWahl(steuerung, Weg.Shop) },
+                beiStart = { zurWahl(steuerung, Weg.Dienst) },
+                beiProfil = { name -> navigieren(steuerung, FreundeWeg.profil(name)) },
+                beiImWeb = { seite -> imWeb(seite) },
+            )
         }
 
         // Bereich Konto: App-Links und Systemmeldungen (siehe `mobil/Einsprung.kt`).
@@ -578,16 +596,19 @@ private fun Angemeldet(
             beiFunk = { token -> begleiter.koppeln(token) },
         )
 
-        Tableiste(
-            // Auf einer Unterseite bleibt der Weg markiert, aus dem sie kommt —
-            // die Garage gehört zum Buch. Ohne das stünde die Leiste dort ohne
-            // jede Markierung, und man wüsste nicht mehr, wo man ist.
-            hier = hier ?: unterseitenweg(eintrag?.destination?.route)
-                ?: kontobereichWeg(eintrag?.destination?.route),
-            marken = marken(daten, kreisstand),
-            beiWahl = { weg -> zurWahl(steuerung, weg) },
-            modifier = Modifier.align(Alignment.BottomCenter),
-        )
+        // World: Die Welt trägt ihre eigene Leiste unten (ansichten/welt/WeltSeiten.kt).
+        if (!istWeltweg(eintrag?.destination?.route)) {
+            Tableiste(
+                // Auf einer Unterseite bleibt der Weg markiert, aus dem sie kommt —
+                // die Garage gehört zum Buch. Ohne das stünde die Leiste dort ohne
+                // jede Markierung, und man wüsste nicht mehr, wo man ist.
+                hier = hier ?: unterseitenweg(eintrag?.destination?.route)
+                    ?: kontobereichWeg(eintrag?.destination?.route),
+                marken = marken(daten, kreisstand),
+                beiWahl = { weg -> zurWahl(steuerung, weg) },
+                modifier = Modifier.align(Alignment.BottomCenter),
+            )
+        }
     }
 
     // Freunde (Sozial-Port): ein Tipp auf eine Sozialmeldung führt an ihr Ziel.
