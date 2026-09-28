@@ -54,6 +54,15 @@ internal fun Leitstellenplatz(
         if (stand.raum?.laeuft == true) runCatching { runde.begleiterGekoppelt() }
     }
 
+    // Begleiter: Umstellungen am Gerät gehen an das gekoppelte Handy nach.
+    GeraeteNachmelden(
+        runde = runde,
+        gekoppelt = stand.begleiterGekoppelt,
+        gesicht = seiten.profil.inhalt?.melderGesicht,
+        funkAusgelagert = stand.raum?.code?.let { it == datenstand.ausgelagertFuer } == true,
+        zeigtAlles = true,
+    )
+
     val griffe = LeitstellenGriffe(
         // ---------------------------------------------------------- Kopf
         wuerfeln = { runde.einsatzWuerfeln() },

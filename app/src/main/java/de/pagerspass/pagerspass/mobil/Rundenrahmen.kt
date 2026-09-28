@@ -224,6 +224,13 @@ internal fun Rundenrahmen(
             // Fahrzeug: die Griffe stehen in `mobil/Fahrzeuggriffe.kt`.
             laeuft && ich != null && ich.role != "Unbestimmt" -> {
                 LaunchedEffect(Unit) { sitzung.profilLaden() }
+                // Begleiter: Umstellungen am Gerät gehen an das gekoppelte Handy nach.
+                GeraeteNachmelden(
+                    runde = runde,
+                    gekoppelt = stand.begleiterGekoppelt,
+                    gesicht = seiten.profil.inhalt?.melderGesicht,
+                    funkAusgelagert = true,
+                )
                 FahrzeugSeite(
                     stand = stand,
                     eigeneKennung = kennung,
