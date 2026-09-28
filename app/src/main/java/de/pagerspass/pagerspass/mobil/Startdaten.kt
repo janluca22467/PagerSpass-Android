@@ -73,6 +73,19 @@ class Startdaten(anwendung: Application) : AndroidViewModel(anwendung) {
     suspend fun vorlageStarten(kennung: String, id: String): String =
         wege.rundenvorlageStarten(kennung, id)
 
+    /**
+     * Eine Vorlage starten und danach beitreten — `danach` bekommt den Code.
+     * Ein Fehler steht in `vorlagenMeldung`, dort, wo die Liste ihn zeigt.
+     */
+    fun vorlageStartenUndDann(kennung: String, id: String, danach: (String) -> Unit) = viewModelScope.launch {
+        _stand.update { it.copy(vorlagenMeldung = null) }
+        runCatching { wege.rundenvorlageStarten(kennung, id) }
+            .onSuccess { code -> danach(code) }
+            .onFailure { f ->
+                _stand.update { it.copy(vorlagenMeldung = f.message ?: "Die Vorlage ließ sich nicht starten.") }
+            }
+    }
+
     /** Löschen — die Zeile verschwindet erst, wenn der Server zugestimmt hat. */
     fun vorlageLoeschen(kennung: String, id: String) = viewModelScope.launch {
         _stand.update { it.copy(vorlageLoescht = id, vorlagenMeldung = null) }

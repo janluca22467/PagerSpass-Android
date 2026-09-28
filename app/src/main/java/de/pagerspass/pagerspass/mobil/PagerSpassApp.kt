@@ -361,6 +361,9 @@ private fun Angemeldet(
     val hier = Weg.entries.firstOrNull { it.adresse == eintrag?.destination?.route }
     val browser = LocalUriHandler.current
     var loeschenOffen by remember { mutableStateOf(false) }
+    // --- Runde, Teil 1: was der Startbildschirm für Runden nachlädt.
+    val startdaten: Startdaten = viewModel()
+    val startstand by startdaten.stand.collectAsStateWithLifecycle()
 
     // Die Leiste steht auch auf den Unterseiten (Garage, Bestenliste) — sie sind
     // Teil des Buchs, kein eigener Zweig. Sie fiele erst weg, wenn eine Ansicht
@@ -403,9 +406,15 @@ private fun Angemeldet(
                         sitzung.mitteilungenLaden()
                         sitzung.einladungenLaden(neu = true)
                         sitzung.hinweiseLaden()
+                        // Runde, Teil 1: Vorlagen, Umfrage, Kacheln, Clanrunde, Tagesschicht.
+                        startdaten.laden(stand.konto?.kennung)
+                        sitzung.wacheLaden()
+                        sitzung.tagesschichtLaden()
                     },
                     beiGelesen = { sitzung.mitteilungGelesen(it) },
                     beiEinladung = { e ->
+                        // Runde, Teil 1 (A9): erst abhaken, dann hinein.
+                        sozial.einladungBeantworten(e.nr.toLong(), true)
                         if (e.alsZuschauer) {
                             runde.zuschauen(e.roomCode, stand.konto?.anzeigename.orEmpty())
                         } else {
@@ -419,6 +428,19 @@ private fun Angemeldet(
                         browser.openUri(Rechtsstand.adresse(Server.BETRIEB, seite))
                     },
                     beiImWeb = { imWeb("") },
+                    // --- Runde, Teil 1 — BEGINN: Startbildschirm ---------------
+                    beiEinladungAblehnen = { e -> sozial.einladungBeantworten(e.nr.toLong(), false) },
+                    zusatz = startzusatz(
+                        stand = stand,
+                        daten = daten,
+                        start = startstand,
+                        startdaten = startdaten,
+                        runde = runde,
+                        sitzung = sitzung,
+                        oeffnen = { browser.openUri(it) },
+                        zumShop = { zurWahl(steuerung, Weg.Shop) },
+                    ),
+                    // --- Runde, Teil 1 — ENDE ---------------------------------
                 )
             }
 
@@ -600,6 +622,8 @@ private fun Angemeldet(
                     beiLaden = { sitzung.tagesschichtLaden(neu = true) },
                     beiStart = { sitzung.tagesschichtEroeffnen() },
                     beiZurueck = { steuerung.popBackStack() },
+                    // Runde, Teil 1: zur ganzen Tagesliste im Dienstbuch.
+                    beiDienstbuch = { zurWahl(steuerung, Weg.Dienstbuch) },
                 )
             }
 

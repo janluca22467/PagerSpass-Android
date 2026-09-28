@@ -102,6 +102,9 @@ fun StartSeite(
     beiGelesen: (String) -> Unit = {},
     beiEinladung: (de.pagerspass.pagerspass.netz.Einladung) -> Unit = {},
     beiLink: (String) -> Unit = {},
+    // --- Runde, Teil 1: Absage einer Einladung (A9) und alles aus `Startbausteine.kt`.
+    beiEinladungAblehnen: (de.pagerspass.pagerspass.netz.Einladung) -> Unit = {},
+    zusatz: Startzusatz = Startzusatz(),
 ) {
     LaunchedEffect(Unit) {
         beiKatalog()
@@ -117,6 +120,9 @@ fun StartSeite(
     var landkreisId by rememberSaveable { mutableStateOf<String?>(null) }
     var offeneWahl by remember { mutableStateOf<Wahl?>(null) }
     var raumcode by rememberSaveable { mutableStateOf("") }
+    // Runde, Teil 1: ganzer Leitstellenbereich und die Vorlagenblende.
+    var ganzerBereich by rememberSaveable { mutableStateOf(false) }
+    var vorlagenOffen by remember { mutableStateOf(false) }
 
     val laender = remember(landkreise) { landkreise.bundeslaender() }
     val landkreis = remember(landkreisId, landkreise) {
@@ -138,6 +144,10 @@ fun StartSeite(
                 umbenennen = false
             },
         )
+
+        // Runde, Teil 1: die laufende Runde der eigenen Wache und die Umfrage.
+        Clanrundenkarte(zusatz = zusatz, laeuft = laeuft)
+        Umfragekarte(start = zusatz.start, beiAntwort = zusatz.griffe.umfrageAntworten)
 
         // Betreibermitteilungen als Karten — wie auf dem Startbildschirm des
         // Web. „Gelesen" ist rein lokal; einen Server-Zustand gibt es nicht.
@@ -161,10 +171,20 @@ fun StartSeite(
                     e.hinweis,
                 ).joinToString(" · "),
                 knoepfe = {
+                    if (e.annehmbar) {
+                        Knopf(
+                            aufschrift = if (e.alsZuschauer) "Zuschauen" else "Annehmen",
+                            beiDruck = { beiEinladung(e) },
+                            aktiv = !laeuft,
+                            kompakt = true,
+                        )
+                    }
+                    // Runde, Teil 1 (A9): ablehnen — oder wegräumen, was nicht
+                    // mehr anzunehmen ist.
                     Knopf(
-                        aufschrift = if (e.alsZuschauer) "Zusehen" else "Beitreten",
-                        beiDruck = { beiEinladung(e) },
-                        aktiv = e.annehmbar && !laeuft,
+                        aufschrift = if (e.annehmbar) "Ablehnen" else "Wegräumen",
+                        beiDruck = { beiEinladungAblehnen(e) },
+                        art = Knopfart.Leise,
                         kompakt = true,
                     )
                 },
@@ -173,6 +193,14 @@ fun StartSeite(
 
         val einweisung = konto?.einweisungOffen == true
         if (einweisung) Einweisung(beiStart = beiAusbildung, laeuft = laeuft)
+        // Runde, Teil 1: der Hinweis für den, der noch nie gefahren ist.
+        if (!einweisung && konto != null && konto.erfahrung == 0 && !zusatz.start.ausbildungHinweisWeg) {
+            Ausbildungshinweis(
+                beiAusbildung = beiAusbildung,
+                beiWeg = zusatz.griffe.ausbildungHinweisWeg,
+                laeuft = laeuft,
+            )
+        }
 
         if (!einweisung) {
             Ueberschrift("Schicht starten")
@@ -185,10 +213,30 @@ fun StartSeite(
                 knoepfe = {
                     Knopf(
                         aufschrift = "Leitstelle besetzen",
-                        beiDruck = { beiBesetzen(landkreis) },
+                        beiDruck = {
+                            // Runde, Teil 1 (A8): Leitstelle und Bereich gehen mit.
+                            val mit = zusatz.griffe.besetzen
+                            if (mit != null && landkreis != null) {
+                                val ls = leitstelleFuer(zusatz.leitstellen, landkreis.id)
+                                mit(landkreis, ls?.id, ganzerBereich && ls != null)
+                            } else {
+                                beiBesetzen(landkreis)
+                            }
+                        },
                         art = Knopfart.Haupt,
                         aktiv = !laeuft && landkreis != null,
                     )
+                    if (konto != null) {
+                        Knopf(
+                            aufschrift = if (zusatz.start.vorlagen.isEmpty()) {
+                                "Vorlagen"
+                            } else {
+                                "Vorlagen (${zusatz.start.vorlagen.size})"
+                            },
+                            beiDruck = { vorlagenOffen = true },
+                            art = Knopfart.Leise,
+                        )
+                    }
                 },
             ) {
                 if (landkreise.isEmpty()) {
@@ -227,6 +275,16 @@ fun StartSeite(
                             color = Farben.AmberHell,
                         )
                     }
+                    // Runde, Teil 1: Leitstelle des Kreises und der ganze Bereich.
+                    if (landkreis != null) {
+                        Bereichswahl(
+                            landkreis = landkreis,
+                            leitstelle = leitstelleFuer(zusatz.leitstellen, landkreis.id),
+                            landkreise = landkreise,
+                            ganzerBereich = ganzerBereich,
+                            beiWechsel = { ganzerBereich = it },
+                        )
+                    }
                 }
             }
 
@@ -242,7 +300,7 @@ fun StartSeite(
                         aufschrift = "Beitreten",
                         beiDruck = { beiBeitreten(raumcode) },
                         art = Knopfart.Haupt,
-                        aktiv = !laeuft && raumcode.length >= 4,
+                        aktiv = !laeuft && raumcode.length == 6,
                     )
                     // Der stille Weg daneben: kein Platz, keine Rolle — nur
                     // die Sicht. Übungsleitungen kommen hierüber an den
@@ -251,7 +309,7 @@ fun StartSeite(
                         aufschrift = "Nur zuschauen",
                         beiDruck = { beiZuschauen(raumcode) },
                         art = Knopfart.Leise,
-                        aktiv = !laeuft && raumcode.length >= 4,
+                        aktiv = !laeuft && raumcode.length == 6,
                     )
                 },
             ) {
@@ -260,6 +318,16 @@ fun StartSeite(
                     beiAenderung = { raumcode = it },
                     etikett = "Raumcode",
                 )
+                // Runde, Teil 1: Ein Raumcode hat genau sechs Zeichen.
+                if (raumcode.isNotEmpty() && raumcode.length < 6) {
+                    Text("Ein Raumcode besteht aus sechs Zeichen.", style = Schrift.Klein, color = Farben.AmberHell)
+                } else {
+                    Text(
+                        "Zuschauen belegt keinen Platz — geht auch bei einer vollen Runde.",
+                        style = Schrift.Klein,
+                        color = Farben.TextSehrLeise,
+                    )
+                }
             }
 
             Ueberschrift("Menü")
@@ -268,7 +336,11 @@ fun StartSeite(
         Startweg.menue(einweisung, konto?.premiumAktiv == true).forEach { eintrag ->
             Wegzeile(
                 titel = eintrag.titel,
-                unterzeile = eintrag.unterzeile,
+                // Runde, Teil 1: Die Tagesschicht sagt, wo heute gefahren wird.
+                unterzeile = zusatz.tagesschichtKreis
+                    ?.takeIf { eintrag.weg == Startweg.Tagesschicht }
+                    ?.let { "Heute $it — gewertet, für alle dieselbe" }
+                    ?: eintrag.unterzeile,
                 zeichen = eintrag.zeichen,
                 schild = eintrag.schild,
                 beiDruck = {
@@ -282,7 +354,29 @@ fun StartSeite(
             )
         }
 
+        // Runde, Teil 1: Startkacheln und Fußknöpfe des Betriebs.
+        Startkacheln(
+            kacheln = zusatz.start.kacheln,
+            premium = konto?.premiumAktiv == true,
+            beiKachel = zusatz.griffe.kachel,
+        )
+        Startfussknoepfe(
+            footer = zusatz.start.footer,
+            beiKnopf = zusatz.griffe.footer,
+            beiKuendigen = zusatz.griffe.vertragKuendigen,
+            beiWiderrufen = zusatz.griffe.vertragWiderrufen,
+        )
+
         Fuss(beta = beta, version = version, beiRechtstext = beiRechtstext)
+    }
+
+    if (vorlagenOffen) {
+        Rundenvorlagenblende(
+            zusatz = zusatz,
+            landkreise = landkreise,
+            laeuft = laeuft,
+            beiSchliessen = { vorlagenOffen = false },
+        )
     }
 
     when (offeneWahl) {
