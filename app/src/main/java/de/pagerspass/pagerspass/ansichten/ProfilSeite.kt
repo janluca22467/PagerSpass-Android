@@ -751,20 +751,12 @@ private fun Meldereiter(
         }
     }
 
-    Etikett("Alarmton")
-    SehrLeise("Wie dein Melder klingt. Die ersten gibt es von Anfang an, weitere über Laufbahn, Shop und Abo.")
-    Pillenreihe {
-        Melderkatalog.TOENE.forEach { t ->
-            val frei = t.id == ton || tragbar(t.abLevel, t.preisCredits, t.premium, "ton-${t.id}", t.id)
-            Pille(
-                aufschrift = (if (t.premium) "★ " else "") + t.name +
-                    if (!frei && !t.premium) " · ${sperrtext(t.abLevel, t.preisCredits, t.premium)}" else "",
-                an = ton == t.id,
-                beiDruck = { bereich.launch { ablage.melderTonSetzen(t.id) } },
-                aktiv = frei,
-            )
-        }
-    }
+    // Tonwerkstatt: der Alarmton samt Ton- und Klangwerkstatt (Meldertonwahl.kt).
+    Meldertonwahl(
+        premium = premium,
+        katalogFrei = { t -> t.id == ton || tragbar(t.abLevel, t.preisCredits, t.premium, "ton-${t.id}", t.id) },
+        katalogSperre = { t -> sperrtext(t.abLevel, t.preisCredits, t.premium) },
+    )
 
     Etikett("Alarmierung")
     SehrLeise(

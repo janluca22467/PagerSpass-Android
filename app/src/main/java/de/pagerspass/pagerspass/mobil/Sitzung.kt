@@ -92,6 +92,26 @@ class Sitzung(anwendung: Application) : AndroidViewModel(anwendung) {
         kontoSicherstellen()
     }
 
+    // ------------------------------------------------ Bereich Tonwerkstatt
+    /**
+     * Ein abgelaufenes Abo nimmt den Alarmton weg, der am Abo hängt — gebaute,
+     * eingespielte und Abo-Töne springen auf den Zweiklang zurück
+     * (`abogeraeteNachpruefen` im Web). Baupläne und Dateien bleiben liegen.
+     */
+    init {
+        viewModelScope.launch {
+            var zuletzt: Boolean? = null
+            _stand.collect { s ->
+                val aktiv = s.konto?.premiumAktiv
+                if (aktiv != zuletzt) {
+                    zuletzt = aktiv
+                    if (aktiv == false) runCatching { Eigentoene.aboNachpruefen(ablage) }
+                }
+            }
+        }
+    }
+    // ------------------------------------------------ Ende Bereich Tonwerkstatt
+
     /**
      * Nachsehen, ob dieses Gerät schon ein Konto hat.
      *
