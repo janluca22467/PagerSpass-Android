@@ -153,11 +153,19 @@ class Netz(private val ablage: Ablage) {
      *
      * Er steht getrennt, weil `roh` seinen Inhaltstyp selbst setzt und den Rumpf
      * als Zeichenkette nimmt — bei einer Bilddatei wäre beides falsch.
+     *
+     * `verfahren` ist fast immer POST; die Icons der Welt legt der Server aber
+     * mit PUT ab (Ersetzen je Fahrzeugtyp).
      */
-    suspend fun rohBinaer(pfad: String, inhaltstyp: String, daten: ByteArray): String? =
+    suspend fun rohBinaer(
+        pfad: String,
+        inhaltstyp: String,
+        daten: ByteArray,
+        verfahren: String = "POST",
+    ): String? =
         withContext(Dispatchers.IO) {
             val draht = (URL("${ablage.server()}$pfad").openConnection() as HttpURLConnection).apply {
-                requestMethod = "POST"
+                requestMethod = verfahren
                 connectTimeout = 10_000
                 // Ein Bild darf länger brauchen als eine Liste — es geht in die
                 // andere Richtung, und dort ist die Leitung schmaler.
@@ -181,7 +189,7 @@ class Netz(private val ablage: Ablage) {
             } catch (fehler: Netzfehler) {
                 throw fehler
             } catch (fehler: Exception) {
-                Log.w("Netz", "POST $pfad", fehler)
+                Log.w("Netz", "$verfahren $pfad", fehler)
                 throw Netzfehler("Die Leitstelle antwortet nicht.", ursache = fehler)
             } finally {
                 draht.disconnect()

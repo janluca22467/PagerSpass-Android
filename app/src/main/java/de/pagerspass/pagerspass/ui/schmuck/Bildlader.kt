@@ -91,6 +91,28 @@ fun bildVon(adresse: String?): State<ImageBitmap?> {
 }
 
 /**
+ * Dasselbe Bild ohne Composable — für Stellen, die viele Bilder auf einmal auf
+ * eine Zeichenfläche legen (die Fahrzeug-Icons der Weltkarte). Derselbe
+ * Zwischenspeicher wie oben; `null` heißt auch hier: noch keins, nicht Fehler.
+ */
+suspend fun bildHolen(adresse: String): ImageBitmap? {
+    Bildspeicher[adresse]?.let { return it }
+    return withContext(Dispatchers.IO) {
+        runCatching {
+            val draht = (URL(adresse).openConnection() as HttpURLConnection).apply {
+                connectTimeout = 10_000
+                readTimeout = 20_000
+            }
+            try {
+                draht.inputStream.use { BitmapFactory.decodeStream(it) }?.asImageBitmap()
+            } finally {
+                draht.disconnect()
+            }
+        }.getOrNull()?.also { Bildspeicher[adresse] = it }
+    }
+}
+
+/**
  * Die Adresse eines freigegebenen Profilbildes.
  *
  * <b>Gespeichert und ausgeliefert wird nur der Dateiname</b> — der Pfad davor

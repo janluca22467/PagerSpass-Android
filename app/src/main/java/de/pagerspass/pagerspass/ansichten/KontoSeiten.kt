@@ -120,6 +120,8 @@ fun KontoSeite(
     beiGemeinschaft: () -> Unit = {},
     beiShop: () -> Unit = {},
     beiPremium: () -> Unit = {},
+    /** „Dein Melder" — Bauform, Gesicht, Alarmton und die Werkstätten. */
+    beiMelder: () -> Unit = {},
 ) {
     val browser = LocalUriHandler.current
     val p = profil.inhalt
@@ -180,6 +182,12 @@ fun KontoSeite(
                 beiBegleiter,
                 unterzeile = "QR-Code scannen: Funkgerät und Melder aufs Handy",
                 zeichen = Zeichen.Funk,
+            )
+            Wegzeile(
+                "Dein Melder",
+                beiMelder,
+                unterzeile = "Bauform, Gesicht und Alarmton für dieses Gerät",
+                zeichen = Zeichen.Melder,
             )
             Wegzeile(
                 "Postfach",

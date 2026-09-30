@@ -24,6 +24,12 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
     <!--
+        Der Melder vibriert, solange der Alarm läuft („Ton und Vibration",
+        „Nur Vibration"). Eine gewöhnliche Berechtigung ohne Rückfrage.
+    -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+
+    <!--
         Der QR-Code des mobilen Begleiters. Die Kopplungsseite holt die
         Laufzeit-Berechtigung beim ersten Öffnen des Suchers; wer sie ablehnt,
         setzt stattdessen den kopierten Link ein.

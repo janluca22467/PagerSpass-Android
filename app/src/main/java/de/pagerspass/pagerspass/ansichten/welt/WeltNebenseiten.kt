@@ -464,8 +464,8 @@ private val GANGARTEN = listOf(
  *
  * <b>Mehr Durchsatz kostet Lohn.</b> Jede Schraube hebt den Durchsatz, und in
  * demselben Maß nimmt die Vergütung je Lage ab — die Zahl dazu kommt vom Server.
- * Die Icon-Packs bearbeitet und wählt man im Web; die App zeichnet die
- * Fahrzeuge als Pfeile.
+ * Die Icon-Packs wählt man hier; bearbeitet werden sie in der Bibliothek
+ * (`IconBibliothek`), die sich über die Welt legt.
  */
 @Composable
 fun EinstellungSeite(welt: Welt, zustand: Weltzustand, ebenen: Weltebenen) {
@@ -548,7 +548,9 @@ fun EinstellungSeite(welt: Welt, zustand: Weltzustand, ebenen: Weltebenen) {
     Schalterzeile("Fremde Fahrzeuge", ebenen.fremde, { ebenen.fremde = it })
     Schalterzeile("Fremde Wachen", ebenen.fremdeWachen, { ebenen.fremdeWachen = it })
     Schalterzeile("Großeinsatz und Events", ebenen.grosslage, { ebenen.grosslage = it })
-    Leisesatz("Eigene Fahrzeug-Icons (Icon-Packs) malst und wählst du im Browser unter World → Icons.", winzig = true)
+
+    // Die Fahrzeug-Icons: wählen hier, verwalten in der Bibliothek darüber.
+    IconpackWahl()
 
     // ------------------------------------------------------ Gefahrenbereich
     var resetOffen by remember { mutableStateOf(false) }
