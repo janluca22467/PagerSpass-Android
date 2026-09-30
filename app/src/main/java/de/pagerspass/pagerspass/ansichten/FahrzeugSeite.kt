@@ -35,6 +35,8 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import de.pagerspass.pagerspass.mobil.Raumbefehle
+import de.pagerspass.pagerspass.mobil.Raumneben
 import de.pagerspass.pagerspass.mobil.Rundenstand
 import de.pagerspass.pagerspass.netz.Einsatz
 import de.pagerspass.pagerspass.netz.FmsTaste
@@ -94,6 +96,8 @@ fun FahrzeugSeite(
     beiDienstende: () -> Unit = {},
     beiVerlassen: () -> Unit = {},
     manv: ManvGriffe = ManvGriffe(),
+    befehle: Raumbefehle = Raumbefehle.Leer,
+    neben: Raumneben = Raumneben(),
 ) {
     var reiter by remember { mutableStateOf(Fahrzeugteil.Einsatz) }
 
@@ -125,6 +129,7 @@ fun FahrzeugSeite(
 
                     when (reiter) {
                         Fahrzeugteil.Einsatz -> {
+                            Fahrzeughinweise(raum, meins, befehle)
                             // Die Navigation — 220 pt wie im Web. Ohne Auftrag
                             // und auf Anfahrt steht sie oben, sonst unter dem
                             // Einsatz (`karteOben` in FahrzeugView.vue).
@@ -145,12 +150,22 @@ fun FahrzeugSeite(
                                 beiLagemeldung = beiLagemeldung,
                                 beiFms = beiFms,
                             )
+                            if (einsatz != null) {
+                                Nachforderung(befehle)
+                                Wasserkasten(raum, einsatz, meins, befehle)
+                                Arbeitskasten(einsatz, meins, befehle)
+                                Suchkasten(einsatz, meins)
+                            }
                             ManvBereich(
                                 einsatz = einsatz,
                                 raum = raum,
                                 meins = meins,
                                 griffe = manv,
                             )
+                            if (einsatz != null) {
+                                Patientenkasten(einsatz, meins, befehle)
+                                Flaechenkasten(einsatz, raum, meins, neben, befehle)
+                            }
                             if (!karteOben) {
                                 de.pagerspass.pagerspass.ui.karte.Lagekarte(
                                     raum = raum,
@@ -162,12 +177,15 @@ fun FahrzeugSeite(
                             }
                         }
 
-                        Fahrzeugteil.Status -> TeilStatus(
-                            meins = meins,
-                            tasten = katalog?.fmsStatus.orEmpty(),
-                            beiFms = beiFms,
-                            beiSondersignal = beiSondersignal,
-                        )
+                        Fahrzeugteil.Status -> {
+                            TeilStatus(
+                                meins = meins,
+                                tasten = katalog?.fmsStatus.orEmpty(),
+                                beiFms = beiFms,
+                                beiSondersignal = beiSondersignal,
+                            )
+                            Streifenkasten(meins, katalog, befehle)
+                        }
 
                         Fahrzeugteil.Funk -> {
                             // Der Einsatzstellenfunk schaltet mit Status 4 an
@@ -199,6 +217,15 @@ fun FahrzeugSeite(
                                     zeilen = raum.einsatzstellenchat,
                                     beiSenden = beiEinsatzstelle,
                                 )
+                                // Vor Ort wird auch gesprochen — DMO, Gerät zu Gerät.
+                                Sprechtaste(
+                                    sendet = neben.sendetAuf == "stelle",
+                                    wirdVerstanden = false,
+                                    belegtVon = neben.stellenSprecher,
+                                    gesperrtBis = null,
+                                    beiDruck = { befehle.einsatzstelleSprechenStarten() },
+                                    beiLoslassen = { befehle.einsatzstelleSprechenBeenden() },
+                                )
                             } else {
                                 Funkprotokoll(
                                     zeilen = stand.funk,
@@ -215,6 +242,7 @@ fun FahrzeugSeite(
                                     beiDruck = beiSprechstart,
                                     beiLoslassen = beiSprechende,
                                 )
+                                Geraetegriffe(raum, meins, eigeneKennung, befehle)
                             }
                         }
 

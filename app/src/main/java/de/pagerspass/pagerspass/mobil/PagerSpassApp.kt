@@ -59,6 +59,7 @@ import de.pagerspass.pagerspass.ansichten.ZuschauerSeite
 import de.pagerspass.pagerspass.ansichten.FahrzeugSeite
 import de.pagerspass.pagerspass.ansichten.LeitstelleSeite
 import de.pagerspass.pagerspass.ansichten.LobbySeite
+import de.pagerspass.pagerspass.ansichten.Raumueberlagerungen
 import de.pagerspass.pagerspass.ansichten.Melderblende
 import de.pagerspass.pagerspass.ansichten.LoginSeite
 import de.pagerspass.pagerspass.ansichten.PostfachSeite
@@ -248,6 +249,7 @@ private fun Rundenrahmen(
 ) {
     val sitzungsstand by sitzung.stand.collectAsStateWithLifecycle()
     val seiten by sitzung.daten.collectAsStateWithLifecycle()
+    val neben by runde.befehle.neben.collectAsStateWithLifecycle()
     val zusammenhang = LocalContext.current
 
     // Die eigene Garage entscheidet, welchen Platz man wählen kann — und ohne
@@ -283,9 +285,14 @@ private fun Rundenrahmen(
     when {
         // Der Zuschauerplatz — vor den Spielerplätzen, denn `ich` gibt es hier
         // nicht: Der Zuschauer steht nie in `players`.
-        stand.zuschauer && raum?.beendet != true -> ZuschauerSeite(
+        // Wer als Zuschauer um einen Platz gebeten hat und angenommen wurde, steht
+        // danach in `players` — dann ist er kein Zuschauer mehr (wie `istZuschauer`
+        // im Web).
+        stand.zuschauer && ich == null && raum?.beendet != true -> ZuschauerSeite(
             stand = stand,
             eigeneKennung = sitzungsstand.konto?.kennung.orEmpty(),
+            premium = sitzungsstand.konto?.premiumAktiv == true,
+            befehle = runde.befehle,
             beiVerlassen = { runde.verlassen() },
             regie = de.pagerspass.pagerspass.ansichten.RegieGriffe(
                 start = { runde.dienstBeginnen() },
@@ -324,7 +331,9 @@ private fun Rundenrahmen(
                     anrufId = anrufId,
                 )
             },
-            beiAlarmieren = { einsatz, fahrzeuge -> runde.alarmieren(einsatz, fahrzeuge) },
+            beiAlarmieren = { einsatz, fahrzeuge, ab, zusatz, meldung ->
+                runde.alarmieren(einsatz, fahrzeuge, ab, zusatz, meldung)
+            },
             beiVorschlag = { runde.alarmvorschlag(it) },
             beiSchliessen = { runde.einsatzSchliessen(it) },
             beiSprechwunsch = { runde.sprechwunschBeantworten(it) },
@@ -340,9 +349,15 @@ private fun Rundenrahmen(
             beiUeberspringen = { runde.ausbildungUeberspringen() },
             beiDienstende = { runde.dienstBeenden() },
             beiVerlassen = { runde.verlassen() },
+            beiDraht = { runde.drahtSenden(it) },
+            eigeneKennung = sitzungsstand.konto?.kennung.orEmpty(),
+            befehle = runde.befehle,
+            neben = neben,
         )
 
-        raum?.laeuft == true -> FahrzeugSeite(
+        // Wer mitten im Dienst ohne Platz dasteht, gehört in die Lobby — dort
+        // übernimmt er ein Bot-Fahrzeug oder stellt ein eigenes in den Dienst.
+        raum?.laeuft == true && ich?.role != "Unbestimmt" -> FahrzeugSeite(
             stand = stand,
             eigeneKennung = sitzungsstand.konto?.kennung.orEmpty(),
             katalog = seiten.katalog.inhalt,
@@ -371,6 +386,8 @@ private fun Rundenrahmen(
                 verstorbene = { runde.verstorbeneUebergeben(it) },
                 triage = { runde.triageKoordinieren(it) },
             ),
+            befehle = runde.befehle,
+            neben = neben,
         )
 
         else -> LobbySeite(
@@ -384,6 +401,18 @@ private fun Rundenrahmen(
             beiChat = { runde.chatSenden(it) },
             beiStart = { runde.dienstBeginnen() },
             beiVerlassen = { runde.verlassen() },
+            befehle = runde.befehle,
+            neben = neben,
+        )
+    }
+
+    // Übergabe, Warnband und Einzelruf gehören zum Raum, nicht zu einer Ansicht.
+    Box(modifier = Modifier.fillMaxSize()) {
+        Raumueberlagerungen(
+            raum = raum,
+            neben = neben,
+            eigeneKennung = sitzungsstand.konto?.kennung.orEmpty(),
+            befehle = runde.befehle,
         )
     }
 

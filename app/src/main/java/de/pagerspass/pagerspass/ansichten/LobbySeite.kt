@@ -45,6 +45,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
+import de.pagerspass.pagerspass.mobil.Raumbefehle
+import de.pagerspass.pagerspass.mobil.Raumneben
 import de.pagerspass.pagerspass.mobil.Rundenstand
 import de.pagerspass.pagerspass.netz.Fahrzeugvorlage
 import de.pagerspass.pagerspass.netz.Funkverbindung
@@ -106,6 +108,8 @@ fun LobbySeite(
     beiChat: (String) -> Unit = {},
     beiStart: () -> Unit = {},
     beiVerlassen: () -> Unit = {},
+    befehle: Raumbefehle = Raumbefehle.Leer,
+    neben: Raumneben = Raumneben(),
 ) {
     var reiter by remember { mutableStateOf(Lobbyteil.Rolle) }
 
@@ -153,14 +157,20 @@ fun LobbySeite(
                         .padding(horizontal = Abstand.Gross, vertical = Abstand.Gross),
                 ) {
                     when (reiter) {
-                        Lobbyteil.Rolle -> TeilRolle(ich, garage, fahrzeuge, beiRolle)
-                        Lobbyteil.Runde -> TeilRunde(raum)
-                        Lobbyteil.Mannschaft -> TeilMannschaft(raum, ich, garage, fahrzeuge, beiBot)
+                        Lobbyteil.Rolle -> {
+                            TeilRolle(raum, ich, garage, fahrzeuge, beiRolle, befehle)
+                            Anfragenkasten(raum, befehle)
+                            // Der späte Beitritt: Wer mitten im Dienst ohne Platz
+                            // dasteht, steigt am schnellsten in ein Bot-Fahrzeug.
+                            if (raum.laeuft && ich?.role == "Unbestimmt") BotUebernahme(raum, befehle)
+                        }
+                        Lobbyteil.Runde -> TeilRunde(raum, ich, neben, befehle)
+                        Lobbyteil.Mannschaft -> TeilMannschaft(raum, ich, fahrzeuge, neben, befehle)
                         Lobbyteil.Chat -> TeilChat(raum, chatsatz, { chatsatz = it }) {
                             beiChat(chatsatz)
                             chatsatz = ""
                         }
-                        Lobbyteil.Mehr -> TeilMehr(stand)
+                        Lobbyteil.Mehr -> TeilMehr(stand, ich, neben, befehle)
                     }
                 }
             }
@@ -170,14 +180,22 @@ fun LobbySeite(
         // er sonst mitten im Bild; bei langen wäre er unerreichbar. Im Web löst
         // das `margin: auto 0 0` plus `sticky bottom: 0` — hier steht er
         // schlicht außerhalb der Rollfläche.
-        if (raum != null) {
+        if (raum != null && !raum.laeuft) {
             Startblock(raum = raum, ich = ich, laeuft = stand.laeuft, beiBereit = beiBereit, beiStart = beiStart)
         }
 
         Teilleiste(
             teile = Lobbyteil.entries.map { Teil(it.name, it.titel, it.zeichen) },
             offen = reiter.name,
-            marken = mapOf(Lobbyteil.Chat.name to ungelesen),
+            marken = mapOf(
+                Lobbyteil.Chat.name to ungelesen,
+                // Nur, was auf eine Antwort wartet: die Bitten um einen Platz.
+                Lobbyteil.Rolle.name to if (raum?.istHost == true) {
+                    raum.platzanfragen.size + raum.beitrittsanfragen.size
+                } else {
+                    0
+                },
+            ),
             // Wer keinen Platz hat, hält die ganze Runde auf — und sucht den
             // Reiter, auf dem er das ändert.
             ruft = if (ich?.role == "Unbestimmt") setOf(Lobbyteil.Rolle.name) else emptySet(),
@@ -311,22 +329,42 @@ private fun Dienstleiste(
 /** Teil 1 — welchen Platz man einnimmt. */
 @Composable
 private fun ColumnScope.TeilRolle(
+    raum: Raumzustand,
     ich: Spieler?,
     garage: List<String>,
     fahrzeuge: List<Fahrzeugvorlage>,
     beiRolle: (String, String?) -> Unit,
+    befehle: Raumbefehle,
 ) {
     var wahlOffen by remember { mutableStateOf(false) }
-    val meines = ich?.vehicleId
+    // Das Fahrzeug ist eine Laufzeit-Id, die Garage führt Baupläne — gesucht wird
+    // deshalb über das Rundenfahrzeug, nicht über die Id am Spieler.
+    val meines = raum.vehicles.firstOrNull { it.id == ich?.vehicleId }?.templateId ?: ich?.vehicleId
     val meinTyp = fahrzeuge.firstOrNull { it.id == meines }?.typ
+
+    // Der Tisch: Sitzt schon jemand dort, wird aus dem Hinsetzen eine Bitte — und
+    // ein zweiter Druck zieht sie zurück. Dieselbe Regel wie am Server.
+    val amTisch = raum.players.filter { it.istLeitstelle }
+    val eigeneAnfrage = raum.platzanfragen.any { it.playerId == ich?.id }
+    val erstFragen = ich?.istLeitstelle != true && amTisch.isNotEmpty()
 
     Ueberschrift("Dein Platz")
 
     Pillenreihe {
         Pille(
-            aufschrift = "Leitstelle",
-            an = ich?.istLeitstelle == true,
-            beiDruck = { beiRolle("Leitstelle", null) },
+            aufschrift = when {
+                eigeneAnfrage -> "Leitstelle · Anfrage läuft"
+                erstFragen -> "Leitstelle · auf Anfrage"
+                else -> "Leitstelle"
+            },
+            an = ich?.istLeitstelle == true || eigeneAnfrage,
+            beiDruck = {
+                when {
+                    ich?.istLeitstelle == true -> Unit
+                    eigeneAnfrage -> befehle.platzanfrageZuruecknehmen()
+                    else -> beiRolle("Leitstelle", null)
+                }
+            },
         )
         Pille(
             aufschrift = "Fahrzeug",
@@ -350,8 +388,32 @@ private fun ColumnScope.TeilRolle(
         )
     }
 
-    if (ich?.role == "Unbestimmt") {
+    if (ich?.role == "Unbestimmt" && !raum.laeuft) {
         SehrLeise("Ohne Platz kann der Dienst nicht beginnen.")
+    }
+
+    // Was der Druck auf „Leitstelle" bewirkt, steht daneben — nicht in einer
+    // Meldung danach. An diesem Platz hängt die ganze Runde.
+    when {
+        eigeneAnfrage -> SehrLeise(
+            "${amTisch.firstOrNull()?.name ?: "Der Host"} ist gefragt. Noch einmal drücken " +
+                "zieht die Anfrage zurück.",
+        )
+        erstFragen -> SehrLeise(
+            "Am Tisch sitzt schon ${amTisch.first().name} — ein Druck fragt, " +
+                if (amTisch.size >= raum.maxLeitstellen) {
+                    "ob du den Platz übernehmen darfst."
+                } else {
+                    "ob du dich dazusetzen darfst."
+                },
+        )
+    }
+    if (amTisch.isNotEmpty()) {
+        SehrLeise(
+            "Leitstelle besetzt: ${amTisch.joinToString(", ") { it.name }}" +
+                if (raum.maxLeitstellen > 1) " (${amTisch.size}/${raum.maxLeitstellen})" else "",
+            mono = true,
+        )
     }
 
     if (wahlOffen) {
@@ -377,9 +439,14 @@ private fun ColumnScope.TeilRolle(
     }
 }
 
-/** Teil 2 — worauf man sich einlässt. */
+/** Teil 2 — worauf man sich einlässt, und die Regler der Leitstelle. */
 @Composable
-private fun ColumnScope.TeilRunde(raum: Raumzustand) {
+private fun ColumnScope.TeilRunde(
+    raum: Raumzustand,
+    ich: Spieler?,
+    neben: Raumneben,
+    befehle: Raumbefehle,
+) {
     Ueberschrift("Die Runde")
 
     Zeile("Ausrückebereich", raum.settings.leitstelle ?: "—")
@@ -387,7 +454,7 @@ private fun ColumnScope.TeilRunde(raum: Raumzustand) {
     Zeile("Höchstens", "${raum.maxSpieler} Spieler")
     Zeile("Öffentlich", if (raum.settings.oeffentlich) "ja" else "nein")
     Zeile("Gewertet", if (raum.settings.sandkasten) "nein" else "ja")
-    raum.settings.modus?.let { Zeile("Modus", it) }
+    Zeile("Modus", RAUM_MODUS[raum.settings.mode] ?: raum.settings.mode)
 
     if (raum.settings.sandkasten) {
         SehrLeise(
@@ -395,6 +462,8 @@ private fun ColumnScope.TeilRunde(raum: Raumzustand) {
                 "Saisonwertung — gefahren wird trotzdem echt.",
         )
     }
+
+    Rundenregler(raum, ich?.istLeitstelle == true, neben, befehle)
 }
 
 /** Teil 3 — wer mitfährt. */
@@ -402,39 +471,44 @@ private fun ColumnScope.TeilRunde(raum: Raumzustand) {
 private fun ColumnScope.TeilMannschaft(
     raum: Raumzustand,
     ich: Spieler?,
-    garage: List<String>,
     fahrzeuge: List<Fahrzeugvorlage>,
-    beiBot: (String) -> Unit,
+    neben: Raumneben,
+    befehle: Raumbefehle,
 ) {
-    Ueberschrift("Besatzung (${raum.players.size})")
+    val istLeitstelle = ich?.istLeitstelle == true
+    // Menschen und nicht alle Besatzungen: Bots sind Ausstattung, und eine Runde mit
+    // einem Menschen und zwanzig Bots ist keine Runde mit 21 Spielern.
+    val menschen = raum.players.filter { !it.istBot }
 
-    if (raum.players.isEmpty()) {
+    Ueberschrift("Mannschaft (${menschen.size})")
+
+    if (menschen.isEmpty()) {
         Leerhinweis("Noch niemand da.")
     } else {
-        raum.players.forEach { spieler ->
+        menschen.forEach { spieler ->
             Spielerzeile(
                 spieler = spieler,
                 funkrufname = raum.vehicles.firstOrNull { it.id == spieler.vehicleId }?.funkrufname,
+                // Werfen darf nur die Leitstelle, und nie sich selbst.
+                beiKick = if (istLeitstelle && spieler.id != ich?.id) {
+                    { befehle.spielerKicken(spieler.id) }
+                } else {
+                    null
+                },
             )
         }
     }
 
-    // Bots setzt nur die Leitstelle. Wer keine ist, sieht den Abschnitt gar
-    // nicht: Ein Knopf, der bei jedem Druck „nicht erlaubt" antwortet, ist
-    // schlechter als keiner.
-    if (ich?.istLeitstelle == true && garage.isNotEmpty()) {
-        Ueberschrift("Bots")
-        SehrLeise("Bot-Besatzungen füllen die Fahrzeuge, für die niemand da ist.")
-        Pillenreihe {
-            garage.take(BOTVORSCHLAEGE).forEach { id ->
-                Pille(
-                    aufschrift = fahrzeuge.firstOrNull { it.id == id }?.typ ?: id,
-                    an = false,
-                    beiDruck = { beiBot(id) },
-                )
-            }
-        }
+    // Bots setzt nur die Leitstelle. Wer keine ist, sieht nur die Zahl: Ein Knopf,
+    // der bei jedem Druck „nicht erlaubt" antwortet, ist schlechter als keiner.
+    if (istLeitstelle) {
+        Botverwaltung(raum, fahrzeuge, befehle)
+    } else if (raum.players.any { it.istBot }) {
+        val bots = raum.players.count { it.istBot }
+        SehrLeise("dazu $bots Bot-Besatzung${if (bots == 1) "" else "en"}")
     }
+
+    Aufstellung(raum, istLeitstelle && raum.inLobby, fahrzeuge, neben, befehle)
 }
 
 /** Teil 4 — der Lobby-Chat. */
@@ -496,7 +570,12 @@ private fun ColumnScope.TeilChat(
 
 /** Teil 5 — alles, was man einmal braucht. */
 @Composable
-private fun ColumnScope.TeilMehr(stand: Rundenstand) {
+private fun ColumnScope.TeilMehr(
+    stand: Rundenstand,
+    ich: Spieler?,
+    neben: Raumneben,
+    befehle: Raumbefehle,
+) {
     val zwischenablage = LocalClipboardManager.current
 
     Ueberschrift("Einladen")
@@ -522,10 +601,15 @@ private fun ColumnScope.TeilMehr(stand: Rundenstand) {
         )
     }
 
+    val raum = stand.raum
+    if (raum != null && ich?.istLeitstelle == true && raum.inLobby) {
+        Rundenvorlage(raum, neben, befehle)
+    }
+
     Ueberschrift("Noch nicht in der App")
     SehrLeise(
-        "Melderton, Sprechtaste und die Live-Ansicht für Zuschauer richtest du bis " +
-            "auf Weiteres im Browser ein. Der Dienst selbst läuft hier.",
+        "Streamer-Modus, Funkgruppen-Maske, Rufname-Wörter und die Wachenliste " +
+            "richtest du bis auf Weiteres im Browser ein. Der Dienst selbst läuft hier.",
     )
 }
 
@@ -557,7 +641,7 @@ private fun Zeile(was: String, wert: String) {
 
 /** Eine Zeile je Spieler — mit Wappen, Platz und Bereitschaft. */
 @Composable
-private fun Spielerzeile(spieler: Spieler, funkrufname: String?) {
+private fun Spielerzeile(spieler: Spieler, funkrufname: String?, beiKick: (() -> Unit)? = null) {
     Profilzeile(
         kennung = spieler.id,
         anzeigename = spieler.name,
@@ -575,9 +659,13 @@ private fun Spielerzeile(spieler: Spieler, funkrufname: String?) {
             when {
                 spieler.istBot -> Marke("Bot", farbe = Farben.ViolettHell)
                 !spieler.verbunden -> Marke("Weg", farbe = Farben.TextSehrLeise)
+                spieler.istLeitstelle -> Marke("Am Tisch", farbe = Farben.AmberHell)
                 spieler.bereit -> Marke("Bereit", farbe = Farben.GruenHell)
                 else -> Marke("Wartet", farbe = Farben.AmberHell)
             }
+            // Aus dem Raum werfen — ein Wort und nicht nur ein „×": Am Finger gibt
+            // es kein „darüber", das erklärt, welches der beiden es ist.
+            if (beiKick != null) Knopf("Werfen", beiKick, art = Knopfart.Gefahr, kompakt = true)
         },
     )
 }
@@ -597,10 +685,16 @@ private fun Startblock(
     beiBereit: (Boolean) -> Unit,
     beiStart: () -> Unit,
 ) {
+    // Dieselbe Reihenfolge wie `startHinweis` im Web. Die Leitstelle meldet sich
+    // nicht bereit — sie ist es, sobald sie am Tisch sitzt.
+    val mannschaft = raum.players.filter { !it.istLeitstelle }
     val hindernis = when {
         !raum.hatLeitstelle -> "Es fehlt eine Leitstelle."
-        raum.ohnePlatz.isNotEmpty() -> "${raum.ohnePlatz.size} ohne Platz."
-        !raum.alleBereit -> "Noch nicht alle sind bereit."
+        raum.players.size < 2 -> "Es fehlt noch mindestens ein Mitspieler."
+        raum.vehicles.isEmpty() -> "Mindestens ein Spieler muss ein Fahrzeug besetzen."
+        mannschaft.any { it.vehicleId == null } ->
+            "Es warten noch Mannschaftsmitglieder auf ihre Fahrzeugwahl."
+        mannschaft.any { !it.bereit } -> "Noch nicht alle Mannschaftsmitglieder sind bereit."
         else -> null
     }
 
@@ -641,11 +735,3 @@ private fun Startblock(
         }
     }
 }
-
-/**
- * Wie viele Bauplan-Pillen die Bot-Reihe anbietet.
- *
- * Die eigene Garage kann über neunzig Fahrzeuge führen; als Pillenreihe wären
- * das fünf Bildschirmhöhen für eine Nebenfunktion.
- */
-private const val BOTVORSCHLAEGE = 8

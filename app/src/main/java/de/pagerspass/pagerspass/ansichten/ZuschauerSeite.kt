@@ -63,6 +63,9 @@ fun ZuschauerSeite(
     eigeneKennung: String = "",
     beiVerlassen: () -> Unit = {},
     regie: RegieGriffe = RegieGriffe(),
+    /** Ob das eigene Konto ein laufendes Abo hat — nur dann darf es um einen Platz bitten. */
+    premium: Boolean = false,
+    befehle: de.pagerspass.pagerspass.mobil.Raumbefehle = de.pagerspass.pagerspass.mobil.Raumbefehle.Leer,
 ) {
     var reiter by remember { mutableStateOf(0) }
     val raum = stand.raum
@@ -122,6 +125,31 @@ fun ZuschauerSeite(
                 .verticalScroll(rememberScrollState())
                 .padding(Abstand.Gross),
         ) {
+            // Der Platz in einer vollen Runde: Premium darf darum bitten, entscheiden
+            // tut es die Leitstelle. Ein Knopf, der jedem angeboten wird und nur bei
+            // manchen etwas tut, wäre ein Versprechen, das die Hälfte enttäuscht.
+            val bitteLaeuft = raum.beitrittsanfragen.any { it.playerId == eigeneKennung }
+            if (!istRegie && (bitteLaeuft || (raum.voll && premium))) {
+                de.pagerspass.pagerspass.ui.bausteine.Kasten(abstandInnen = Abstand.Klein) {
+                    Text("Die Runde ist voll.", style = Schrift.Normal, color = Farben.Text)
+                    SehrLeise(
+                        if (bitteLaeuft) "Die Leitstelle entscheidet, ob ein zusätzlicher Platz aufgemacht wird."
+                        else "Als Premium-Mitglied kannst du um einen zusätzlichen Platz bitten.",
+                    )
+                    Row {
+                        Knopf(
+                            if (bitteLaeuft) "Bitte zurückziehen" else "Um einen Platz bitten",
+                            {
+                                if (bitteLaeuft) befehle.beitrittsanfrageZuruecknehmen()
+                                else befehle.beitrittAnfragen()
+                            },
+                            art = if (bitteLaeuft) Knopfart.Leise else Knopfart.Haupt,
+                            kompakt = true,
+                        )
+                    }
+                }
+            }
+
             Reiterreihe {
                 listOf("Einsätze", "Fahrzeuge", "Funk").forEachIndexed { i, name ->
                     Reiter(
