@@ -38,7 +38,7 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.jsonPrimitive
-import kotlinx.serialization.json.longOrNull
+import kotlinx.serialization.json.doubleOrNull
 
 /**
  * PagerSpass - World — das Gegenstück zu `web/src/stores/welt.ts`.
@@ -108,12 +108,12 @@ class Welt(anwendung: Application) : AndroidViewModel(anwendung) {
         draht.auf("Grosslage") { viewModelScope.launch { grosslageLaden() } }
         draht.auf("WeltEvents") { viewModelScope.launch { eventsLaden() } }
         draht.auf("Gutschrift") { argumente ->
-            val betrag = argumente.firstOrNull()?.let { runCatching { it.jsonPrimitive.longOrNull }.getOrNull() } ?: 0L
+            val betrag = argumente.firstOrNull()?.let { runCatching { it.jsonPrimitive.doubleOrNull?.toLong() }.getOrNull() } ?: 0L
             _stand.update { it.copy(gutschrift = Gutschriftzeichen(betrag, System.currentTimeMillis())) }
             bald()
         }
         draht.auf("Wochensieg") { argumente ->
-            val betrag = argumente.firstOrNull()?.let { runCatching { it.jsonPrimitive.longOrNull }.getOrNull() } ?: 0L
+            val betrag = argumente.firstOrNull()?.let { runCatching { it.jsonPrimitive.doubleOrNull?.toLong() }.getOrNull() } ?: 0L
             _stand.update {
                 it.copy(
                     gutschrift = Gutschriftzeichen(betrag, System.currentTimeMillis()),

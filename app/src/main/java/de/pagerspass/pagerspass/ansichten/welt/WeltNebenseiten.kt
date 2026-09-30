@@ -111,7 +111,20 @@ fun ChatSeite(welt: Welt, zustand: Weltzustand) {
     if (!zustand.verbunden) Leisesatz("Keine Verbindung zum Kanal — es wird weiter versucht.", winzig = true)
 
     if (zustand.chat.isEmpty()) Leisesatz("Noch keine Nachrichten. Schreib die erste.")
-    zustand.chat.takeLast(120).forEach { z -> Chatzeile(z) { if (!z.eigen) an = z.vonId to (z.von ?: "Ohne Namen") } }
+    zustand.chat.takeLast(120).forEach { z ->
+        Chatzeile(
+            z,
+            beiAntworten = { if (!z.eigen) an = z.vonId to (z.von ?: "Ohne Namen") },
+            beiAnpingen = z.vonBenutzername?.takeIf { !z.eigen }?.let { name ->
+                {
+                    // Ein Ping gilt einem Menschen: „@name“ vorn im Entwurf.
+                    val marke = "@$name "
+                    if (marke !in entwurf) entwurf = marke + entwurf
+                }
+            },
+        )
+    }
+    Leisesatz("Zeile antippen: direkt antworten · @ tippen: im offenen Kanal erwähnen.", winzig = true)
 
     Warnsatz(zustand.chatfehler)
     an?.let { (_, name) ->
@@ -135,7 +148,7 @@ fun ChatSeite(welt: Welt, zustand: Weltzustand) {
 }
 
 @Composable
-private fun Chatzeile(z: WeltChatzeile, beiAntworten: () -> Unit) {
+private fun Chatzeile(z: WeltChatzeile, beiAntworten: () -> Unit, beiAnpingen: (() -> Unit)?) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -160,6 +173,14 @@ private fun Chatzeile(z: WeltChatzeile, beiAntworten: () -> Unit) {
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+            if (beiAnpingen != null) {
+                Text(
+                    "@",
+                    style = Schrift.Klein.copy(fontWeight = FontWeight.Bold),
+                    color = Farben.BlauHell,
+                    modifier = Modifier.clickable(onClick = beiAnpingen).padding(horizontal = Abstand.Klein),
+                )
+            }
             Text(uhrzeit(z.um), style = Schrift.Winzig.copy(fontFamily = Schrift.Mono), color = Farben.TextSehrLeise)
         }
         Text(z.text, style = Schrift.Klein, color = Farben.Text)

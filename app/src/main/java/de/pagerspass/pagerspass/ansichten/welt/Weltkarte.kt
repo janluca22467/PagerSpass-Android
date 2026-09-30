@@ -181,6 +181,7 @@ fun Weltkarte(
     beiFahrzeug: (String?) -> Unit = {},
     beiWache: (String) -> Unit = {},
     beiFremdwache: (String) -> Unit = {},
+    beiFremdfahrzeug: (String) -> Unit = {},
     beiPoi: (String) -> Unit = {},
     beiOrt: (WeltPunkt) -> Unit = {},
     beiLangdruck: ((WeltPunkt) -> Unit)? = null,
@@ -215,6 +216,7 @@ fun Weltkarte(
     val aufFahrzeug by rememberUpdatedState(beiFahrzeug)
     val aufWache by rememberUpdatedState(beiWache)
     val aufFremdwache by rememberUpdatedState(beiFremdwache)
+    val aufFremdfahrzeug by rememberUpdatedState(beiFremdfahrzeug)
     val aufPoi by rememberUpdatedState(beiPoi)
     val aufOrt by rememberUpdatedState(beiOrt)
     val aufLangdruck by rememberUpdatedState(beiLangdruck)
@@ -273,6 +275,13 @@ fun Weltkarte(
                                     val l = fahrt.lage(it.fahrt())
                                     kartenstand.bildschirm(l.lat, l.lon)
                                 }?.let { aufFahrzeug(it.id); return@detectTapGestures }
+                            }
+                            if (ebenen.fremde) {
+                                val fahrt = z.fahrt
+                                naechster(z.betrieb?.fremde.orEmpty()) {
+                                    val l = fahrt.lage(it.fahrt())
+                                    kartenstand.bildschirm(l.lat, l.lon)
+                                }?.let { aufFremdfahrzeug(it.id); return@detectTapGestures }
                             }
                             if (ebenen.wachen) {
                                 naechster(z.stand?.wachen.orEmpty()) { kartenstand.bildschirm(it.lat, it.lon) }

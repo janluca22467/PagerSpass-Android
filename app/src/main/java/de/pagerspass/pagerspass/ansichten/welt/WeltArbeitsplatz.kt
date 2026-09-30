@@ -120,6 +120,7 @@ class Werkbank {
     var gewaehltesFahrzeug by mutableStateOf<String?>(null)
     var offenesFahrzeug by mutableStateOf<String?>(null)
     var fremdwache by mutableStateOf<String?>(null)
+    var fremdfahrzeug by mutableStateOf<String?>(null)
     var bauVorgang by mutableStateOf("keiner")
 
     // Die Entwürfe der Bauseite. Sie stehen hier, weil die Seite beim Wählen
@@ -188,6 +189,7 @@ fun WeltArbeitsplatz(welt: Welt, zustand: Weltzustand, beiVerlassen: () -> Unit)
     BackHandler {
         when {
             werkbank.fremdwache != null -> werkbank.fremdwache = null
+            werkbank.fremdfahrzeug != null -> werkbank.fremdfahrzeug = null
             werkbank.seite != null && werkbank.seite in Werkzeug.HINTER_MEHR -> werkbank.seite = Werkzeug.Mehr
             werkbank.seite != null -> werkbank.seite = null
             werkbank.modus != Kartenmodus.Normal -> {
@@ -228,6 +230,7 @@ fun WeltArbeitsplatz(welt: Welt, zustand: Weltzustand, beiVerlassen: () -> Unit)
                 werkbank.seite = Werkzeug.Wachenseite
             },
             beiFremdwache = { werkbank.fremdwache = it },
+            beiFremdfahrzeug = { werkbank.fremdfahrzeug = it },
             beiPoi = {
                 werkbank.bauVorgang = "poi"
                 werkbank.seite = Werkzeug.Bauen
@@ -344,6 +347,30 @@ fun WeltArbeitsplatz(welt: Welt, zustand: Weltzustand, beiVerlassen: () -> Unit)
                 unten = unten,
                 zeigt = zeigt?.let { if (it in Werkzeug.HINTER_MEHR) Werkzeug.Mehr else it },
             )
+        }
+
+        werkbank.fremdfahrzeug?.let { id ->
+            val f = zustand.betrieb?.fremde?.firstOrNull { it.id == id }
+            if (f == null) {
+                werkbank.fremdfahrzeug = null
+            } else {
+                Blende(titel = f.funkrufname, beiSchliessen = { werkbank.fremdfahrzeug = null }) {
+                    Wertzeile("Typ", f.typ)
+                    Wertzeile("Leitstelle", f.besitzer ?: "zeigt sich nicht")
+                    Wertzeile(
+                        "Gerade",
+                        when (f.lage) {
+                            "Anfahrt" -> if (f.blaulicht) "auf Anfahrt mit Sondersignal" else "auf Anfahrt"
+                            "VorOrt" -> "vor Ort"
+                            "Bereitstellung" -> "im Bereitstellungsraum"
+                            "Streife" -> "auf Streife"
+                            "Rueckfahrt" -> "rückt ein"
+                            else -> f.lage
+                        },
+                    )
+                    zustand.fahrt.restMinuten(f.ankunftUm)?.takeIf { it > 0 }?.let { Wertzeile("Ankunft", "in ${dauer(it)}") }
+                }
+            }
         }
 
         werkbank.fremdwache?.let { id ->
