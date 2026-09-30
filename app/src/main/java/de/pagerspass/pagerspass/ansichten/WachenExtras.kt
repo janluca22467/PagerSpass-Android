@@ -1,0 +1,1266 @@
+package de.pagerspass.pagerspass.ansichten
+
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import de.pagerspass.pagerspass.mobil.Bereich as Bereichsstand
+import de.pagerspass.pagerspass.netz.Gemeinschaft
+import de.pagerspass.pagerspass.netz.GemeinschaftsHilfsfrist
+import de.pagerspass.pagerspass.netz.Landkreis
+import de.pagerspass.pagerspass.netz.Schicht
+import de.pagerspass.pagerspass.netz.Wacheneinstellungen
+import de.pagerspass.pagerspass.netz.Wachenartikel
+import de.pagerspass.pagerspass.netz.Wachenplatz
+import de.pagerspass.pagerspass.netz.Wachenrang
+import de.pagerspass.pagerspass.netz.Wachenschatz
+import de.pagerspass.pagerspass.netz.Wachenstatistik
+import de.pagerspass.pagerspass.netz.Wachenstueck
+import de.pagerspass.pagerspass.ui.bausteine.Abschnitt
+import de.pagerspass.pagerspass.ui.bausteine.Bereich
+import de.pagerspass.pagerspass.ui.bausteine.Blende
+import de.pagerspass.pagerspass.ui.bausteine.Etikett
+import de.pagerspass.pagerspass.ui.bausteine.Feld
+import de.pagerspass.pagerspass.ui.bausteine.Fortschritt
+import de.pagerspass.pagerspass.ui.bausteine.Kasten
+import de.pagerspass.pagerspass.ui.bausteine.Knopf
+import de.pagerspass.pagerspass.ui.bausteine.Knopfart
+import de.pagerspass.pagerspass.ui.bausteine.Leerhinweis
+import de.pagerspass.pagerspass.ui.bausteine.Marke
+import de.pagerspass.pagerspass.ui.bausteine.SehrLeise
+import de.pagerspass.pagerspass.ui.bausteine.Segment
+import de.pagerspass.pagerspass.ui.bausteine.Seite
+import de.pagerspass.pagerspass.ui.bausteine.Seitenkopf
+import de.pagerspass.pagerspass.ui.bausteine.Ueberschrift
+import de.pagerspass.pagerspass.ui.schmuck.Kontoname
+import de.pagerspass.pagerspass.ui.schmuck.Schmuck
+import de.pagerspass.pagerspass.ui.schmuck.Wappen
+import de.pagerspass.pagerspass.ui.schmuck.kopfband
+import de.pagerspass.pagerspass.ui.theme.Abstand
+import de.pagerspass.pagerspass.ui.theme.Farben
+import de.pagerspass.pagerspass.ui.theme.Schrift
+import de.pagerspass.pagerspass.ui.theme.flaeche
+import java.time.Duration
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
+
+/**
+ * Die Extras der Wache — übertragen aus `components/gemeinschaft/`,
+ * `views/WachenranglisteView.vue`, `views/WachenShopView.vue` und
+ * `components/dienstbuch/HilfsfristVerlauf.vue`.
+ *
+ * <b>Getrennt von `WachenSeiten.kt`</b>, weil das hier Bausteine sind, die an mehr
+ * als einer Stelle stehen: Das Emblem steht im Wachenkopf, in der Vorschau von
+ * „Wache anpassen" und im Kopf des Shops; die Stufe im Kopf und in der Laufbahn.
+ */
+
+// ------------------------------------------------------------------- Emblem
+
+/**
+ * Das Emblem der Wache — Initialen im Tonkreis, mit dem gekauften Rahmen.
+ *
+ * Das gewählte Emblem-Zeichen des Webs (Helm, Florianskreuz, …) zeichnet die App
+ * noch nicht; an seiner Stelle stehen die Initialen, wie im Web ohne Zeichen.
+ */
+@Composable
+fun Wachenemblem(gemeinschaft: Gemeinschaft, groesse: Dp = 52.dp) {
+    val ton = Wappen.ton(gemeinschaft.id, gemeinschaft.wappenfarbe)
+    val rahmen = rahmenton(gemeinschaft.emblemrahmen)
+
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier
+            .size(groesse)
+            .then(
+                if (rahmen != null) Modifier.border(3.dp, rahmen, CircleShape).padding(4.dp)
+                else Modifier,
+            )
+            .background(ton, CircleShape)
+            .border(1.5.dp, ton.copy(alpha = 0.8f), CircleShape),
+    ) {
+        Text(
+            text = Wappen.initialen(gemeinschaft.name, "W"),
+            style = if (groesse >= 48.dp) Schrift.Gross else Schrift.Klein,
+            color = Wappen.schrift(ton),
+        )
+    }
+}
+
+/** Der Ton des Emblemrahmens — `null` heißt: keiner getragen. */
+private fun rahmenton(id: String?): Color? = when {
+    id.isNullOrBlank() || id == "keiner" -> null
+    id == "stahlkranz" -> Color(0xFF8794A6)
+    else -> Schmuck.rahmenfarbe(id)
+}
+
+/** Die Plakette des Wachentags — steht vor dem Namen wie der Team-Haken. */
+@Composable
+fun Wachentagplakette(tag: String) {
+    Text(
+        text = tag,
+        style = Schrift.MonoKlein,
+        color = Farben.AufAmber,
+        maxLines = 1,
+        modifier = Modifier
+            .background(Farben.AmberHell, RoundedCornerShape(4.dp))
+            .padding(horizontal = Abstand.Winzig),
+    )
+}
+
+// -------------------------------------------------------------------- Stufe
+
+/**
+ * Stufe, Fortschritt und Kennzahlen der Wache — die Identität der Wache, die zu
+ * ihrem Namen gehört und nicht in eine Karte irgendwo darunter.
+ */
+@Composable
+fun WachenStufe(s: Wachenstatistik) {
+    Column(verticalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(Abstand.Normal),
+            verticalAlignment = Alignment.Bottom,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Etikett("Stufe ${s.stufe}")
+                Text(s.bezeichnung, style = Schrift.Gross, color = Farben.Text)
+            }
+            Text("${zahl(s.erfahrung)} Punkte", style = Schrift.MonoKlein, color = Farben.TextLeise)
+        }
+        Fortschritt(anteil = s.anteil)
+        SehrLeise(
+            if (s.bisZurNaechsten != null) {
+                "Noch ${zahl(s.bisZurNaechsten)} Punkte bis Stufe ${s.stufe + 1}." +
+                    (s.naechsteFreischaltung?.let { " $it." } ?: "")
+            } else {
+                "Höchste Stufe erreicht."
+            },
+        )
+        SehrLeise(
+            "Auf dieser Stufe: bis zu ${s.maxMitglieder} Mitglieder · Clanrunde alle " +
+                "${s.clanrundenSperreMinuten} Minuten · ${s.maxTermine} " +
+                (if (s.maxTermine == 1) "geplanter Dienst" else "geplante Dienste") +
+                " · bis zu ${s.clanrundenCoins} Coins je Clanrunde" +
+                if (s.stufenstuecke > 0) {
+                    " · ${s.stufenstuecke} " +
+                        (if (s.stufenstuecke == 1) "Zierstück" else "Zierstücke") + " erspielt"
+                } else {
+                    ""
+                },
+        )
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(Abstand.SehrGross)) {
+            Kennwert("Schichten", zahl(s.schichten))
+            Kennwert("Einsätze", zahl(s.einsaetze))
+            Kennwert("Ø Hilfsfrist", s.hilfsfristSekunden?.let { hilfsfrist(it.toInt()) } ?: "—")
+            Kennwert("30 Tage", zahl(s.aktivitaetPunkte))
+        }
+    }
+}
+
+@Composable
+private fun Kennwert(was: String, wert: String) {
+    Column {
+        Etikett(was)
+        Text(wert, style = Schrift.MonoNormal, color = Farben.Text)
+    }
+}
+
+// ---------------------------------------------------------------- Wachentag
+
+/** Ab welcher Wachenstufe eine Wache ihren Tag trägt — Spiegel von `Gemeinschaftsregeln.TagAbStufe`. */
+private const val WACHENTAG_AB_STUFE = 40
+
+/**
+ * Der Wachentag — das Ziel, auf das die Laufbahn zuläuft, und, einmal erreicht,
+ * das, was die Wache im ganzen Spiel sichtbar macht.
+ */
+@Composable
+fun WachenTag(
+    gemeinschaft: Gemeinschaft,
+    stufe: Int,
+    name: String,
+    premium: Boolean,
+    laeuft: Boolean,
+    beiSpeichern: (String) -> Unit,
+) {
+    val aktuell = gemeinschaft.tag.orEmpty()
+    val erreicht = stufe >= WACHENTAG_AB_STUFE
+    val fehlen = maxOf(0, WACHENTAG_AB_STUFE - stufe)
+    var bearbeitet by remember { mutableStateOf(false) }
+    var eingabe by remember(aktuell) { mutableStateOf(aktuell) }
+    val gueltig = eingabe.isEmpty() || eingabe.length >= 2
+    val vorschau = (if (bearbeitet) eingabe else aktuell).ifBlank { "TAG" }
+
+    Kasten(abstandInnen = Abstand.Klein) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(Abstand.Normal),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Wachentagplakette(aktuell.ifBlank { vorschau })
+            Column(modifier = Modifier.weight(1f)) {
+                Etikett("Wachentag")
+                Text(
+                    text = when {
+                        erreicht && aktuell.isNotBlank() -> "Eure Wache trägt $aktuell"
+                        erreicht -> "Noch kein Tag gesetzt"
+                        else -> "Ab Stufe $WACHENTAG_AB_STUFE"
+                    },
+                    style = Schrift.Normal,
+                    color = Farben.Text,
+                )
+            }
+        }
+        SehrLeise(
+            if (erreicht) {
+                "Er steht vor dem Namen jedes Mitglieds — im Dienst, in der Lobby, am Brett und " +
+                    "in den Kontakten."
+            } else {
+                "Noch $fehlen ${if (fehlen == 1) "Stufe" else "Stufen"}. Dann trägt jedes Mitglied " +
+                    "eures Teams das Kürzel eurer Wache vor seinem Namen — überall im Spiel."
+            },
+        )
+        if (!erreicht) Fortschritt(anteil = stufe.toFloat() / WACHENTAG_AB_STUFE)
+
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            SehrLeise("So steht es an dir:")
+            Wachentagplakette(vorschau)
+            Kontoname(name = name, premium = premium, stil = Schrift.Klein)
+        }
+
+        if (erreicht && gemeinschaft.darfFuehren) {
+            if (bearbeitet) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
+                    verticalAlignment = Alignment.Bottom,
+                ) {
+                    Feld(
+                        wert = eingabe,
+                        beiAenderung = { roh ->
+                            eingabe = roh.uppercase().filter { it in 'A'..'Z' || it in '0'..'9' || it in "ÄÖÜ" }
+                                .take(5)
+                        },
+                        etikett = "2 bis 5 Buchstaben oder Ziffern",
+                        platzhalter = "z. B. NORD",
+                        fehler = if (!gueltig) "Mindestens 2 Zeichen." else null,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Knopf(
+                        "Speichern",
+                        {
+                            beiSpeichern(eingabe)
+                            bearbeitet = false
+                        },
+                        art = Knopfart.Haupt,
+                        aktiv = !laeuft && gueltig && eingabe != aktuell,
+                        kompakt = true,
+                    )
+                }
+                Knopf("Abbrechen", {
+                    eingabe = aktuell
+                    bearbeitet = false
+                }, art = Knopfart.Leise, kompakt = true)
+            } else {
+                Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
+                    Knopf(
+                        if (aktuell.isNotBlank()) "Tag ändern" else "Tag festlegen",
+                        {
+                            eingabe = aktuell
+                            bearbeitet = true
+                        },
+                        aktiv = !laeuft,
+                        kompakt = true,
+                    )
+                    if (aktuell.isNotBlank()) {
+                        Knopf("Abnehmen", { beiSpeichern("") }, art = Knopfart.Leise, aktiv = !laeuft, kompakt = true)
+                    }
+                }
+            }
+        } else if (erreicht) {
+            SehrLeise("Festlegen können ihn Leitung und Zugführer.")
+        }
+    }
+}
+
+// ----------------------------------------------------------------- Laufbahn
+
+/**
+ * Die Laufbahn der Wache — ein Band zum Wischen, jede Stufe eine Karte mit dem,
+ * was sie freischaltet. Dieselbe Rechnung wie `gaben()` in `WachenLaufbahn.vue`:
+ * An einer Stufe steht nur, was sich gegenüber der vorigen ändert.
+ */
+@Composable
+fun WachenLaufbahn(statistik: Wachenstatistik, stufen: List<Wachenrang>) {
+    if (stufen.isEmpty()) return
+    val band = rememberScrollState()
+    val karte = with(androidx.compose.ui.platform.LocalDensity.current) { (KARTENBREITE + Abstand.Klein).roundToPx() }
+
+    // Die eigene Stufe in die Mitte rollen — sonst begänne das Band bei Stufe 1,
+    // und eine Wache auf Stufe 30 sähe zuerst, was sie längst hinter sich hat.
+    LaunchedEffect(stufen.size, statistik.stufe) {
+        val index = stufen.indexOfFirst { it.stufe == statistik.stufe }.coerceAtLeast(0)
+        band.scrollTo((index * karte).coerceAtMost(band.maxValue))
+    }
+
+    Abschnitt("Laufbahn der Wache") {
+        SehrLeise(
+            "Stufe ${statistik.stufe} · ${zahl(statistik.erfahrung)} Punkte · " +
+                (statistik.bisZurNaechsten?.let { "noch ${zahl(it)} bis Stufe ${statistik.stufe + 1}" }
+                    ?: "höchste Stufe erreicht"),
+            mono = true,
+        )
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
+            modifier = Modifier.fillMaxWidth().horizontalScroll(band),
+        ) {
+            stufen.forEachIndexed { i, r ->
+                val davor = stufen.getOrNull(i - 1)
+                val aktuell = r.stufe == statistik.stufe
+                val erreicht = r.stufe < statistik.stufe
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(Abstand.Winzig),
+                    modifier = Modifier
+                        .width(KARTENBREITE)
+                        .flaeche(
+                            ecke = 9.dp,
+                            randfarbe = if (aktuell) Farben.Amber else Farben.Rand,
+                        )
+                        .padding(Abstand.Normal),
+                ) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
+                        Text(
+                            r.stufe.toString(),
+                            style = Schrift.MonoNormal,
+                            color = if (aktuell) Farben.Amber else Farben.Text,
+                        )
+                        Text(
+                            when {
+                                erreicht -> "✓"
+                                r.stufe > statistik.stufe -> "🔒"
+                                else -> ""
+                            },
+                            style = Schrift.Klein,
+                            color = Farben.GruenHell,
+                        )
+                    }
+                    Text(
+                        text = if (davor == null || r.bezeichnung != davor.bezeichnung) r.bezeichnung else "",
+                        style = Schrift.Klein,
+                        color = Farben.Text,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    SehrLeise("ab ${zahl(r.ab)} P. · +${r.coins} Coins", mono = true)
+                    gaben(r, davor).forEach { gabe ->
+                        Text(
+                            text = gabe,
+                            style = Schrift.Winzig,
+                            color = if (gabe.startsWith("Zierde") || gabe.startsWith("Titel")) Farben.AmberHell
+                            else Farben.TextLeise,
+                        )
+                    }
+                    if (aktuell) Fortschritt(anteil = statistik.anteil)
+                }
+            }
+        }
+    }
+}
+
+/** Die Breite einer Stufenkarte — auch fürs Anrollen der eigenen Stufe. */
+private val KARTENBREITE = 168.dp
+
+private fun gaben(r: Wachenrang, davor: Wachenrang?): List<String> {
+    if (davor == null) {
+        return listOf(
+            "Bis zu ${r.maxMitglieder} Mitglieder",
+            "Clanrunde alle ${r.clanrundenSperreMinuten} Minuten",
+            "1 geplanter Dienst",
+        )
+    }
+    return buildList {
+        if (r.bezeichnung != davor.bezeichnung) add("Titel „${r.bezeichnung}“")
+        r.belohnungen.forEach { add("Zierde „$it“") }
+        if (r.clanrundenSperreMinuten < davor.clanrundenSperreMinuten) {
+            add("Clanrunde alle ${r.clanrundenSperreMinuten} Minuten")
+        }
+        if (r.maxTermine > davor.maxTermine) add("${r.maxTermine} geplante Dienste gleichzeitig")
+        if (r.clanrundenCoins > davor.clanrundenCoins) add("Bis zu ${r.clanrundenCoins} Coins je Clanrunde")
+        if (r.maxMitglieder > davor.maxMitglieder) add("Bis zu ${r.maxMitglieder} Mitglieder")
+    }
+}
+
+// ---------------------------------------------------------- Hilfsfristkurve
+
+/** Höchstens drei Vergleichskurven — sonst wird die Fläche unlesbar. */
+private const val HOECHSTENS_MITGLIEDER = 3
+
+private val KURVENFARBEN = listOf(Farben.Gruen, Farben.Blau, Farben.HiorgBrh)
+
+/**
+ * Die Hilfsfrist über die zuletzt gefahrenen Schichten — die eigene Kurve und die
+ * der anderen aus der Wache daneben, zum Vergleich.
+ *
+ * <b>Die x-Achse ist echte Zeit, kein Index</b>: Nur so liegen zwei Kurven
+ * verschiedener Leute an der Stelle, an der ihre Schichten tatsächlich endeten.
+ * Beschriftet wird nur der letzte eigene Wert — eine Zahl an jedem Punkt liest
+ * niemand.
+ */
+@Composable
+fun HilfsfristVerlauf(eigene: List<Schicht>, mitglieder: List<GemeinschaftsHilfsfrist>) {
+    data class Serie(
+        val name: String,
+        val farbe: Color,
+        val punkte: List<Pair<Long, Double>>,
+        val eigen: Boolean = false,
+    )
+
+    val eigeneSerie = Serie(
+        "Du",
+        Farben.Amber,
+        eigene.mapNotNull { s ->
+            val t = zeitwert(s.beendetUm) ?: return@mapNotNull null
+            s.hilfsfristSekunden?.let { t to it.toDouble() }
+        }.sortedBy { it.first },
+        eigen = true,
+    )
+    val andere = mitglieder
+        .map { m ->
+            m.anzeigename to m.verlauf.mapNotNull { p ->
+                val t = zeitwert(p.beendetUm) ?: return@mapNotNull null
+                p.hilfsfristSekunden?.let { t to it }
+            }.sortedBy { it.first }
+        }
+        .filter { it.second.isNotEmpty() }
+        .sortedByDescending { it.second.size }
+        .take(HOECHSTENS_MITGLIEDER)
+        .mapIndexed { i, (name, punkte) -> Serie(name, KURVENFARBEN[i], punkte) }
+    val serien = (if (eigeneSerie.punkte.isNotEmpty()) listOf(eigeneSerie) else emptyList()) + andere
+
+    val alle = serien.flatMap { it.punkte }
+    // Erst ab zwei Punkten über alle Serien zusammen ergibt sich ein Verlauf.
+    if (alle.size < 2) return
+
+    val hoechst = maxOf(60.0, Math.ceil(alle.maxOf { it.second } / 60.0) * 60.0)
+    val von = alle.minOf { it.first }
+    val bis = alle.maxOf { it.first }
+
+    Abschnitt("Ø Hilfsfrist · letzte Schichten") {
+        if (serien.size > 1) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(Abstand.Normal)) {
+                serien.forEach { s ->
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(Abstand.Winzig),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Box(Modifier.size(10.dp).background(s.farbe, CircleShape))
+                        SehrLeise(s.name)
+                    }
+                }
+            }
+        }
+        Column(
+            modifier = Modifier.fillMaxWidth().flaeche(ecke = 9.dp).padding(Abstand.Normal),
+        ) {
+            Row(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    verticalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.height(150.dp).padding(end = Abstand.Klein),
+                ) {
+                    listOf(1.0, 0.5, 0.0).forEach { anteil ->
+                        SehrLeise(hilfsfrist((hoechst * anteil).toInt()) ?: "", mono = true)
+                    }
+                }
+                Canvas(modifier = Modifier.weight(1f).height(150.dp)) {
+                    val rand = 8.dp.toPx()
+                    val h = size.height - 2 * rand
+                    fun x(t: Long) = if (bis == von) size.width / 2 else (t - von).toFloat() / (bis - von) * size.width
+                    fun y(sek: Double) = rand + h - (sek / hoechst).toFloat() * h
+
+                    listOf(0.0, 0.5, 1.0).forEach { a ->
+                        val yy = y(hoechst * a)
+                        drawLine(Farben.Rand, Offset(0f, yy), Offset(size.width, yy), strokeWidth = 1f)
+                    }
+                    serien.forEach { s ->
+                        val eigen = s.eigen
+                        val pfad = Path()
+                        s.punkte.forEachIndexed { i, (t, sek) ->
+                            if (i == 0) pfad.moveTo(x(t), y(sek)) else pfad.lineTo(x(t), y(sek))
+                        }
+                        drawPath(
+                            pfad,
+                            s.farbe.copy(alpha = if (eigen) 1f else 0.7f),
+                            style = Stroke(width = if (eigen) 2.5.dp.toPx() else 1.5.dp.toPx()),
+                        )
+                        s.punkte.forEach { (t, sek) ->
+                            drawCircle(
+                                s.farbe,
+                                radius = if (eigen) 4.dp.toPx() else 3.dp.toPx(),
+                                center = Offset(x(t), y(sek)),
+                            )
+                        }
+                    }
+                }
+            }
+            Row(modifier = Modifier.fillMaxWidth()) {
+                SehrLeise(kurzdatum(von), mono = true, modifier = Modifier.weight(1f))
+                SehrLeise(kurzdatum(bis), mono = true)
+            }
+            eigeneSerie.punkte.lastOrNull()?.let { (_, sek) ->
+                SehrLeise("Zuletzt bei dir: ${dauer(sek)}")
+            }
+        }
+    }
+}
+
+private fun kurzdatum(ms: Long): String =
+    DateTimeFormatter.ofPattern("dd.MM").format(Instant.ofEpochMilli(ms).atZone(ZoneId.systemDefault()))
+
+private fun dauer(sekunden: Double): String {
+    val s = Math.round(sekunden).toInt()
+    return if (s >= 60) "%d:%02d min".format(s / 60, s % 60) else "$s s"
+}
+
+// ------------------------------------------------------------ Einstellungen
+
+/**
+ * Die Stellschrauben der Wache — nur für die Leitung.
+ *
+ * <b>Alles auf einmal, wie im Formular</b> — mit „Übernehmen" am Fuß; ein
+ * Teilbogen wäre am Server nicht von bewusst geleerten Feldern zu unterscheiden.
+ * Darunter der Beitrittscode zum Neuwürfeln und ganz unten, mit Rückfrage, das
+ * Auflösen.
+ */
+@Composable
+fun EinstellungenBlende(
+    gemeinschaft: Gemeinschaft,
+    landkreise: List<Landkreis>,
+    server: String,
+    laeuft: Boolean,
+    beiSpeichern: (Wacheneinstellungen) -> Unit,
+    beiCodeErneuern: () -> Unit,
+    beiAufloesen: () -> Unit,
+    beiSchliessen: () -> Unit,
+) {
+    var name by remember { mutableStateOf(gemeinschaft.name) }
+    var beschreibung by remember { mutableStateOf(gemeinschaft.beschreibung.orEmpty()) }
+    var landkreisId by remember { mutableStateOf(gemeinschaft.landkreisId) }
+    var oeffentlich by remember { mutableStateOf(gemeinschaft.oeffentlich) }
+    var inRangliste by remember { mutableStateOf(gemeinschaft.inRangliste) }
+    var modus by remember { mutableStateOf(gemeinschaft.beitrittModus) }
+    var mindestLevel by remember { mutableStateOf(gemeinschaft.mindestLevel.toString()) }
+    var mindestErfahrung by remember { mutableStateOf(gemeinschaft.mindestErfahrung.toString()) }
+    var maxMitglieder by remember { mutableStateOf(gemeinschaft.maxMitglieder.toString()) }
+    var kreiswahl by remember { mutableStateOf(false) }
+    var aufloesenGefragt by remember { mutableStateOf(false) }
+    val ablage = androidx.compose.ui.platform.LocalClipboardManager.current
+    var kopiert by remember { mutableStateOf(false) }
+
+    Blende(
+        titel = "Einstellungen",
+        beiSchliessen = beiSchliessen,
+        fuss = {
+            Knopf("Übernehmen", {
+                val kreis = landkreise.firstOrNull { it.id == landkreisId }
+                beiSpeichern(
+                    Wacheneinstellungen(
+                        name = name.trim(),
+                        beschreibung = beschreibung.trim().ifBlank { null },
+                        landkreisId = kreis?.id,
+                        landkreis = kreis?.name,
+                        oeffentlich = oeffentlich,
+                        inRangliste = inRangliste,
+                        beitrittModus = modus,
+                        mindestLevel = mindestLevel.toIntOrNull() ?: gemeinschaft.mindestLevel,
+                        mindestErfahrung = mindestErfahrung.toIntOrNull() ?: gemeinschaft.mindestErfahrung,
+                        maxMitglieder = maxMitglieder.toIntOrNull() ?: gemeinschaft.maxMitglieder,
+                    ),
+                )
+            }, art = Knopfart.Haupt, aktiv = !laeuft && name.isNotBlank(), kompakt = true)
+        },
+    ) {
+        Feld(wert = name, beiAenderung = { name = it.take(40) }, etikett = "Name")
+        Feld(
+            wert = beschreibung,
+            beiAenderung = { beschreibung = it.take(300) },
+            etikett = "Beschreibung",
+            einzeilig = false,
+        )
+        Wahlfeld(
+            etikett = "Landkreis",
+            wert = landkreise.firstOrNull { it.id == landkreisId }?.name,
+            platzhalter = "Keiner",
+            beiDruck = { kreiswahl = true },
+        )
+        SehrLeise("Hier laufen eure Clanrunden.")
+
+        Etikett("Öffentlich gelistet")
+        Segment(listOf(true, false), oeffentlich, { oeffentlich = it }, aufschrift = { if (it) "An" else "Aus" })
+        SehrLeise(
+            "Name, Beschreibung, Landkreis und Mitgliederzahl sind dann für alle angemeldeten " +
+                "Konten sichtbar. Wer in der Mitgliederliste steht, entscheidet jeder selbst in " +
+                "seinen Privatsphäre-Einstellungen.",
+        )
+        Etikett("In der Rangliste stehen")
+        Segment(listOf(true, false), inRangliste, { inRangliste = it }, aufschrift = { if (it) "An" else "Aus" })
+        SehrLeise(
+            "Ob eure Wache in der Gemeinschafts-Rangliste auftaucht. Getrennt vom öffentlichen " +
+                "Listen: das eine ist eine Einladung an Neue, das andere ein Vergleich mit anderen Wachen.",
+        )
+        Etikett("Aufnahme")
+        Segment(
+            listOf("Einladung", "Antrag", "Offen"),
+            modus,
+            { modus = it },
+            aufschrift = {
+                when (it) {
+                    "Einladung" -> "Einladung"
+                    "Antrag" -> "Antrag"
+                    else -> "Offen"
+                }
+            },
+        )
+        SehrLeise(
+            "„Offen“ nimmt jeden auf, der die Schwellen darunter erfüllt. Über den Beitrittscode " +
+                "kommt man in jedem Fall herein.",
+        )
+        Feld(
+            wert = mindestLevel,
+            beiAenderung = { mindestLevel = it.filter(Char::isDigit).take(3) },
+            etikett = "Mindestlevel",
+            tastatur = KeyboardType.Number,
+        )
+        Feld(
+            wert = mindestErfahrung,
+            beiAenderung = { mindestErfahrung = it.filter(Char::isDigit).take(7) },
+            etikett = "Mindesterfahrung",
+            tastatur = KeyboardType.Number,
+        )
+        Feld(
+            wert = maxMitglieder,
+            beiAenderung = { maxMitglieder = it.filter(Char::isDigit).take(2) },
+            etikett = "Höchstens Mitglieder",
+            tastatur = KeyboardType.Number,
+        )
+
+        gemeinschaft.beitrittscode?.let { code ->
+            // Dieselbe Adresse, die im Web hinter dem QR-Code steht.
+            val link = "$server/gemeinschaften?code=$code"
+            Ueberschrift("Beitrittscode")
+            Text(code, style = Schrift.Titel.copy(fontFamily = Schrift.Mono), color = Farben.Amber)
+            SehrLeise("Wer diesen Code hat, tritt ohne Rückfrage bei.")
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
+                Knopf(if (kopiert) "Link kopiert" else "Link kopieren", {
+                    ablage.setText(androidx.compose.ui.text.AnnotatedString(link))
+                    kopiert = true
+                }, art = Knopfart.Leise, kompakt = true)
+                Knopf("Code neu würfeln", beiCodeErneuern, art = Knopfart.Leise, aktiv = !laeuft, kompakt = true)
+            }
+        }
+
+        Ueberschrift("Gemeinschaft auflösen")
+        SehrLeise(
+            "Mitgliedschaften, Chatverlauf und alle offenen Anträge werden gelöscht. Das lässt " +
+                "sich nicht rückgängig machen.",
+        )
+        if (!aufloesenGefragt) {
+            Knopf("Auflösen", { aufloesenGefragt = true }, art = Knopfart.Gefahr, kompakt = true)
+        } else {
+            Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
+                Knopf("Ja, endgültig auflösen", beiAufloesen, art = Knopfart.Gefahr, aktiv = !laeuft, kompakt = true)
+                Knopf("Abbrechen", { aufloesenGefragt = false }, art = Knopfart.Leise, kompakt = true)
+            }
+        }
+    }
+
+    if (kreiswahl) {
+        Landkreiswahl(
+            landkreise = landkreise,
+            gewaehlt = landkreisId,
+            mitKeinem = "Keiner",
+            beiWahl = {
+                landkreisId = it
+                kreiswahl = false
+            },
+            beiSchliessen = { kreiswahl = false },
+        )
+    }
+}
+
+/**
+ * Die Wahl eines Landkreises — durchsuchbar, nach Bundesland gruppiert, mit
+ * einer Zeile „keiner" obenauf.
+ */
+@Composable
+fun Landkreiswahl(
+    landkreise: List<Landkreis>,
+    gewaehlt: String?,
+    mitKeinem: String,
+    beiWahl: (String?) -> Unit,
+    beiSchliessen: () -> Unit,
+) {
+    val keiner = Landkreis(id = "", name = mitKeinem)
+    val gruppen = listOf<Pair<String?, List<Landkreis>>>(null to listOf(keiner)) +
+        landkreise.groupBy { it.bundesland.ifBlank { "Sonstige" } }
+            .toSortedMap()
+            .map { (land, kreise) -> land to kreise.sortedBy { it.name } }
+
+    Wahlblende(
+        titel = "Landkreis",
+        gruppen = gruppen,
+        aufschrift = { it.name },
+        beiWahl = { beiWahl(it.id.ifBlank { null }) },
+        beiSchliessen = beiSchliessen,
+        gewaehlt = landkreise.firstOrNull { it.id == gewaehlt } ?: keiner.takeIf { gewaehlt == null },
+        suchbar = true,
+    )
+}
+
+// ------------------------------------------------------------------ Aussehen
+
+/** Wie ein Platz in der Überschrift heißt. */
+private fun platzname(art: String): String = when (art) {
+    "Kopfmuster" -> "Kopfmuster"
+    "Emblemrahmen" -> "Emblem-Rahmen"
+    "Emblemzeichen" -> "Emblem-Zeichen"
+    "Beiname" -> "Beiname"
+    "Wachenfarbe" -> "Farbton"
+    else -> "Ausbau"
+}
+
+/** Was ein Platz trägt, wenn nichts gewählt ist — drei Wörter für dieselbe Abwesenheit. */
+private fun getragen(g: Gemeinschaft, art: String): String? = when (art) {
+    "Kopfmuster" -> g.kopfmuster.takeIf { it != "keines" }
+    "Emblemrahmen" -> g.emblemrahmen.takeIf { it != "keiner" }
+    "Emblemzeichen" -> g.emblemzeichen.takeIf { it != "keines" }
+    "Beiname" -> g.beiname.ifBlank { null }
+    else -> null
+}
+
+/**
+ * Wache anpassen — Farbton, Kopfmuster, Rahmen, Zeichen, Beiname.
+ *
+ * <b>Die Vorschau steht oben</b>: derselbe Kopf wie auf der Wachenseite, nur
+ * klein. Wer zwanzig Muster durchprobiert, will das Ergebnis sehen, ohne jedes
+ * Mal nach oben zu rollen. Gesperrtes steht mit seinem Grund da („Ab Stufe 30",
+ * „120 Coins · im Laden") — was es gäbe, zieht mehr als was man hat.
+ */
+@Composable
+fun AussehenBlende(
+    gemeinschaft: Gemeinschaft,
+    schatz: Wachenschatz,
+    laeuft: Boolean,
+    beiSchmuck: (String, String?) -> Unit,
+    beiFarbe: (Int) -> Unit,
+    beiSchliessen: () -> Unit,
+) {
+    val darf = schatz.darfKaufen
+    val ton = Wappen.ton(gemeinschaft.id, gemeinschaft.wappenfarbe)
+    val beiname = schatz.schmuck.firstOrNull { it.art == "Beiname" && it.stueckId == gemeinschaft.beiname }?.name
+
+    Blende(titel = "Wache anpassen", beiSchliessen = beiSchliessen) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(Abstand.Normal),
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .flaeche(ecke = 12.dp)
+                .kopfband(gemeinschaft.kopfmuster, ton)
+                .padding(Abstand.Normal),
+        ) {
+            Wachenemblem(gemeinschaft, 44.dp)
+            Column(modifier = Modifier.weight(1f)) {
+                beiname?.let { Text(it, style = Schrift.Winzig, color = Farben.AmberHell) }
+                Text(gemeinschaft.name, style = Schrift.Gross, color = Farben.Text)
+                SehrLeise("So sieht eure Wache aus.")
+            }
+        }
+
+        if (!darf) {
+            SehrLeise("Das Aussehen der Wache wählen Leitung und Zugführer. Ansehen darf es jeder.")
+        }
+
+        Ueberschrift("Farbton")
+        SehrLeise("Die ersten acht gehören jeder Wache. Was danach kommt, steht im Laden.")
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
+            verticalArrangement = Arrangement.spacedBy(Abstand.Klein),
+        ) {
+            (0 until 8).forEach { n ->
+                Farbfeld(
+                    farbe = Wappen.ton(gemeinschaft.id, n),
+                    aufschrift = if (n == 0) "A" else "",
+                    gewaehlt = gemeinschaft.wappenfarbe == n,
+                    aktiv = darf && !laeuft,
+                    beiDruck = { if (gemeinschaft.wappenfarbe != n) beiFarbe(n) },
+                )
+            }
+            schatz.schmuck.filter { it.art == "Wachenfarbe" }.forEach { f ->
+                val nummer = f.stueckId.toIntOrNull() ?: return@forEach
+                Farbfeld(
+                    farbe = Wappen.PALETTE[nummer % Wappen.PALETTE.size],
+                    aufschrift = if (f.frei) "" else "🔒",
+                    gewaehlt = gemeinschaft.wappenfarbe == nummer,
+                    aktiv = darf && !laeuft && f.frei,
+                    beiDruck = { if (gemeinschaft.wappenfarbe != nummer) beiFarbe(nummer) },
+                )
+            }
+        }
+
+        listOf("Kopfmuster", "Emblemrahmen", "Emblemzeichen", "Beiname").forEach { art ->
+            val alle = schatz.schmuck.filter { it.art == art }
+            if (alle.isEmpty()) return@forEach
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Ueberschrift(platzname(art))
+                SehrLeise("${alle.count { it.frei }} von ${alle.size} offen")
+            }
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
+                verticalArrangement = Arrangement.spacedBy(Abstand.Klein),
+            ) {
+                alle.forEach { s ->
+                    Stueckwahl(
+                        stueck = s,
+                        an = getragen(gemeinschaft, art) == s.stueckId,
+                        aktiv = darf && !laeuft && s.frei,
+                        beiDruck = {
+                            beiSchmuck(art, if (getragen(gemeinschaft, art) == s.stueckId) null else s.stueckId)
+                        },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun Farbfeld(
+    farbe: Color,
+    aufschrift: String,
+    gewaehlt: Boolean,
+    aktiv: Boolean,
+    beiDruck: () -> Unit,
+) {
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier
+            .size(44.dp)
+            .background(farbe.copy(alpha = if (aktiv || gewaehlt) 1f else 0.45f), CircleShape)
+            .border(if (gewaehlt) 3.dp else 1.dp, if (gewaehlt) Farben.Text else Farben.Rand, CircleShape)
+            .clickable(enabled = aktiv, role = Role.Button, onClick = beiDruck),
+    ) {
+        if (aufschrift.isNotEmpty()) Text(aufschrift, style = Schrift.Klein, color = Wappen.schrift(farbe))
+    }
+}
+
+@Composable
+private fun Stueckwahl(stueck: Wachenstueck, an: Boolean, aktiv: Boolean, beiDruck: () -> Unit) {
+    Column(
+        verticalArrangement = Arrangement.spacedBy(Abstand.Haar),
+        modifier = Modifier
+            .width(148.dp)
+            .flaeche(ecke = 9.dp, randfarbe = if (an) Farben.Amber else Farben.Rand)
+            .clickable(enabled = aktiv, role = Role.Button, onClick = beiDruck)
+            .padding(Abstand.Klein),
+    ) {
+        Text(
+            stueck.name,
+            style = Schrift.Klein,
+            color = if (stueck.frei) Farben.Text else Farben.TextSehrLeise,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+        when {
+            an -> Text("Getragen", style = Schrift.Winzig, color = Farben.Amber)
+            !stueck.frei -> SehrLeise(
+                when {
+                    stueck.preis == null -> "Ab Stufe ${stueck.abStufe}"
+                    stueck.imSortiment -> "${stueck.preis} Coins · im Laden"
+                    else -> "${stueck.preis} Coins"
+                },
+            )
+            stueck.preis == null && stueck.abStufe > 1 -> Text("Erspielt", style = Schrift.Winzig, color = Farben.AmberHell)
+        }
+    }
+}
+
+// --------------------------------------------------------------- Rangliste
+
+/**
+ * Die Rangliste der Wachen — sortiert nach der Gesamterfahrung; „30 Tage" zeigt,
+ * wer gerade fährt. Die eigene Wache steht auch dann da, wenn sie sich aus der
+ * Liste genommen hat — mit „—" statt eines Platzes.
+ */
+@Composable
+fun WachenranglisteSeite(
+    modifier: Modifier = Modifier,
+    unterrand: Dp = 0.dp,
+    liste: Bereichsstand<List<Wachenplatz>> = Bereichsstand(),
+    beiLaden: () -> Unit = {},
+    beiZurueck: () -> Unit = {},
+) {
+    LaunchedEffect(Unit) { beiLaden() }
+
+    Seite(modifier = modifier, unterrand = unterrand) {
+        Seitenkopf(
+            titel = "Rangliste",
+            unterzeile = "Wachengemeinschaften",
+            knoepfe = { Knopf("Zurück", beiZurueck, art = Knopfart.Leise, kompakt = true) },
+        )
+        SehrLeise(
+            "Eine Wache sammelt, was ihre Mitglieder verdienen. Sortiert nach der Gesamterfahrung; " +
+                "„30 Tage“ zeigt, wer gerade fährt.",
+        )
+        Bereich(
+            laedt = liste.laedt,
+            fehler = liste.fehler,
+            inhalt = liste.inhalt,
+            beiErneut = beiLaden,
+        ) { plaetze ->
+            if (plaetze.isEmpty()) {
+                Leerhinweis("Noch keine Wache hat Punkte gesammelt.")
+            }
+            plaetze.forEach { w ->
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(Abstand.Normal),
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .flaeche(ecke = 9.dp, randfarbe = if (w.istEigene) Farben.Amber else Farben.Rand)
+                        .padding(horizontal = Abstand.Normal, vertical = Abstand.Klein),
+                ) {
+                    Text(
+                        if (w.platz > 0) w.platz.toString() else "—",
+                        style = Schrift.MonoNormal,
+                        color = if (w.platz in 1..3) Farben.Amber else Farben.TextLeise,
+                        modifier = Modifier.width(28.dp),
+                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                w.name,
+                                style = Schrift.Normal,
+                                color = Farben.Text,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f, fill = false),
+                            )
+                            if (w.istEigene) Marke("Eure", farbe = Farben.AmberHell)
+                        }
+                        SehrLeise(
+                            listOfNotNull(
+                                "Stufe ${w.stufe} · ${w.bezeichnung}",
+                                "${w.mitglieder} ${if (w.mitglieder == 1) "Mitglied" else "Mitglieder"}",
+                                w.landkreis,
+                            ).joinToString(" · "),
+                            mono = true,
+                        )
+                    }
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text(zahl(w.erfahrung), style = Schrift.MonoNormal, color = Farben.Text)
+                        SehrLeise("${zahl(w.aktivitaetPunkte)} / 30 T.", mono = true)
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ------------------------------------------------------------- Wachen-Shop
+
+/**
+ * Der Wachen-Shop — Ausbau, die Auslage der Woche, Einzahlen, Auszug.
+ *
+ * <b>Hier geht nur Spielwährung über den Tisch</b>: Coins der Wache, und eigene
+ * Credits, die zehn zu eins in die Kasse wandern. Echtes Geld gibt es in diesem
+ * Laden nicht — deshalb darf er in der App stehen.
+ *
+ * <b>Kaufen fragt im zweiten Tipp nach</b> („Wirklich für 120 Coins kaufen?"),
+ * wie im Web: Die Kasse gehört der ganzen Mannschaft.
+ */
+@Composable
+fun WachenShopSeite(
+    modifier: Modifier = Modifier,
+    unterrand: Dp = 0.dp,
+    gemeinschaft: Gemeinschaft? = null,
+    schatz: Wachenschatz? = null,
+    meineCredits: Int = 0,
+    laeuft: Boolean = false,
+    meldung: String? = null,
+    hinweis: String? = null,
+    beiLaden: () -> Unit = {},
+    beiKaufen: (String) -> Unit = {},
+    beiWunsch: (String, Boolean) -> Unit = { _, _ -> },
+    beiEinzahlen: (Int) -> Unit = {},
+    beiAnpassen: () -> Unit = {},
+    beiMeldungWeg: () -> Unit = {},
+    beiZurueck: () -> Unit = {},
+) {
+    LaunchedEffect(Unit) { beiLaden() }
+    var scharf by remember { mutableStateOf<String?>(null) }
+    var einzahlung by remember { mutableStateOf("") }
+
+    Seite(modifier = modifier, unterrand = unterrand) {
+        Seitenkopf(
+            titel = "Wachen-Shop",
+            unterzeile = gemeinschaft?.name ?: "Wachengemeinschaft",
+            knoepfe = { Knopf("Zurück", beiZurueck, art = Knopfart.Leise, kompakt = true) },
+        )
+
+        Kasten(abstandInnen = Abstand.Klein) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Etikett("Wachenkasse")
+                    Text("${zahl(schatz?.coins ?: 0)} Coins", style = Schrift.Titel, color = Farben.AmberHell)
+                }
+                if (schatz != null) Knopf("Wache anpassen", beiAnpassen, kompakt = true)
+            }
+            SehrLeise(
+                "Coins verdient die Wache mit Stufenaufstiegen, Clanrunden und Einzahlungen aus der " +
+                    "Mannschaft — zehn Credits werden ein Coin. Die Auslage wechselt jede Woche.",
+            )
+        }
+
+        Meldungszeile(meldung, hinweis, beiMeldungWeg)
+
+        if (schatz == null) {
+            SehrLeise("Der Wachen-Shop öffnet gerade …")
+            return@Seite
+        }
+
+        SehrLeise(
+            if (schatz.darfKaufen) "Du darfst für die Wache kaufen."
+            else "Kaufen dürfen Leitung und Zugführer — wünschen darfst du dir alles.",
+        )
+
+        val ausbau = schatz.artikel.filter { !it.zierde }
+        val zierde = schatz.artikel.filter { it.zierde }
+
+        if (ausbau.isNotEmpty()) {
+            Abschnitt("Ausbau") {
+                ausbau.forEach { a ->
+                    Ware(a, schatz, scharf, laeuft, ausbau = true, beiKaufen = {
+                        if (scharf != a.id) scharf = a.id else {
+                            scharf = null
+                            beiKaufen(a.id)
+                        }
+                    }, beiWunsch = beiWunsch)
+                }
+            }
+        }
+
+        if (zierde.isNotEmpty()) {
+            Abschnitt("Diese Woche im Laden") {
+                restzeit(schatz.wechseltUm)?.let { SehrLeise("Wechselt $it", mono = true) }
+                SehrLeise(
+                    "Zehn Stücke je Woche, eines davon im Angebot. Gekauft ist gekauft — was ihr habt, " +
+                        "bleibt euch, auch wenn es nächste Woche nicht mehr hier steht.",
+                )
+                zierde.forEach { a ->
+                    Ware(a, schatz, scharf, laeuft, ausbau = false, beiKaufen = {
+                        if (scharf != a.id) scharf = a.id else {
+                            scharf = null
+                            beiKaufen(a.id)
+                        }
+                    }, beiWunsch = beiWunsch)
+                }
+            }
+        }
+
+        Abschnitt("Einzahlen") {
+            val credits = einzahlung.toIntOrNull() ?: 0
+            val coins = credits / 10
+            Kasten(abstandInnen = Abstand.Klein) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
+                    verticalAlignment = Alignment.Bottom,
+                ) {
+                    Feld(
+                        wert = einzahlung,
+                        beiAenderung = { einzahlung = it.filter(Char::isDigit).take(7) },
+                        etikett = "Aus deinen Credits in die Wachenkasse",
+                        platzhalter = "Credits",
+                        tastatur = KeyboardType.Number,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Knopf(
+                        "Einzahlen",
+                        {
+                            beiEinzahlen(credits)
+                            einzahlung = ""
+                        },
+                        aktiv = !laeuft && coins >= 1 && coins * 10 <= meineCredits,
+                        kompakt = true,
+                    )
+                }
+                SehrLeise(
+                    if (coins > 0) {
+                        "${coins * 10} deiner Credits werden $coins ${if (coins == 1) "Coin" else "Coins"}" +
+                            (if (credits - coins * 10 > 0) ", ${credits - coins * 10} bleiben bei dir" else "") + "."
+                    } else {
+                        "Ab 10 Credits — du hast $meineCredits."
+                    },
+                )
+            }
+        }
+
+        if (schatz.auszug.isNotEmpty()) {
+            Abschnitt("Letzte Bewegungen") {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(Abstand.Klein),
+                    modifier = Modifier.fillMaxWidth().flaeche(ecke = 9.dp).padding(Abstand.Normal),
+                ) {
+                    schatz.auszug.forEach { p ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
+                            SehrLeise(kurzdatumIso(p.um), mono = true)
+                            Text(p.text, style = Schrift.Klein, color = Farben.Text, modifier = Modifier.weight(1f))
+                            Text(
+                                (if (p.betrag > 0) "+" else "") + p.betrag,
+                                style = Schrift.MonoKlein,
+                                color = if (p.betrag < 0) Farben.TextLeise else Farben.GruenHell,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Eine Ware der Auslage — mit Wirkung, Wünschen und dem einen Knopf, der zu ihr passt. */
+@Composable
+private fun Ware(
+    a: Wachenartikel,
+    schatz: Wachenschatz,
+    scharf: String?,
+    laeuft: Boolean,
+    ausbau: Boolean,
+    beiKaufen: () -> Unit,
+    beiWunsch: (String, Boolean) -> Unit,
+) {
+    val fehlt = maxOf(0, a.preis - schatz.coins)
+
+    Kasten(abstandInnen = Abstand.Winzig) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Etikett(if (ausbau) "Ausbau" else platzname(a.art))
+                Text(a.name, style = Schrift.Normal, color = Farben.Text)
+            }
+            when {
+                ausbau && a.gekauft > 0 -> Marke("${a.gekauft} ×")
+                !ausbau && a.gekauft > 0 -> Marke("✓ Im Besitz", farbe = Farben.GruenHell)
+            }
+        }
+        if (a.angebot) {
+            Text(
+                "−${schatz.angebotRabattProzent} % · statt ${a.listenpreis}",
+                style = Schrift.MonoKlein,
+                color = Farben.AmberHell,
+            )
+        }
+        SehrLeise(wirkung(a.art))
+        if (a.wuensche > 0 && (ausbau || a.gekauft == 0)) {
+            Text(
+                "${a.wuensche} ${if (a.wuensche == 1) "Wunsch" else "Wünsche"} aus der Mannschaft",
+                style = Schrift.Klein,
+                color = Farben.BlauHell,
+            )
+        }
+        when {
+            ausbau && a.ausverkauft -> SehrLeise("Ausgebaut")
+            !ausbau && a.gekauft > 0 -> SehrLeise("Im Besitz")
+            schatz.darfKaufen -> Knopf(
+                when {
+                    fehlt > 0 -> "Es fehlen $fehlt Coins"
+                    scharf == a.id -> "Wirklich für ${a.preis} Coins kaufen?"
+                    else -> "${a.preis} Coins"
+                },
+                beiKaufen,
+                art = if (scharf == a.id) Knopfart.Haupt else Knopfart.Normal,
+                aktiv = !laeuft && fehlt == 0,
+                kompakt = true,
+            )
+            else -> Knopf(
+                if (a.vonMirGewuenscht) "Gewünscht ✓" else "Wünschen",
+                { beiWunsch(a.id, !a.vonMirGewuenscht) },
+                art = Knopfart.Leise,
+                aktiv = !laeuft,
+                kompakt = true,
+            )
+        }
+    }
+}
+
+private fun wirkung(art: String): String = when (art) {
+    "Mitgliederplaetze" -> "Zwei Plätze mehr in der Mannschaft — mehrfach kaufbar, bis 50."
+    "Terminplaetze" -> "Ein geplanter Dienst mehr gleichzeitig im Dienstplan."
+    "Emblemrahmen" -> "Ein Ring um das Wachen-Emblem."
+    "Emblemzeichen" -> "Ein Zeichen im Emblem, an Stelle der Initialen."
+    "Wachenfarbe" -> "Ein Farbton über die freie Palette hinaus."
+    "Beiname" -> "Eine Zeile über dem Wachennamen."
+    else -> "Ein Muster im Kopf der Wachenseite."
+}
+
+/** „noch 3 Tage" — kein Countdown auf die Sekunde, eine Auslage steht eine Woche. */
+private fun restzeit(bis: String?): String? {
+    val dann = bis?.let(::zeitwert) ?: return null
+    val ms = dann - System.currentTimeMillis()
+    if (ms <= 0) return null
+    val stunden = Duration.ofMillis(ms).toHours()
+    val wann = DateTimeFormatter.ofPattern("EEEE, dd.MM.", Locale.GERMAN)
+        .format(Instant.ofEpochMilli(dann).atZone(ZoneId.systemDefault()))
+    val rest = when {
+        stunden >= 48 -> "noch ${stunden / 24} Tage"
+        stunden >= 24 -> "noch 1 Tag"
+        stunden >= 2 -> "noch $stunden Stunden"
+        stunden >= 1 -> "noch 1 Stunde"
+        else -> "weniger als eine Stunde"
+    }
+    return "$rest · $wann"
+}
+
+private fun kurzdatumIso(iso: String): String = zeitwert(iso)?.let(::kurzdatum) ?: "—"

@@ -192,6 +192,25 @@ class Sozial(anwendung: Application) : AndroidViewModel(anwendung) {
             }
         }
 
+    /**
+     * Eine Rundeneinladung abhaken — angenommen oder abgelehnt.
+     *
+     * Der Beitritt selbst passiert danach an der Stelle, die gefragt hat; hier
+     * wird nur der Zettel vom Tisch genommen. `danach` bekommt, ob der Hub
+     * zugestimmt hat — nur dann darf der Beitritt folgen.
+     */
+    fun einladungBeantworten(nr: Int, annehmen: Boolean, danach: (Boolean) -> Unit = {}) =
+        viewModelScope.launch {
+            val antwort = runCatching {
+                draht.frage("EinladungBeantworten", JsonPrimitive(nr), wert(annehmen))
+            }.getOrNull()
+            val fehler = (antwort as? JsonPrimitive)?.content
+            val ok = fehler.isNullOrBlank() || fehler == "null"
+            if (!ok) _stand.update { it.copy(meldung = fehler) }
+            beiEinladungen?.invoke()
+            danach(ok)
+        }
+
     // ------------------------------------------------------------ Wachenchat
 
     fun wachenchatOeffnen(id: String) = viewModelScope.launch {

@@ -167,6 +167,15 @@ data class Freund(
     val wappenfarbe: Int = 0,
     val profilrahmen: String = "keiner",
     val kopfmuster: String = "keines",
+    /**
+     * Die Vorschauzeile der Gesprächsliste: jüngste Nachricht, wer sie schrieb,
+     * wann. `null`, wenn noch nie geschrieben wurde.
+     */
+    val letzteNachricht: String? = null,
+    val letzteNachrichtVonMir: Boolean = false,
+    val letzteNachrichtUm: String? = null,
+    /** Der Tag der Wache — er steht vor dem Namen wie der Team-Haken. */
+    val wachentag: String? = null,
 ) {
     /** Steht diese Freundschaft, oder ist sie noch eine Anfrage? */
     val bestaetigt: Boolean get() = stand.equals("Bestaetigt", true)
@@ -233,6 +242,8 @@ data class Gemeinschaft(
     /** Nur für Entscheider gefüllt, sonst 0. */
     val offeneAntraege: Int = 0,
     val offeneMeldungen: Int = 0,
+    /** Der Wachentag, leer heißt keiner — ab Wachenstufe 40. */
+    val tag: String? = null,
 ) {
     val istLeitung: Boolean get() = eigeneRolle == "Leitung"
     val darfFuehren: Boolean get() = eigeneRolle == "Leitung" || eigeneRolle == "Zugfuehrer"
@@ -748,7 +759,24 @@ data class Wachenstatistik(
     val einsaetze: Int = 0,
     val maxMitglieder: Int = 0,
     val maxTermine: Int = 0,
-)
+    val hilfsfristSekunden: Double? = null,
+    /** Die Punkte der letzten dreißig Tage — wer gerade fährt. */
+    val aktivitaetPunkte: Int = 0,
+    val clanrundenSperreMinuten: Int = 0,
+    val naechsteFreischaltung: String? = null,
+    val clanrundenCoins: Int = 0,
+    /** Wie viele Zierstücke die Wache bis hierher freigespielt hat. */
+    val stufenstuecke: Int = 0,
+) {
+    /** Wie weit die laufende Stufe gefüllt ist — dieselbe Rechnung wie am Konto. */
+    val anteil: Float
+        get() {
+            val rest = bisZurNaechsten ?: return 1f
+            val ab = schwelle ?: 0
+            val spanne = (erfahrung - ab) + rest
+            return if (spanne <= 0) 1f else ((erfahrung - ab).toFloat() / spanne).coerceIn(0f, 1f)
+        }
+}
 
 /** Der volle Blick auf die eigene Gemeinschaft — Anträge nur für Entscheider. */
 @Serializable
@@ -759,6 +787,11 @@ data class GemeinschaftDetail(
     val statistik: Wachenstatistik = Wachenstatistik(),
     val termine: List<Wachentermin> = emptyList(),
     val meldungen: List<Gemeinschaftsmeldung> = emptyList(),
+    /** Interne Rangliste und Logbuch — von außen jeweils leer. */
+    val beitraege: List<Wachenbeitrag> = emptyList(),
+    val logbuch: List<Wachenrunde> = emptyList(),
+    /** Kasse und Shop der Wache — nur für Mitglieder, von außen `null`. */
+    val schatz: Wachenschatz? = null,
 )
 
 /** Eine Runde, die gerade Verstärkung sucht — die öffentliche Liste. */

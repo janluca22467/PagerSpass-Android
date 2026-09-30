@@ -476,6 +476,11 @@ private fun Angemeldet(
 ) {
     val begleiterstand by begleiter.stand.collectAsStateWithLifecycle()
     val daten by sitzung.daten.collectAsStateWithLifecycle()
+    // Der Freundeskreis hängt an der Activity wie die Sitzung — hier geholt und
+    // nicht in `MainActivity`, weil nur der angemeldete Zweig ihn braucht.
+    val kreis: Freundeskreis = androidx.lifecycle.viewmodel.compose.viewModel()
+    val kreisstand by kreis.stand.collectAsStateWithLifecycle()
+    val sozialstand by sozial.stand.collectAsStateWithLifecycle()
     val eintrag by steuerung.currentBackStackEntryAsState()
     val hier = Weg.entries.firstOrNull { it.adresse == eintrag?.destination?.route }
     val browser = LocalUriHandler.current
@@ -490,6 +495,34 @@ private fun Angemeldet(
     // eingestellte Server: Wer gegen `localhost` entwickelt, will auch dort
     // landen — anders als bei den Rechtstexten, die nur im Betrieb liegen.
     fun imWeb(seite: String) = browser.openUri("${stand.server}/play/mobile/$seite")
+
+    // Was der Freundeskreis der Sitzung zu sagen hat — dieselben Haken wie bei
+    // der Sozialschicht. Je Konto neu gesetzt, und dabei wird vergessen, was
+    // zum vorigen gehörte.
+    LaunchedEffect(stand.konto?.kennung) {
+        kreis.vergessen()
+        kreis.beiFreunden = { sitzung.freundeLaden(neu = true) }
+        kreis.beiWache = { id ->
+            sitzung.wacheLaden(neu = true)
+            id?.let { sitzung.wacheDetailLaden(it) }
+        }
+        kreis.beiDetail = { sitzung.wacheDetailSetzen(it) }
+        kreis.beiKonto = { sitzung.kontoAuffrischen() }
+        kreis.beiBrett = { sitzung.brettLaden(neu = true) }
+        kreis.beiGeschenk = {
+            sozial.stand.value.gespraechMit?.let { sozial.gespraechOeffnen(it) }
+            sitzung.shopLaden(neu = true)
+        }
+    }
+
+    val anzeigename = stand.konto?.anzeigename.orEmpty()
+    fun profilOeffnen(benutzername: String) = steuerung.navigate("$UNTERSEITE_FREMDPROFIL/$benutzername")
+    fun dazuschalten(code: String) = runde.beitreten(code, anzeigename)
+    val brettgriffe = de.pagerspass.pagerspass.ansichten.Brettgriffe(
+        profil = ::profilOeffnen,
+        entfernen = { kreis.eintragEntfernen(it) },
+        melden = { kreis.eintragMelden(it) },
+    )
 
     Box(modifier = Modifier.fillMaxSize()) {
         NavHost(
@@ -554,7 +587,12 @@ private fun Angemeldet(
             }
 
             composable(Weg.Wache.adresse) {
-                val sozialstand by sozial.stand.collectAsStateWithLifecycle()
+                // Landkreise fürs Gründen und die Suche, die eigenen Schichten für
+                // die Hilfsfristkurve — beide nur, wenn sie noch fehlen.
+                LaunchedEffect(Unit) {
+                    sitzung.katalogSicherstellen()
+                    sitzung.buchLaden()
+                }
                 WachenSeite(
                     unterrand = platz,
                     wache = daten.wache,
@@ -562,6 +600,11 @@ private fun Angemeldet(
                     antraege = daten.wachenantraege,
                     sozial = sozialstand,
                     meineKennung = stand.konto?.kennung.orEmpty(),
+                    konto = stand.konto,
+                    kreis = kreisstand,
+                    landkreise = daten.katalog.inhalt?.landkreise.orEmpty(),
+                    schichten = daten.buch.inhalt?.schichten.orEmpty(),
+                    server = stand.server,
                     beiLaden = { sitzung.wacheLaden() },
                     beiDetail = { sitzung.wacheDetailLaden(it) },
                     beiChatOeffnen = { sozial.wachenchatOeffnen(it) },
@@ -587,26 +630,75 @@ private fun Angemeldet(
                         meldungErledigt = { id, nr -> sitzung.meldungErledigt(id, nr) },
                         clanrunde = { sitzung.clanrundeStarten(it) },
                         beitreten = { sitzung.beitrittMitCode(it) },
-                        gruenden = { name, text -> sitzung.gruenden(name, text) },
+                        gruenden = { name, text, kreisId, kreisName ->
+                            kreis.gruenden(name, text, kreisId, kreisName)
+                        },
                         bewerben = { id, text -> sitzung.bewerben(id, text) },
                         bewerbungZurueckziehen = { sitzung.bewerbungZurueckziehen(it) },
                         einladungAnnehmen = { sitzung.einladungAnnehmen(it) },
+                        clanrundeSchliessen = { kreis.clanrundeSchliessen(it) },
+                        dazustossen = ::dazuschalten,
+                        profil = ::profilOeffnen,
+                        tagSetzen = { id, tag -> kreis.tagSetzen(id, tag) },
+                        einstellungen = { id, e -> kreis.einstellungenSpeichern(id, e) },
+                        codeErneuern = { kreis.codeErneuern(it) },
+                        aufloesen = { kreis.aufloesen(it) },
+                        schmuck = { id, art, stueck -> kreis.schmuckSetzen(id, art, stueck) },
+                        farbe = { id, n -> kreis.farbeSetzen(id, n) },
+                        rangliste = { steuerung.navigate(UNTERSEITE_WACHENRANGLISTE) },
+                        shop = { steuerung.navigate(UNTERSEITE_WACHENSHOP) },
+                        hilfsfristen = { kreis.hilfsfristenLaden(it) },
+                        laufbahn = { kreis.laufbahnLaden() },
+                        suchen = { kreis.wachenSuchen(it) },
+                        landkreisvorschlag = { kreis.landkreisvorschlagLaden() },
+                        meldungWeg = { kreis.meldungWegnehmen() },
                     ),
                 )
             }
 
             composable(Weg.Freunde.adresse) {
+                LaunchedEffect(Unit) {
+                    // Das eigene Profil trägt Wappen und Muster des Ausweises; die
+                    // Wache entscheidet, ob es am Brett den Reiter „Wache" gibt.
+                    sitzung.profilLaden()
+                    sitzung.wacheLaden()
+                    sitzung.einladungenLaden()
+                }
                 FreundeSeite(
                     unterrand = platz,
+                    konto = stand.konto,
+                    meinProfil = daten.profil.inhalt,
                     freunde = daten.freunde,
+                    einladungen = daten.einladungen.inhalt.orEmpty(),
+                    kreis = kreisstand,
                     server = stand.server,
-                    beiLaden = { sitzung.freundeLaden() },
-                    beiAntwort = { wen, annehmen -> sitzung.freundAntworten(wen, annehmen) },
-                    beiGespraech = { freund ->
-                        steuerung.navigate(
-                            "$UNTERSEITE_GESPRAECH/${freund.kennung}/${freund.anzeigename.ifBlank { freund.benutzername }}",
-                        )
-                    },
+                    griffe = de.pagerspass.pagerspass.ansichten.FreundeGriffe(
+                        laden = { sitzung.freundeLaden() },
+                        profil = ::profilOeffnen,
+                        gespraech = { freund ->
+                            steuerung.navigate(
+                                "$UNTERSEITE_GESPRAECH/${freund.kennung}/${freund.anzeigename.ifBlank { freund.benutzername }}",
+                            )
+                        },
+                        dazuschalten = ::dazuschalten,
+                        antworten = { wen, annehmen -> kreis.antworten(wen, annehmen) },
+                        anfragen = { kreis.anfragen(it) },
+                        loesen = { kreis.loesen(it) },
+                        suchen = { kreis.suchen(it) },
+                        vorschlaegeLaden = { kreis.vorschlaegeLaden() },
+                        weglegen = { kreis.weglegen(it) },
+                        zurueckholen = { kreis.zurueckholen() },
+                        einladungAnnehmen = { e ->
+                            sozial.einladungBeantworten(e.nr, true) { ok ->
+                                if (ok) {
+                                    if (e.alsZuschauer) runde.zuschauen(e.roomCode, anzeigename)
+                                    else runde.beitreten(e.roomCode, anzeigename)
+                                }
+                            }
+                        },
+                        einladungAblehnen = { e -> sozial.einladungBeantworten(e.nr, false) },
+                        meldungWeg = { kreis.meldungWegnehmen() },
+                    ),
                     brett = {
                         BrettTeil(
                             brett = daten.brett,
@@ -619,6 +711,8 @@ private fun Angemeldet(
                             beiSchreiben = { text, sicht -> sitzung.brettSchreiben(text, sicht) },
                             beiQuittieren = { sitzung.brettQuittieren(it) },
                             beiOeffnen = { steuerung.navigate("$UNTERSEITE_EINTRAG/$it") },
+                            server = stand.server,
+                            griffe = brettgriffe,
                         )
                     },
                 )
@@ -667,17 +761,29 @@ private fun Angemeldet(
             }
 
             composable("$UNTERSEITE_GESPRAECH/{kennung}/{name}") { eintrag ->
-                val sozialstand by sozial.stand.collectAsStateWithLifecycle()
+                val partnerKennung = eintrag.arguments?.getString("kennung").orEmpty()
                 GespraechSeite(
                     unterrand = platz,
-                    partnerKennung = eintrag.arguments?.getString("kennung").orEmpty(),
+                    partnerKennung = partnerKennung,
                     partnerName = eintrag.arguments?.getString("name").orEmpty(),
+                    partner = daten.freunde.inhalt?.firstOrNull { it.kennung == partnerKennung },
+                    server = stand.server,
                     sozial = sozialstand,
                     meineKennung = stand.konto?.kennung.orEmpty(),
+                    oeffnetGeschenk = kreisstand.oeffnetGeschenk,
+                    meldung = kreisstand.meldung ?: sozialstand.meldung,
+                    hinweis = kreisstand.hinweis,
                     beiOeffnen = { sozial.gespraechOeffnen(it) },
                     beiSchliessen = { sozial.gespraechSchliessen() },
                     beiSenden = { an, text -> sozial.senden(an, text) },
                     beiTermin = { nr, zusagen -> sozial.terminBeantworten(nr, zusagen) },
+                    beiGeschenk = { kreis.geschenkOeffnen(it) },
+                    beiProfil = ::profilOeffnen,
+                    beiDazuschalten = ::dazuschalten,
+                    beiMeldungWeg = {
+                        kreis.meldungWegnehmen()
+                        sozial.meldungWegnehmen()
+                    },
                     beiZurueck = { steuerung.popBackStack() },
                 )
             }
@@ -688,11 +794,104 @@ private fun Angemeldet(
                     nr = eintrag.arguments?.getString("nr")?.toLongOrNull() ?: 0L,
                     eintrag = daten.brettEintrag,
                     kommentare = daten.brettKommentare,
+                    server = stand.server,
+                    meldung = kreisstand.meldung,
+                    hinweis = kreisstand.hinweis,
                     beiLaden = { sitzung.brettEintragLaden(it) },
                     beiQuittieren = { sitzung.brettQuittieren(it) },
                     beiKommentieren = { nr, text -> sitzung.brettKommentieren(nr, text) },
+                    beiKommentarMelden = { kreis.kommentarMelden(it) },
+                    beiMeldungWeg = { kreis.meldungWegnehmen() },
+                    // Wer seinen Eintrag zurücknimmt, hat hier nichts mehr zu lesen.
+                    griffe = de.pagerspass.pagerspass.ansichten.Brettgriffe(
+                        profil = ::profilOeffnen,
+                        entfernen = { nr -> kreis.eintragEntfernen(nr) { steuerung.popBackStack() } },
+                        melden = { kreis.eintragMelden(it) },
+                    ),
                     beiZurueck = { steuerung.popBackStack() },
                 )
+            }
+
+            composable("$UNTERSEITE_FREMDPROFIL/{benutzername}") { eintrag ->
+                val eigeneWache = daten.wache.inhalt?.eigene
+                // Nach einer Anfrage, Antwort oder Trennung steht der neue Stand
+                // der Beziehung erst im frisch geholten Profil.
+                fun neuLaden() {
+                    kreis.stand.value.profilFuer?.let { kreis.profilLaden(it) }
+                }
+                de.pagerspass.pagerspass.ansichten.FremdprofilSeite(
+                    unterrand = platz,
+                    benutzername = eintrag.arguments?.getString("benutzername").orEmpty(),
+                    kreis = kreisstand,
+                    server = stand.server,
+                    griffe = de.pagerspass.pagerspass.ansichten.Profilgriffe(
+                        laden = { kreis.profilLaden(it) },
+                        anfragen = { wen -> kreis.anfragen(wen, ::neuLaden) },
+                        antworten = { wen, ja -> kreis.antworten(wen, ja, ::neuLaden) },
+                        beenden = { wen -> kreis.loesen(wen, ::neuLaden) },
+                        // Wer blockiert, will das Gesicht nicht länger ansehen — zurück.
+                        blockieren = { wen -> kreis.blockieren(wen) { steuerung.popBackStack() } },
+                        melden = { wen, grund -> kreis.melden(wen, grund) },
+                        gespraech = { p ->
+                            steuerung.navigate("$UNTERSEITE_GESPRAECH/${p.kennung}/${p.anzeigename}")
+                        },
+                        dazuschalten = ::dazuschalten,
+                        inWacheEinladen = eigeneWache?.takeIf { it.darfFuehren }?.let { w ->
+                            { wen: String -> sitzung.wacheEinladen(w.id, wen) }
+                        },
+                        eigenesProfil = { steuerung.navigate(UNTERSEITE_PROFIL) },
+                        quittieren = { nr -> kreis.profilQuittieren(nr) { sitzung.brettQuittieren(nr) } },
+                        eintragOeffnen = { steuerung.navigate("$UNTERSEITE_EINTRAG/$it") },
+                        meldungWeg = { kreis.meldungWegnehmen() },
+                        zurueck = { steuerung.popBackStack() },
+                    ),
+                    brettgriffe = brettgriffe,
+                )
+            }
+
+            composable(UNTERSEITE_WACHENRANGLISTE) {
+                de.pagerspass.pagerspass.ansichten.WachenranglisteSeite(
+                    unterrand = platz,
+                    liste = kreisstand.rangliste,
+                    beiLaden = { kreis.ranglisteLaden() },
+                    beiZurueck = { steuerung.popBackStack() },
+                )
+            }
+
+            composable(UNTERSEITE_WACHENSHOP) {
+                val eigene = daten.wache.inhalt?.eigene
+                val detail = daten.wacheDetail.inhalt?.takeIf { it.gemeinschaft.id == eigene?.id }
+                var aussehenOffen by remember { mutableStateOf(false) }
+                de.pagerspass.pagerspass.ansichten.WachenShopSeite(
+                    unterrand = platz,
+                    gemeinschaft = eigene,
+                    schatz = detail?.schatz,
+                    meineCredits = stand.konto?.credits ?: 0,
+                    laeuft = kreisstand.laeuft,
+                    meldung = kreisstand.meldung,
+                    hinweis = kreisstand.hinweis,
+                    beiLaden = {
+                        sitzung.wacheLaden()
+                        eigene?.id?.let { sitzung.wacheDetailLaden(it) }
+                    },
+                    beiKaufen = { artikel -> eigene?.let { kreis.ausbauKaufen(it.id, artikel) } },
+                    beiWunsch = { artikel, an -> eigene?.let { kreis.wunschSetzen(it.id, artikel, an) } },
+                    beiEinzahlen = { credits -> eigene?.let { kreis.einzahlen(it.id, credits) } },
+                    beiAnpassen = { aussehenOffen = true },
+                    beiMeldungWeg = { kreis.meldungWegnehmen() },
+                    beiZurueck = { steuerung.popBackStack() },
+                )
+                val schatz = detail?.schatz
+                if (aussehenOffen && eigene != null && schatz != null) {
+                    de.pagerspass.pagerspass.ansichten.AussehenBlende(
+                        gemeinschaft = detail.gemeinschaft.copy(eigeneRolle = eigene.eigeneRolle),
+                        schatz = schatz,
+                        laeuft = kreisstand.laeuft,
+                        beiSchmuck = { art, stueck -> kreis.schmuckSetzen(eigene.id, art, stueck) },
+                        beiFarbe = { kreis.farbeSetzen(eigene.id, it) },
+                        beiSchliessen = { aussehenOffen = false },
+                    )
+                }
             }
 
             composable(UNTERSEITE_OEFFENTLICH) {
@@ -869,6 +1068,9 @@ private const val UNTERSEITE_OEFFENTLICH = "oeffentlicheRunden"
 private const val UNTERSEITE_TAGESSCHICHT = "tagesschicht"
 private const val UNTERSEITE_GESPRAECH = "gespraech"
 private const val UNTERSEITE_EINTRAG = "eintrag"
+private const val UNTERSEITE_FREMDPROFIL = "freundprofil"
+private const val UNTERSEITE_WACHENRANGLISTE = "wachenrangliste"
+private const val UNTERSEITE_WACHENSHOP = "wachenshop"
 
 /** Zu welchem Weg der Leiste eine Unterseite gehört. */
 private fun unterseitenweg(route: String?): Weg? = when (route) {
@@ -877,9 +1079,11 @@ private fun unterseitenweg(route: String?): Weg? = when (route) {
     UNTERSEITE_MITTEILUNGEN, UNTERSEITE_BEGLEITER,
     -> Weg.Konto
     UNTERSEITE_OEFFENTLICH, UNTERSEITE_TAGESSCHICHT -> Weg.Dienst
+    UNTERSEITE_WACHENRANGLISTE, UNTERSEITE_WACHENSHOP -> Weg.Wache
     else -> when {
         route?.startsWith(UNTERSEITE_GESPRAECH) == true -> Weg.Freunde
         route?.startsWith(UNTERSEITE_EINTRAG) == true -> Weg.Freunde
+        route?.startsWith(UNTERSEITE_FREMDPROFIL) == true -> Weg.Freunde
         else -> null
     }
 }
