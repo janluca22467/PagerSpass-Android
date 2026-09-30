@@ -141,12 +141,12 @@ private fun Bauortwahl(werkbank: Werkbank, zweck: String, wort: String = "Stando
 private fun Wachenbau(welt: Welt, zustand: Weltzustand, werkbank: Werkbank) {
     val bereich = rememberCoroutineScope()
     val bauarten = zustand.stand?.bauarten.orEmpty()
-    var name by remember { mutableStateOf("") }
-    var art by remember { mutableStateOf<WeltBauart?>(bauarten.firstOrNull { it.frei }) }
+    val name = werkbank.bauName
+    val art: WeltBauart? = bauarten.firstOrNull { it.art == werkbank.bauArt } ?: bauarten.firstOrNull { it.frei }
     var fehler by remember { mutableStateOf<String?>(null) }
     var sendet by remember { mutableStateOf(false) }
 
-    Feld(wert = name, beiAenderung = { name = it.take(60) }, etikett = "Name", platzhalter = "Feuerwache Mitte")
+    Feld(wert = name, beiAenderung = { werkbank.bauName = it.take(60) }, etikett = "Name", platzhalter = "Feuerwache Mitte")
     Auswahl(
         etikett = "Bauart",
         eintraege = bauarten,
@@ -157,7 +157,7 @@ private fun Wachenbau(welt: Welt, zustand: Weltzustand, werkbank: Werkbank) {
             else if (b.art == "Werkstatt") "Hebebühnen" else "Plätze"
             "${zahl(b.preis)} Credits · ${b.stellplaetze} $plaetze" + if (b.frei) "" else " · gesperrt"
         },
-        beiWahl = { if (it.frei) art = it },
+        beiWahl = { if (it.frei) werkbank.bauArt = it.art },
     )
     Bauortwahl(werkbank, "wache")
     Warnsatz(fehler)
@@ -175,7 +175,7 @@ private fun Wachenbau(welt: Welt, zustand: Weltzustand, werkbank: Werkbank) {
                 }
                 sendet = false
                 if (fehler == null) {
-                    name = ""
+                    werkbank.bauName = ""
                     werkbank.bauort = null
                     werkbank.bauVorgang = "keiner"
                 }
@@ -192,7 +192,7 @@ private fun Wachenbau(welt: Welt, zustand: Weltzustand, werkbank: Werkbank) {
 private fun Zweigstellenbau(welt: Welt, zustand: Weltzustand, werkbank: Werkbank) {
     val bereich = rememberCoroutineScope()
     val z = zustand.stand?.zweigstelle
-    var name by remember { mutableStateOf("") }
+    val name = werkbank.zweigName
     var fehler by remember { mutableStateOf<String?>(null) }
     var sendet by remember { mutableStateOf(false) }
     val km = Math.round((z?.mindestabstandMeter?.takeIf { it > 0 } ?: 35_000.0) / 1000)
@@ -213,7 +213,7 @@ private fun Zweigstellenbau(welt: Welt, zustand: Weltzustand, werkbank: Werkbank
             color = Farben.Amber,
         )
     } else {
-        Feld(wert = name, beiAenderung = { name = it.take(60) }, etikett = "Name", platzhalter = "Name des zweiten Bereichs")
+        Feld(wert = name, beiAenderung = { werkbank.zweigName = it.take(60) }, etikett = "Name", platzhalter = "Name des zweiten Bereichs")
         Bauortwahl(werkbank, "zweig")
         Warnsatz(fehler)
         Knopf(
@@ -229,7 +229,7 @@ private fun Zweigstellenbau(welt: Welt, zustand: Weltzustand, werkbank: Werkbank
                     }
                     sendet = false
                     if (fehler == null) {
-                        name = ""
+                        werkbank.zweigName = ""
                         werkbank.bauort = null
                         werkbank.bauVorgang = "keiner"
                     }
@@ -251,15 +251,15 @@ private fun Zweigstellenbau(welt: Welt, zustand: Weltzustand, werkbank: Werkbank
 @Composable
 private fun Punkte(welt: Welt, zustand: Weltzustand, werkbank: Werkbank) {
     val bereich = rememberCoroutineScope()
-    var form by remember { mutableStateOf("Punkt") }
-    var name by remember { mutableStateOf("") }
-    var art by remember { mutableStateOf(POI_ARTEN.first()) }
-    var gelaendeart by remember { mutableStateOf(GELAENDEARTEN.first()) }
-    var flaeche by remember { mutableStateOf(1200) }
+    val form = werkbank.poiForm
+    val name = werkbank.poiName
+    val art = POI_ARTEN.firstOrNull { it.first == werkbank.poiArt } ?: POI_ARTEN.first()
+    val gelaendeart = GELAENDEARTEN.firstOrNull { it.first == werkbank.poiGelaendeart } ?: GELAENDEARTEN.first()
+    val flaeche = werkbank.poiFlaeche
     var fehler by remember { mutableStateOf<String?>(null) }
     var sendet by remember { mutableStateOf(false) }
-    var offenerPunkt by remember { mutableStateOf<String?>(null) }
-    var gelaendeFuer by remember { mutableStateOf<String?>(null) }
+    val offenerPunkt = werkbank.offenerPunkt
+    val gelaendeFuer = werkbank.gelaendeFuer
 
     val zeichnet = form != "Punkt"
     val strecke = form == "Strecke"
@@ -267,7 +267,7 @@ private fun Punkte(welt: Welt, zustand: Weltzustand, werkbank: Werkbank) {
     val ecken = werkbank.ecken.map { it.lat to it.lon }
 
     Text("Was du setzt", style = Schrift.Klein, color = Farben.TextLeise)
-    Segment(listOf("Punkt", "Fläche", "Strecke"), form, { form = it; werkbank.ecken = emptyList() })
+    Segment(listOf("Punkt", "Fläche", "Strecke"), form, { werkbank.poiForm = it; werkbank.ecken = emptyList() })
     Leisesatz(
         when (form) {
             "Punkt" -> "Ein Gebäude an einer Stelle — jede Lage entsteht genau dort."
@@ -276,15 +276,15 @@ private fun Punkte(welt: Welt, zustand: Weltzustand, werkbank: Werkbank) {
         },
         winzig = true,
     )
-    Feld(wert = name, beiAenderung = { name = it.take(60) }, etikett = "Name", platzhalter = "Grundschule am Park")
+    Feld(wert = name, beiAenderung = { werkbank.poiName = it.take(60) }, etikett = "Name", platzhalter = "Grundschule am Park")
     if (zeichnet) {
-        Auswahl("Was für ein Gelände", GELAENDEARTEN, gelaendeart, { it.second }, { gelaendeart = it })
+        Auswahl("Was für ein Gelände", GELAENDEARTEN, gelaendeart, { it.second }, { werkbank.poiGelaendeart = it.first })
     }
     if (!zeichnet || gelaendeart.first.isEmpty()) {
-        Auswahl("Art des Gebäudes", POI_ARTEN, art, { it.second }, { art = it })
+        Auswahl("Art des Gebäudes", POI_ARTEN, art, { it.second }, { werkbank.poiArt = it.first })
     }
     if (!zeichnet) {
-        Zahlfeld("Grundfläche in m²", flaeche, { flaeche = it }, groesstes = 50_000)
+        Zahlfeld("Grundfläche in m²", flaeche, { werkbank.poiFlaeche = it }, groesstes = 50_000)
         Leisesatz("Sie entscheidet, wie viele Menschen darin sind — und damit, wie viel ein Brand dort fordert.", winzig = true)
         Bauortwahl(werkbank, "poi", "Ort")
     } else if (gelaendeFuer == null) {
@@ -331,7 +331,7 @@ private fun Punkte(welt: Welt, zustand: Weltzustand, werkbank: Werkbank) {
                 )
                 sendet = false
                 if (fehler == null) {
-                    name = ""
+                    werkbank.poiName = ""
                     werkbank.ecken = emptyList()
                     werkbank.bauort = null
                 }
@@ -365,12 +365,12 @@ private fun Punkte(welt: Welt, zustand: Weltzustand, werkbank: Werkbank) {
                     bereich.launch { fehler = welt.poiAendern(p.id, WeltPoiAenderung(aktiv = !p.aktiv)) }
                 }, kompakt = true, art = Knopfart.Leise)
                 Knopf(if (offenerPunkt == p.id) "Zu" else "Mehr", {
-                    offenerPunkt = if (offenerPunkt == p.id) null else p.id
+                    werkbank.offenerPunkt = if (offenerPunkt == p.id) null else p.id
                 }, kompakt = true, art = Knopfart.Leise)
                 Knopf("Entfernen", { bereich.launch { fehler = welt.poiEntfernen(p.id) } }, kompakt = true, art = Knopfart.Leise)
             }
             if (offenerPunkt == p.id) {
-                Punktform(welt, p, werkbank, gelaendeFuer == p.id, { gelaendeFuer = it }) { fehler = it }
+                Punktform(welt, p, werkbank, gelaendeFuer == p.id, { werkbank.gelaendeFuer = it }) { fehler = it }
             }
         }
     }
@@ -392,7 +392,7 @@ private fun Punktform(
     val bereich = rememberCoroutineScope()
     var betroffene by remember(p.id) { mutableStateOf(p.betroffeneGesetzt?.toString().orEmpty()) }
     var hinweise by remember(p.id) { mutableStateOf(p.hinweise.joinToString("\n")) }
-    var gelaendeart by remember(p.id) { mutableStateOf(GELAENDEARTEN.firstOrNull { it.first == (p.gelaendeart ?: "") } ?: GELAENDEARTEN.first()) }
+    val gelaendeart = GELAENDEARTEN.firstOrNull { it.first == werkbank.poiGelaendeart } ?: GELAENDEARTEN.first()
     fun aendern(a: WeltPoiAenderung) = bereich.launch { beiFehler(welt.poiAendern(p.id, a)) }
 
     Text("Gelände", style = Schrift.Klein, color = Farben.TextLeise)
@@ -400,7 +400,7 @@ private fun Punktform(
         val ecken = werkbank.ecken
         val noetig = if (werkbank.eckenStrecke) 2 else 3
         Leisesatz("${ecken.size} von mindestens $noetig Punkten.", winzig = true)
-        Auswahl("Was für ein Gelände", GELAENDEARTEN, gelaendeart, { it.second }, { gelaendeart = it })
+        Auswahl("Was für ein Gelände", GELAENDEARTEN, gelaendeart, { it.second }, { werkbank.poiGelaendeart = it.first })
         Umbruchreihe {
             Knopf("Auf der Karte zeichnen", { werkbank.karteWaehlen(Kartenmodus.Gelaende) }, kompakt = true)
             Knopf("Übernehmen", {
@@ -433,10 +433,12 @@ private fun Punktform(
         )
         Umbruchreihe {
             Knopf("Fläche ziehen", {
-                werkbank.ecken = emptyList(); werkbank.eckenStrecke = false; beiAufziehen(p.id)
+                werkbank.ecken = emptyList(); werkbank.eckenStrecke = false
+                werkbank.poiGelaendeart = p.gelaendeart ?: ""; beiAufziehen(p.id)
             }, kompakt = true, art = Knopfart.Leise)
             Knopf("Strecke ziehen", {
-                werkbank.ecken = emptyList(); werkbank.eckenStrecke = true; beiAufziehen(p.id)
+                werkbank.ecken = emptyList(); werkbank.eckenStrecke = true
+                werkbank.poiGelaendeart = p.gelaendeart ?: ""; beiAufziehen(p.id)
             }, kompakt = true, art = Knopfart.Leise)
             if (p.gelaende.isNotEmpty()) {
                 Knopf("Zum Punkt machen", { aendern(WeltPoiAenderung(gelaende = emptyList())) }, kompakt = true, art = Knopfart.Leise)

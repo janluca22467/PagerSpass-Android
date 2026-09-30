@@ -528,6 +528,34 @@ fun EinstellungSeite(welt: Welt, zustand: Weltzustand, ebenen: Weltebenen) {
     Schalterzeile("Fremde Wachen", ebenen.fremdeWachen, { ebenen.fremdeWachen = it })
     Schalterzeile("Großeinsatz und Events", ebenen.grosslage, { ebenen.grosslage = it })
     Leisesatz("Eigene Fahrzeug-Icons (Icon-Packs) malst und wählst du im Browser unter World → Icons.", winzig = true)
+
+    // ------------------------------------------------------ Gefahrenbereich
+    var resetOffen by remember { mutableStateOf(false) }
+    var passwort by remember { mutableStateOf("") }
+    var resetMeldung by remember { mutableStateOf<String?>(null) }
+    Ueberschrift("Gefahrenbereich")
+    Leisesatz(
+        "PagerSpass - World zurücksetzen: Leitstelle, Wachen, Fahrzeuge, Guthaben und Buchungsblatt werden " +
+            "gelöscht. Dein Konto und alles andere bleiben. Danach wählst du einen neuen Standort.",
+        winzig = true,
+    )
+    if (!resetOffen) {
+        Knopf("Welt zurücksetzen", { resetOffen = true }, kompakt = true, art = Knopfart.Gefahr)
+    } else {
+        Feld(wert = passwort, beiAenderung = { passwort = it }, etikett = "Passwort zur Bestätigung", geheim = true)
+        Warnsatz(resetMeldung)
+        Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
+            Knopf("Welt dauerhaft zurücksetzen", {
+                sendet = true
+                bereich.launch {
+                    resetMeldung = welt.handlung("Das Zurücksetzen ging nicht.") { welt.wege.zuruecksetzen(it, passwort) }
+                    sendet = false
+                    if (resetMeldung == null) welt.erneutBetreten()
+                }
+            }, kompakt = true, art = Knopfart.Gefahr, aktiv = passwort.isNotBlank() && !sendet)
+            Knopf("Abbrechen", { resetOffen = false; passwort = "" }, kompakt = true, art = Knopfart.Leise)
+        }
+    }
 }
 
 // ==================================================================== Leihe

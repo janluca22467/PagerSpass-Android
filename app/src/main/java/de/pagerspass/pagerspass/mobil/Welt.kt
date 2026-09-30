@@ -194,8 +194,11 @@ class Welt(anwendung: Application) : AndroidViewModel(anwendung) {
         if (an && _stand.value.betriebLaeuft) viewModelScope.launch { betriebLaden() }
     }
 
+    /** Noch einmal von vorn — nach einem Fehler oder nach dem Zurücksetzen der Welt. */
     fun erneutBetreten() {
-        _stand.update { it.copy(standFehler = null, standFehlerStand = 0) }
+        taktBeenden()
+        funkgeraetGesetzt = false
+        _stand.update { Weltzustand(offen = true, kennung = it.kennung, vorlagen = it.vorlagen) }
         viewModelScope.launch { betreten() }
     }
 
@@ -280,6 +283,11 @@ class Welt(anwendung: Application) : AndroidViewModel(anwendung) {
                 if (zaehler % 12 == 0) {
                     launch { grosslageLaden() }
                     launch { eventsLaden() }
+                }
+                // Nach einem endgültig gerissenen Hub alle halbe Minute neu
+                // verbinden — der Takt trägt bis dahin alles Nötige.
+                if (zaehler % 6 == 0 && draht.lage == Funkverbindung.Lage.Getrennt) {
+                    launch { runCatching { draht.verbinden() } }
                 }
             }
         }

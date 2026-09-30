@@ -114,10 +114,15 @@ fun WeltRahmen(
     when {
         konto == null -> Unit
         !premium -> Weltriegel(
-            titel = "World ist Premium",
-            text = "PagerSpass - World ist die eine gemeinsame Karte: eine eigene Leitstelle, " +
-                "Wachen und Fahrzeuge, Lagen rund um die Uhr — zusammen mit allen anderen " +
-                "Premium-Spielern. Das Abo schließt du auf der Webseite ab; in der App wird nichts verkauft.",
+            titel = "Eine Karte, auf der alle spielen",
+            text = "Eine Runde ist eine Schicht: Sie fängt an, sie hört auf, danach ist der Kreis wieder leer. " +
+                "World ist das Gegenteil davon. Du gründest einmal eine eigene Leitstelle — irgendwo auf der " +
+                "Deutschlandkarte, auf der auch alle anderen stehen — und die bleibt.\n\n" +
+                "Von da an baust du auf: Wachen setzen, Fahrzeuge kaufen, an jedem Einsatz verdienen. Lagen " +
+                "entstehen rund um deine Wachen; was du nicht selbst schaffst, gibst du für alle frei. Einmal in " +
+                "der Woche kommt ein Großeinsatz dazu, den keine Leitstelle allein deckt.\n\n" +
+                "Der Zugang gehört zu PagerSpass Premium. Das Abo schließt du auf der Webseite ab — in der App " +
+                "wird nichts verkauft.",
             beiZurueck = beiVerlassen,
         ) {
             Knopf("Premium auf der Webseite ansehen", { shop() }, art = Knopfart.Haupt, breit = true)
@@ -135,9 +140,8 @@ fun WeltRahmen(
                 zustand.standFehler?.contains("Mail", ignoreCase = true) == true
             val abo = zustand.standFehlerStand == 403 && !email
             Weltriegel(
-                titel = if (email) "E-Mail-Adresse bestätigen" else "World ist gerade nicht erreichbar",
-                text = zustand.standFehler.orEmpty() +
-                    if (email) "\n\nDie Adresse hinterlegst und bestätigst du unter Konto." else "",
+                titel = if (email) "E-Mail-Adresse hinterlegen" else "World ist gerade nicht erreichbar",
+                text = zustand.standFehler.orEmpty(),
                 beiZurueck = beiVerlassen,
             ) {
                 when {

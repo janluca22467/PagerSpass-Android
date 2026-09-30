@@ -191,6 +191,10 @@ fun PagerSpassApp(
                 konto = stand.konto,
                 server = stand.server,
                 beiVerlassen = { welt.schliessen() },
+                beiKonto = {
+                    welt.schliessen()
+                    runCatching { zurWahl(steuerung, Weg.Konto) }
+                },
             )
 
             else -> Angemeldet(stand, sitzung, runde, sozial, begleiter, steuerung, welt)

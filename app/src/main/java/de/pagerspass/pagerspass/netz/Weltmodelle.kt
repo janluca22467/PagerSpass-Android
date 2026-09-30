@@ -791,6 +791,9 @@ internal data class WeltGesuchAufgeben(
 )
 
 @Serializable
+internal data class WeltPasswort(val passwort: String)
+
+@Serializable
 internal data class WeltGesuchBedienen(val fahrzeugId: String)
 
 @Serializable

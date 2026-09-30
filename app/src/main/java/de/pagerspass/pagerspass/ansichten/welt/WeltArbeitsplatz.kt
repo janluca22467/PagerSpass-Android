@@ -122,6 +122,19 @@ class Werkbank {
     var fremdwache by mutableStateOf<String?>(null)
     var bauVorgang by mutableStateOf("keiner")
 
+    // Die Entwürfe der Bauseite. Sie stehen hier, weil die Seite beim Wählen
+    // eines Orts zugeht — und mit ihr alles, was nur in ihr gemerkt wäre.
+    var bauName by mutableStateOf("")
+    var bauArt by mutableStateOf<String?>(null)
+    var zweigName by mutableStateOf("")
+    var poiForm by mutableStateOf("Punkt")
+    var poiName by mutableStateOf("")
+    var poiArt by mutableStateOf("Schule")
+    var poiGelaendeart by mutableStateOf("")
+    var poiFlaeche by mutableStateOf(1200)
+    var offenerPunkt by mutableStateOf<String?>(null)
+    var gelaendeFuer by mutableStateOf<String?>(null)
+
     fun umschalten(was: Werkzeug) {
         if (seite == was) {
             seite = null
@@ -283,6 +296,13 @@ fun WeltArbeitsplatz(welt: Welt, zustand: Weltzustand, beiVerlassen: () -> Unit)
             }
 
             val seite = werkbank.seite
+            // Die Einführung tritt zur Seite, solange eine Seite offen ist oder
+            // die Karte etwas wählt — zwei Erklärungen übereinander sind keine.
+            val zeigt = WeltEinfuehrung(
+                zustand = zustand,
+                werkbank = werkbank,
+                zeigen = seite == null && werkbank.modus == Kartenmodus.Normal && werkbank.gewaehltesFahrzeug == null,
+            )
             if (seite == null) {
                 Modushinweis(welt, zustand, werkbank)
                 Fahrzeugchip(zustand, werkbank)
@@ -322,6 +342,7 @@ fun WeltArbeitsplatz(welt: Welt, zustand: Weltzustand, beiVerlassen: () -> Unit)
                 zustand = zustand,
                 werkbank = werkbank,
                 unten = unten,
+                zeigt = zeigt?.let { if (it in Werkzeug.HINTER_MEHR) Werkzeug.Mehr else it },
             )
         }
 
@@ -485,7 +506,12 @@ private fun Weltseite(
  * Mehr. Die Marke an „Lagen“ wird gefüllt, sobald etwas nur bei mir liegt.
  */
 @Composable
-private fun Welttableiste(zustand: Weltzustand, werkbank: Werkbank, unten: androidx.compose.ui.unit.Dp) {
+private fun Welttableiste(
+    zustand: Weltzustand,
+    werkbank: Werkbank,
+    unten: androidx.compose.ui.unit.Dp,
+    zeigt: Werkzeug? = null,
+) {
     val nochNichts = zustand.stand?.wachen.isNullOrEmpty()
     Row(
         horizontalArrangement = Arrangement.spacedBy(2.dp),
@@ -518,8 +544,9 @@ private fun Welttableiste(zustand: Weltzustand, werkbank: Werkbank, unten: andro
                 hier = hier,
                 marke = marke,
                 ruft = (w == Werkzeug.Bauen && nochNichts && !hier) ||
-                    (w == Werkzeug.Lagen && zustand.meineOffenen > 0),
+                    (w == Werkzeug.Lagen && zustand.meineOffenen > 0) || (w == zeigt && !hier),
                 punkt = w == Werkzeug.Mehr && (zustand.grossAktiv || zustand.angepingt != null) && marke == 0,
+                markeRot = w == Werkzeug.Lagen && zustand.meineOffenen > 0,
                 beiDruck = {
                     if (w == Werkzeug.Bauen) werkbank.modus = Kartenmodus.Normal
                     werkbank.umschalten(w)
@@ -536,6 +563,7 @@ private fun RowScope.Reiterknopf(
     marke: Int,
     ruft: Boolean,
     punkt: Boolean,
+    markeRot: Boolean,
     beiDruck: () -> Unit,
 ) {
     val farbe = when {
@@ -567,9 +595,9 @@ private fun RowScope.Reiterknopf(
                 Text(
                     text = if (marke > 99) "99+" else "$marke",
                     style = Schrift.Winzig.copy(fontFamily = Schrift.Mono, fontWeight = FontWeight.Bold),
-                    color = if (ruft && werkzeug == Werkzeug.Lagen) Farben.AufFarbe else Farben.Text,
+                    color = if (markeRot) Farben.AufFarbe else Farben.Text,
                     modifier = Modifier
-                        .background(if (ruft && werkzeug == Werkzeug.Lagen) Farben.Signal else Farben.FlaecheAktiv, Rundung.Rund)
+                        .background(if (markeRot) Farben.Signal else Farben.FlaecheAktiv, Rundung.Rund)
                         .padding(horizontal = 5.dp),
                 )
             }

@@ -30,6 +30,10 @@ class Weltwege(private val netz: Netz) {
     suspend fun gruenden(kennung: String, name: String, lat: Double, lon: Double) =
         netz.ohneAntwort("/api/welt/leitstelle?${k(kennung)}", "POST", json(WeltGruendung(name, lat, lon)))
 
+    /** Die ganze Welt dieses Kontos löschen — mit Passwort, wie im Konto des Webs. */
+    suspend fun zuruecksetzen(kennung: String, passwort: String) =
+        netz.ohneAntwort("/api/welt/leitstelle?${k(kennung)}", "DELETE", json(WeltPasswort(passwort)))
+
     suspend fun zweigstelleGruenden(kennung: String, name: String, lat: Double, lon: Double) =
         netz.ohneAntwort("/api/welt/zweigstelle?${k(kennung)}", "POST", json(WeltGruendung(name, lat, lon)))
 
