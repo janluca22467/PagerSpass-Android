@@ -292,6 +292,8 @@ fun GespraechSeite(
     beiSenden: (String, String) -> Unit = { _, _ -> },
     beiTermin: (Long, Boolean) -> Unit = { _, _ -> },
     beiZurueck: () -> Unit = {},
+    /** Ein Geschenk öffnen — erst dann erfährt man, was drin ist. */
+    beiGeschenk: (Long) -> Unit = {},
 ) {
     LaunchedEffect(partnerKennung) { beiOeffnen(partnerKennung) }
     androidx.compose.runtime.DisposableEffect(Unit) {
@@ -317,6 +319,7 @@ fun GespraechSeite(
                 nachricht = nachricht,
                 eigene = nachricht.von == meineKennung,
                 beiTermin = beiTermin,
+                beiGeschenk = beiGeschenk,
             )
         }
 
@@ -355,6 +358,7 @@ private fun Sprechblase(
     nachricht: Nachricht,
     eigene: Boolean,
     beiTermin: (Long, Boolean) -> Unit,
+    beiGeschenk: (Long) -> Unit = {},
 ) {
     Row(modifier = Modifier.fillMaxWidth()) {
         if (eigene) androidx.compose.foundation.layout.Spacer(Modifier.weight(0.2f))
@@ -391,6 +395,19 @@ private fun Sprechblase(
                             )
                         }
                     }
+                }
+            }
+
+            // Ein Geschenk an der Zeile. Was drin ist, steht erst nach dem Öffnen
+            // in der Antwort des Servers — und nur der Beschenkte hat den Knopf.
+            nachricht.geschenk?.let { g ->
+                Text(
+                    text = "🎁 " + if (g.geoeffnet) (g.artikelName ?: "Geschenk") else "Ein Geschenk",
+                    style = Schrift.Klein,
+                    color = Farben.AmberHell,
+                )
+                if (g.fuerMich && !g.geoeffnet) {
+                    Knopf("Öffnen", { beiGeschenk(g.nr) }, kompakt = true)
                 }
             }
 

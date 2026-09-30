@@ -62,6 +62,7 @@ import de.pagerspass.pagerspass.ansichten.Melderblende
 import de.pagerspass.pagerspass.ansichten.LoginSeite
 import de.pagerspass.pagerspass.ansichten.PostfachSeite
 import de.pagerspass.pagerspass.ansichten.PrivatsphaereSeite
+import de.pagerspass.pagerspass.ansichten.PrivatsphaereZusatz
 import de.pagerspass.pagerspass.ansichten.ProfilSeite
 import de.pagerspass.pagerspass.ansichten.ShopSeite
 import de.pagerspass.pagerspass.ansichten.StartSeite
@@ -152,6 +153,16 @@ fun PagerSpassApp(
                 beiServerWechsel = { adresse ->
                     zweiFaktor = null
                     sitzung.serverWechseln(adresse)
+                },
+                passwortVergessen = { vorbelegt, beiFertig, beiZurueck ->
+                    val kontostand by sitzung.kontodienst.stand.collectAsStateWithLifecycle()
+                    de.pagerspass.pagerspass.ansichten.PasswortVergessen(
+                        stand = kontostand,
+                        dienst = sitzung.kontodienst,
+                        vorbelegt = vorbelegt,
+                        beiFertig = beiFertig,
+                        beiZurueck = beiZurueck,
+                    )
                 },
             )
 
@@ -480,6 +491,9 @@ private fun Angemeldet(
     val hier = Weg.entries.firstOrNull { it.adresse == eintrag?.destination?.route }
     val browser = LocalUriHandler.current
     var loeschenOffen by remember { mutableStateOf(false) }
+    val kontostand by sitzung.kontodienst.stand.collectAsStateWithLifecycle()
+    // Der Bereich, in dem der Shop aufgehen soll — „Premium ansehen" im Konto.
+    var shopWunsch by remember { mutableStateOf<String?>(null) }
 
     // Die Leiste steht auch auf den Unterseiten (Garage, Bestenliste) — sie sind
     // Teil des Buchs, kein eigener Zweig. Sie fiele erst weg, wenn eine Ansicht
@@ -625,13 +639,25 @@ private fun Angemeldet(
             }
 
             composable(Weg.Shop.adresse) {
+                // Die Garage sagt, wie viele Gutscheine offen sind — die Zahl am Reiter.
+                LaunchedEffect(Unit) { sitzung.garageLaden() }
                 ShopSeite(
                     unterrand = platz,
+                    konto = stand.konto,
                     shop = daten.shop,
+                    gutscheine = daten.garage.inhalt?.stand?.offeneWahlen ?: 0,
+                    server = stand.server,
                     laeuft = stand.laeuft,
-                    beiLaden = { sitzung.shopLaden() },
+                    stand = kontostand,
+                    dienst = sitzung.kontodienst,
+                    wunsch = shopWunsch,
+                    beiWunschErfuellt = { shopWunsch = null },
+                    beiLaden = { sitzung.shopLaden(neu = true) },
                     beiKauf = { sitzung.artikelKaufen(it) },
                     beiTagesbonus = { sitzung.tagesbonusHolen() },
+                    beiAutohaus = { steuerung.navigate(UNTERSEITE_GARAGE) },
+                    beiProfil = { steuerung.navigate(UNTERSEITE_PROFIL) },
+                    beiAusbildung = { zurWahl(steuerung, Weg.Dienst) },
                 )
             }
 
@@ -642,17 +668,34 @@ private fun Angemeldet(
                     profil = daten.profil,
                     server = stand.server,
                     postfachFrei = stand.postfachFrei,
+                    stand = kontostand,
+                    dienst = sitzung.kontodienst,
                     beiProfilLaden = { sitzung.profilLaden() },
+                    beiKontoLaden = { sitzung.kontodienst.kontoLaden() },
                     beiAbmelden = { sitzung.abmelden() },
                     beiLoeschen = { loeschenOffen = true },
-                    beiRechtstext = { seite ->
-                        browser.openUri(Rechtsstand.adresse(Server.BETRIEB, seite))
+                    beiDiscord = { steuerung.navigate(UNTERSEITE_DISCORD) },
+                    beiGemeinschaft = { zurWahl(steuerung, Weg.Wache) },
+                    beiShop = { zurWahl(steuerung, Weg.Shop) },
+                    beiPremium = {
+                        shopWunsch = de.pagerspass.pagerspass.ansichten.PREMIUM
+                        zurWahl(steuerung, Weg.Shop)
                     },
                     beiProfil = { steuerung.navigate(UNTERSEITE_PROFIL) },
                     beiPrivatsphaere = { steuerung.navigate(UNTERSEITE_PRIVATSPHAERE) },
                     beiPostfach = { steuerung.navigate(UNTERSEITE_POSTFACH) },
                     beiMitteilungen = { steuerung.navigate(UNTERSEITE_MITTEILUNGEN) },
                     beiBegleiter = { steuerung.navigate(UNTERSEITE_BEGLEITER) },
+                )
+            }
+
+            composable(UNTERSEITE_DISCORD) {
+                de.pagerspass.pagerspass.ansichten.DiscordSeite(
+                    unterrand = platz,
+                    konto = stand.konto,
+                    stand = kontostand,
+                    dienst = sitzung.kontodienst,
+                    beiZurueck = { steuerung.popBackStack() },
                 )
             }
 
@@ -679,6 +722,10 @@ private fun Angemeldet(
                     beiSenden = { an, text -> sozial.senden(an, text) },
                     beiTermin = { nr, zusagen -> sozial.terminBeantworten(nr, zusagen) },
                     beiZurueck = { steuerung.popBackStack() },
+                    beiGeschenk = { nr ->
+                        val mit = eintrag.arguments?.getString("kennung").orEmpty()
+                        sitzung.kontodienst.geschenkOeffnen(nr) { sozial.gespraechOeffnen(mit) }
+                    },
                 )
             }
 
@@ -767,6 +814,17 @@ private fun Angemeldet(
                     beiLaden = { sitzung.privatsphaereLaden() },
                     beiSetzen = { sitzung.privatsphaereSetzen(it) },
                     beiZurueck = { steuerung.popBackStack() },
+                    zusatz = {
+                        PrivatsphaereZusatz(
+                            konto = stand.konto,
+                            stand = kontostand,
+                            dienst = sitzung.kontodienst,
+                            freunde = daten.freunde.inhalt.orEmpty(),
+                            beiFreundeLaden = { sitzung.freundeLaden(neu = true) },
+                            beiKonto = { steuerung.popBackStack() },
+                            beiMitteilungen = { steuerung.navigate(UNTERSEITE_MITTEILUNGEN) },
+                        )
+                    },
                 )
             }
 
@@ -811,6 +869,26 @@ private fun Angemeldet(
             modifier = Modifier.align(Alignment.BottomCenter),
         )
     }
+
+    // Die Adresse einmal je Konto holen — sie entscheidet über die Pflichtfrage.
+    LaunchedEffect(stand.konto?.kennung) {
+        if (stand.konto != null) sitzung.kontodienst.postfachLaden()
+    }
+
+    // Die Pflichtfragen in der Reihenfolge des Webs: erst der Rechtsstand (oben im
+    // Rahmen), dann die Aufzeichnung, dann die Adresse. Eine nach der anderen.
+    when {
+        stand.rechtsstandOffen || stand.konto == null -> Unit
+        stand.konto.analyseZustimmung == null ->
+            de.pagerspass.pagerspass.ansichten.Analyseblende(kontostand, sitzung.kontodienst)
+        kontostand.emailFehlt || kontostand.emailBestaetigungOffen ->
+            de.pagerspass.pagerspass.ansichten.EmailPflichtblende(
+                kontostand,
+                sitzung.kontodienst,
+                beiAbmelden = { sitzung.abmelden() },
+            )
+    }
+    de.pagerspass.pagerspass.ansichten.Geschenkblende(kontostand, sitzung.kontodienst)
 
     if (loeschenOffen) {
         Kontoloeschung(
@@ -865,6 +943,7 @@ private const val UNTERSEITE_PRIVATSPHAERE = "privatsphaere"
 private const val UNTERSEITE_POSTFACH = "postfach"
 private const val UNTERSEITE_MITTEILUNGEN = "mitteilungen"
 private const val UNTERSEITE_BEGLEITER = "begleiter"
+private const val UNTERSEITE_DISCORD = "discord"
 private const val UNTERSEITE_OEFFENTLICH = "oeffentlicheRunden"
 private const val UNTERSEITE_TAGESSCHICHT = "tagesschicht"
 private const val UNTERSEITE_GESPRAECH = "gespraech"
@@ -874,7 +953,7 @@ private const val UNTERSEITE_EINTRAG = "eintrag"
 private fun unterseitenweg(route: String?): Weg? = when (route) {
     UNTERSEITE_GARAGE, UNTERSEITE_BESTENLISTE -> Weg.Dienstbuch
     UNTERSEITE_PROFIL, UNTERSEITE_PRIVATSPHAERE, UNTERSEITE_POSTFACH,
-    UNTERSEITE_MITTEILUNGEN, UNTERSEITE_BEGLEITER,
+    UNTERSEITE_MITTEILUNGEN, UNTERSEITE_BEGLEITER, UNTERSEITE_DISCORD,
     -> Weg.Konto
     UNTERSEITE_OEFFENTLICH, UNTERSEITE_TAGESSCHICHT -> Weg.Dienst
     else -> when {

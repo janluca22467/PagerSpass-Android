@@ -47,6 +47,24 @@ class Sitzung(anwendung: Application) : AndroidViewModel(anwendung) {
     private val _daten = MutableStateFlow(Seitenstand())
     val daten: StateFlow<Seitenstand> = _daten.asStateFlow()
 
+    /**
+     * Konto-Zentrale, Premium-Stand, Postfach und Shop-Nebenwege — siehe
+     * `Kontodienst`. Er hängt hier, damit er die Anmeldung teilt und mit ihr geht.
+     */
+    val kontodienst = Kontodienst(
+        wege = de.pagerspass.pagerspass.netz.Kontowege(netz),
+        bereich = viewModelScope,
+        kennung = { _stand.value.konto?.kennung },
+        kontoAendern = { aendern -> _stand.update { it.copy(konto = it.konto?.let(aendern)) } },
+        kontoSetzen = { konto -> _stand.update { it.copy(konto = konto) } },
+        shopSetzen = { shop ->
+            _daten.update { d -> d.copy(shop = Bereich(shop, geladen = true)) }
+            _stand.update { it.copy(konto = it.konto?.copy(credits = shop.credits)) }
+        },
+        garageNeu = { garageLaden(neu = true) },
+        freundeNeu = { freundeLaden(neu = true) },
+    )
+
     init {
         // Die beiden Ereignisse, die nicht Antwort auf eine Anfrage sind. Sie
         // gehören dem Rahmen, nicht der Stelle, die zufällig gerade lud.
@@ -136,6 +154,7 @@ class Sitzung(anwendung: Application) : AndroidViewModel(anwendung) {
         // beim nächsten Anmelden die Freundesliste des Vorgängers auf dem Schirm,
         // bis die neue geladen ist.
         _daten.value = Seitenstand()
+        kontodienst.vergessen()
     }
 
     fun rechtsstandZustimmen() = arbeiten {
@@ -153,6 +172,7 @@ class Sitzung(anwendung: Application) : AndroidViewModel(anwendung) {
         konten.loeschen(kennung, passwort)
         _stand.value = Sitzungsstand(server = ablage.server(), geprueft = true)
         _daten.value = Seitenstand()
+        kontodienst.vergessen()
     }
 
     // ------------------------------------------------------------ Die Seiten
@@ -747,6 +767,7 @@ class Sitzung(anwendung: Application) : AndroidViewModel(anwendung) {
         ablage.serverSetzen(adresse)
         ablage.anmeldungMerken(null, null)
         _stand.value = Sitzungsstand(server = adresse.trimEnd('/'), geprueft = true)
+        kontodienst.vergessen()
         versionHolen()
     }
 
