@@ -2,6 +2,7 @@ package de.pagerspass.pagerspass.ansichten
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -55,6 +56,8 @@ fun PrivatsphaereSeite(
     beiLaden: () -> Unit = {},
     beiSetzen: (Privatsphaere) -> Unit = {},
     beiZurueck: () -> Unit = {},
+    /** Was unter den Schaltern steht — Blockaden, Geräte, Rechte (`KontoSeiten.kt`). */
+    zusatz: @Composable ColumnScope.() -> Unit = {},
 ) {
     LaunchedEffect(Unit) { beiLaden() }
 
@@ -174,6 +177,8 @@ fun PrivatsphaereSeite(
                     "ausschaltest, ist wirklich weg und nicht nur in dieser App verborgen.",
             )
         }
+
+        zusatz()
     }
 }
 

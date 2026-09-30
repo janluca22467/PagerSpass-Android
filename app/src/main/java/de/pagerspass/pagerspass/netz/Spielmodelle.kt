@@ -102,6 +102,13 @@ data class Shop(
     val naechsterWechsel: String = "",
     val imBesitz: List<Shopartikel> = emptyList(),
     val tagesbonus: Tagesbonus = Tagesbonus(),
+    /** Das Fahrzeug des Tages — ein Viertel billiger, nur heute. */
+    val tagesangebot: Tagesangebot? = null,
+    /** Die drei Dienstaufträge der Woche (Modelle in `Kontomodelle.kt`). */
+    val auftraege: List<Auftrag> = emptyList(),
+    val zulagen: Zulagen = Zulagen(),
+    /** Der Credit-Auszug — Gutschrift positiv, Kauf negativ. */
+    val auszug: List<Creditposten> = emptyList(),
 )
 
 @Serializable
@@ -124,6 +131,8 @@ data class Shopartikel(
 data class Tagesbonus(
     val verfuegbar: Boolean = false,
     val serie: Int = 0,
+    /** Die Felder des Glücksrads samt ihrer Chance in Prozent. */
+    val felder: List<Gluecksradfeld> = emptyList(),
 )
 
 // --------------------------------------------------------------------- Freunde
@@ -480,6 +489,8 @@ data class Gluecksradfeld(
     val id: String = "",
     val art: String = "",
     val betrag: Int = 0,
+    /** Die Chance dieses Feldes in Prozent — sie steht in der Legende des Rads. */
+    val gewicht: Int = 0,
     val text: String = "",
 )
 

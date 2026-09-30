@@ -74,6 +74,16 @@ fun LoginSeite(
     beiZweiFaktor: (String) -> Unit = {},
     beiServerWechsel: (String) -> Unit = {},
     zweiFaktorZiel: String? = null,
+    /**
+     * „Passwort vergessen?" — der Ablauf steht in `KontoSeiten.kt` (`PasswortVergessen`)
+     * und bekommt den getippten Namen, einen Rückweg mit Name und Satz und einen
+     * Abbruch. Ohne ihn steht die Zeile nicht da.
+     */
+    passwortVergessen: (@Composable (
+        vorbelegt: String,
+        beiFertig: (String, String) -> Unit,
+        beiZurueck: () -> Unit,
+    ) -> Unit)? = null,
 ) {
     var modus by remember { mutableStateOf(Anmeldeart.Anmelden) }
     var benutzername by remember { mutableStateOf("") }
@@ -84,13 +94,30 @@ fun LoginSeite(
     var nutzung by remember { mutableStateOf(false) }
     var datenschutz by remember { mutableStateOf(false) }
 
+    var vergessen by remember { mutableStateOf(false) }
+    var bestaetigung by remember { mutableStateOf<String?>(null) }
+
     val zustimmungVollstaendig = agb && nutzung && datenschutz
     val browser = LocalUriHandler.current
 
     Seite(modifier = modifier, abstand = Abstand.Gross) {
         Empfangskopf()
 
-        if (zweiFaktorZiel != null) {
+        if (vergessen && passwortVergessen != null && zweiFaktorZiel == null) {
+            passwortVergessen(
+                benutzername,
+                { name, satz ->
+                    // Zurück ins Anmeldeformular, mit dem Namen schon eingetragen —
+                    // angemeldet wird bewusst nicht automatisch.
+                    benutzername = name
+                    passwort = ""
+                    modus = Anmeldeart.Anmelden
+                    bestaetigung = satz
+                    vergessen = false
+                },
+                { vergessen = false },
+            )
+        } else if (zweiFaktorZiel != null) {
             Formular("Anmeldeschutz") {
                 Text(
                     text = "Wir haben einen sechsstelligen Code an $zweiFaktorZiel geschickt.",
@@ -191,6 +218,17 @@ fun LoginSeite(
                             (anzeigename.isNotBlank() && zustimmungVollstaendig)),
                 )
 
+                // Nur beim Anmelden: Im Registrierformular wäre es die Frage nach
+                // einem Passwort, das es noch gar nicht gibt. Ein Textweg und keine
+                // amberne Fläche — die Handlung hier ist das Anmelden.
+                if (modus == Anmeldeart.Anmelden && passwortVergessen != null) {
+                    Textweg("Passwort vergessen?", {
+                        bestaetigung = null
+                        vergessen = true
+                    })
+                }
+
+                bestaetigung?.let { Hinweis(it) }
                 if (hinweis != null) Hinweis(hinweis)
                 if (fehler != null) Meldung(fehler)
             }
