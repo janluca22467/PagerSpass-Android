@@ -148,7 +148,7 @@ private const val CARTO = "cb1_25ox_1_9cb7568fd1c075dddbb1b974"
  * Der Kachelspeicher — lädt einmal, hält die letzten Kacheln, meldet sich über
  * Compose-State zurück, wenn eine fertig ist.
  */
-private object Kachelspeicher {
+internal object Kachelspeicher {
     val fertig = mutableStateMapOf<String, ImageBitmap>()
 
     /**
@@ -203,16 +203,16 @@ private object Kachelspeicher {
 
 // ------------------------------------------------------------- Web-Mercator
 
-private fun lonZuWeltX(lon: Double, welt: Double) = (lon + 180.0) / 360.0 * welt
+internal fun lonZuWeltX(lon: Double, welt: Double) = (lon + 180.0) / 360.0 * welt
 
-private fun latZuWeltY(lat: Double, welt: Double): Double {
+internal fun latZuWeltY(lat: Double, welt: Double): Double {
     val rad = lat * PI / 180.0
     return (1.0 - ln(tan(rad) + 1.0 / cos(rad)) / PI) / 2.0 * welt
 }
 
-private fun weltXZuLon(x: Double, welt: Double) = x / welt * 360.0 - 180.0
+internal fun weltXZuLon(x: Double, welt: Double) = x / welt * 360.0 - 180.0
 
-private fun weltYZuLat(y: Double, welt: Double): Double {
+internal fun weltYZuLat(y: Double, welt: Double): Double {
     val n = PI - 2.0 * PI * y / welt
     return 180.0 / PI * atan(0.5 * (exp(n) - exp(-n)))
 }

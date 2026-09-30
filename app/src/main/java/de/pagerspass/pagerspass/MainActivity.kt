@@ -58,6 +58,12 @@ class MainActivity : ComponentActivity() {
     /** Dienstbuch, Lehrgang, Übungen, Leitstellenbau — Entwürfe überleben so das Drehen. */
     private val werkstatt: de.pagerspass.pagerspass.mobil.Werkstatt by viewModels()
 
+    /**
+     * PagerSpass - World — an der Activity aus demselben Grund wie die Runde:
+     * Takt und Funkverbindung sollen ein Drehen des Geräts überleben.
+     */
+    private val welt: de.pagerspass.pagerspass.mobil.Welt by viewModels()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         // Der Melder braucht seinen Kanal, bevor der erste Alarm kommt — und er
         // darf mehrfach angelegt werden: Android behält die Einstellungen.
@@ -78,6 +84,7 @@ class MainActivity : ComponentActivity() {
                     sozial = sozial,
                     begleiter = begleiter,
                     werkstatt = werkstatt,
+                    welt = welt,
                 )
             }
         }

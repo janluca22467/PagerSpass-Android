@@ -107,6 +107,7 @@ fun PagerSpassApp(
     begleiter: Begleiter,
     werkstatt: Werkstatt,
     steuerung: NavHostController = rememberNavController(),
+    welt: Welt? = null,
 ) {
     val stand by sitzung.stand.collectAsStateWithLifecycle()
 
@@ -117,6 +118,15 @@ fun PagerSpassApp(
     SideEffect { werkstatt.kontoSetzen(stand.konto) }
     val rundenstand by runde.stand.collectAsStateWithLifecycle()
     val begleiterstand by begleiter.stand.collectAsStateWithLifecycle()
+    val weltOffen = welt?.let { w -> w.stand.collectAsStateWithLifecycle().value.offen } ?: false
+
+    // Abgemeldet oder ein anderes Konto: Die Welt des vorigen schließt — samt
+    // Takt und Funkverbindung, die sonst unter fremdem Namen weiterliefen.
+    LaunchedEffect(stand.konto?.kennung) {
+        if (welt == null) return@LaunchedEffect
+        val k = stand.konto?.kennung
+        if (k == null || (welt.kennung != null && welt.kennung != k)) welt.schliessen()
+    }
 
     // Zurück in die Runde, die vor einem Prozesstod lief — einmal je Konto.
     LaunchedEffect(stand.konto?.kennung) {
@@ -194,7 +204,20 @@ fun PagerSpassApp(
             // begleiten kann.
             begleiterstand.gekoppelt -> Begleiterrahmen(begleiterstand, begleiter)
 
-            else -> Angemeldet(stand, sitzung, runde, sozial, begleiter, werkstatt, steuerung)
+            // <b>Die Welt verdrängt ebenfalls</b> — sie trägt ihre eigene Leiste
+            // (Lagen, Fahrzeuge, Wachen, Bauen, Mehr) und braucht die Karte ganz.
+            weltOffen && welt != null -> de.pagerspass.pagerspass.ansichten.welt.WeltRahmen(
+                welt = welt,
+                konto = stand.konto,
+                server = stand.server,
+                beiVerlassen = { welt.schliessen() },
+                beiKonto = {
+                    welt.schliessen()
+                    runCatching { zurWahl(steuerung, Weg.Konto) }
+                },
+            )
+
+            else -> Angemeldet(stand, sitzung, runde, sozial, begleiter, werkstatt, steuerung, welt)
         }
 
         Verbindungsband(
@@ -522,6 +545,7 @@ private fun Angemeldet(
     begleiter: Begleiter,
     werkstatt: Werkstatt,
     steuerung: NavHostController,
+    welt: Welt? = null,
 ) {
     val begleiterstand by begleiter.stand.collectAsStateWithLifecycle()
     val werk by werkstatt.stand.collectAsStateWithLifecycle()
@@ -663,6 +687,8 @@ private fun Angemeldet(
                                     k.premiumNoetig && stand.konto?.premiumAktiv != true -> premiumImWeb()
                                     k.aktion == "link" -> browser.openUri(k.ziel)
                                     k.aktion == "raum" -> beitreten(k.ziel.trim().uppercase())
+                                    // World läuft nativ — eine Kachel dorthin öffnet sie hier.
+                                    k.ziel.trimStart('/').startsWith("welt") && welt != null -> welt.anzeigen()
                                     else -> when (val ziel = werkstattziel(k.ziel)) {
                                         null -> imWeb(k.ziel.trimStart('/'))
                                         Weg.Dienstbuch.adresse -> zurWahl(steuerung, Weg.Dienstbuch)
@@ -675,6 +701,7 @@ private fun Angemeldet(
                     fussknoepfe = {
                         de.pagerspass.pagerspass.ansichten.Fussknoepfe(werk.footer) { browser.openUri(it) }
                     },
+                    beiWelt = welt?.let { w -> { w.anzeigen() } },
                 )
             }
 
