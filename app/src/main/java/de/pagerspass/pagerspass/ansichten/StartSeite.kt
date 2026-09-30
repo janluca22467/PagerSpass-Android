@@ -5,6 +5,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -102,6 +103,16 @@ fun StartSeite(
     beiGelesen: (String) -> Unit = {},
     beiEinladung: (de.pagerspass.pagerspass.netz.Einladung) -> Unit = {},
     beiLink: (String) -> Unit = {},
+    /** Lehrgang, Übungen und Leitstellenbau — native Seiten, siehe `Startweg`. */
+    beiStartweg: (Startweg) -> Unit = {},
+    /** Der Knopf „Vorlagen" neben „Leitstelle besetzen" — nur mit Konto. */
+    vorlagen: (@Composable () -> Unit)? = null,
+    /** Was nach den Einladungen steht — die offene Umfrage. */
+    zusatz: @Composable ColumnScope.() -> Unit = {},
+    /** Die Kacheln der Verwaltung, als Letztes im Menü. */
+    kacheln: @Composable ColumnScope.() -> Unit = {},
+    /** Die Knöpfe der Fußzeile. */
+    fussknoepfe: @Composable () -> Unit = {},
 ) {
     LaunchedEffect(Unit) {
         beiKatalog()
@@ -171,6 +182,8 @@ fun StartSeite(
             ) {}
         }
 
+        zusatz()
+
         val einweisung = konto?.einweisungOffen == true
         if (einweisung) Einweisung(beiStart = beiAusbildung, laeuft = laeuft)
 
@@ -189,6 +202,7 @@ fun StartSeite(
                         art = Knopfart.Haupt,
                         aktiv = !laeuft && landkreis != null,
                     )
+                    vorlagen?.invoke()
                 },
             ) {
                 if (landkreise.isEmpty()) {
@@ -276,13 +290,17 @@ fun StartSeite(
                         Startweg.Ausbildung -> beiAusbildung()
                         Startweg.Tagesschicht -> beiTagesschicht()
                         Startweg.OeffentlicheRunden -> beiOeffentlicheRunden()
+                        Startweg.Lehrgang, Startweg.Uebungen, Startweg.Leitstellenbau ->
+                            beiStartweg(eintrag.weg)
                         else -> beiImWeb()
                     }
                 },
             )
         }
 
-        Fuss(beta = beta, version = version, beiRechtstext = beiRechtstext)
+        if (!einweisung) kacheln()
+
+        Fuss(beta = beta, version = version, beiRechtstext = beiRechtstext, knoepfe = fussknoepfe)
     }
 
     when (offeneWahl) {
@@ -536,6 +554,7 @@ private fun Fuss(
     version: String?,
     beiRechtstext: (String) -> Unit,
     modifier: Modifier = Modifier,
+    knoepfe: @Composable () -> Unit = {},
 ) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -553,6 +572,8 @@ private fun Fuss(
             }
             .padding(top = Abstand.Gross),
     ) {
+        knoepfe()
+
         Row(
             horizontalArrangement = Arrangement.spacedBy(
                 Abstand.Klein,
@@ -617,10 +638,9 @@ enum class Startweg {
          * nur nicht gedrückt werden kann, müsste erklären warum, und genau das
          * tut die Pflicht-Karte darüber schon.
          *
-         * <b>Alles außer der Ausbildung führt bisher ins Web.</b> Die Ansichten
-         * dahinter (Lehrgang, World, Übungen, Leitstellenbau) sind in der App
-         * noch nicht gebaut; die Unterzeile sagt das, statt es den Nutzer beim
-         * Antippen herausfinden zu lassen.
+         * <b>Lehrgang, Übungen und Leitstellenbau sind native Seiten</b>
+         * (`beiStartweg`); World führt bisher ins Web, und die Unterzeile sagt
+         * das, statt es den Nutzer beim Antippen herausfinden zu lassen.
          */
         fun menue(einweisungPflicht: Boolean, premium: Boolean): List<Eintrag> {
             val ausbildung = Eintrag(
@@ -648,7 +668,7 @@ enum class Startweg {
                 Eintrag(
                     weg = Lehrgang,
                     titel = "Lehrgang",
-                    unterzeile = "Lesen, üben, prüfen — im Browser",
+                    unterzeile = "Lesen, üben, prüfen",
                     zeichen = Zeichen.Wiki,
                 ),
                 Eintrag(
@@ -661,13 +681,13 @@ enum class Startweg {
                 Eintrag(
                     weg = Uebungen,
                     titel = "Übungen",
-                    unterzeile = "Eine Lage vorher bauen und mehrmals fahren — im Browser",
+                    unterzeile = "Eine Lage vorher bauen und mehrmals fahren",
                     zeichen = Zeichen.Lage,
                 ),
                 Eintrag(
                     weg = Leitstellenbau,
                     titel = "Leitstellenbau",
-                    unterzeile = "Eigene Wachen, Plätze und Rufnamen — im Browser",
+                    unterzeile = "Eigene Wachen, Plätze und Rufnamen",
                     zeichen = Zeichen.Karte,
                 ),
             )

@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -102,9 +103,16 @@ fun PagerSpassApp(
     runde: Runde,
     sozial: Sozial,
     begleiter: Begleiter,
+    werkstatt: Werkstatt,
     steuerung: NavHostController = rememberNavController(),
 ) {
     val stand by sitzung.stand.collectAsStateWithLifecycle()
+
+    // Die Werkstatt hält Entwürfe und das Dienstbuch je Konto — ein Wechsel
+    // des Kontos wirft beides weg. Als `SideEffect` und nicht als
+    // `LaunchedEffect`: Es muss stehen, bevor die erste Seite ihr Laden
+    // anstößt, und deren Effekte laufen erst danach an.
+    SideEffect { werkstatt.kontoSetzen(stand.konto) }
     val rundenstand by runde.stand.collectAsStateWithLifecycle()
     val begleiterstand by begleiter.stand.collectAsStateWithLifecycle()
 
@@ -174,7 +182,7 @@ fun PagerSpassApp(
             // begleiten kann.
             begleiterstand.gekoppelt -> Begleiterrahmen(begleiterstand, begleiter)
 
-            else -> Angemeldet(stand, sitzung, runde, sozial, begleiter, steuerung)
+            else -> Angemeldet(stand, sitzung, runde, sozial, begleiter, werkstatt, steuerung)
         }
 
         Verbindungsband(
@@ -472,9 +480,11 @@ private fun Angemeldet(
     runde: Runde,
     sozial: Sozial,
     begleiter: Begleiter,
+    werkstatt: Werkstatt,
     steuerung: NavHostController,
 ) {
     val begleiterstand by begleiter.stand.collectAsStateWithLifecycle()
+    val werk by werkstatt.stand.collectAsStateWithLifecycle()
     val daten by sitzung.daten.collectAsStateWithLifecycle()
     val eintrag by steuerung.currentBackStackEntryAsState()
     val hier = Weg.entries.firstOrNull { it.adresse == eintrag?.destination?.route }
@@ -490,6 +500,11 @@ private fun Angemeldet(
     // eingestellte Server: Wer gegen `localhost` entwickelt, will auch dort
     // landen — anders als bei den Rechtstexten, die nur im Betrieb liegen.
     fun imWeb(seite: String) = browser.openUri("${stand.server}/play/mobile/$seite")
+
+    // Premium wird nur auf der Webseite abgeschlossen — nie in der App.
+    fun premiumImWeb() = imWeb("shop?bereich=premium")
+    fun beitreten(code: String) = runde.beitreten(code, stand.konto?.anzeigename.orEmpty())
+    fun zuschauen(code: String) = runde.zuschauen(code, stand.konto?.anzeigename.orEmpty())
 
     Box(modifier = Modifier.fillMaxSize()) {
         NavHost(
@@ -538,20 +553,83 @@ private fun Angemeldet(
                         browser.openUri(Rechtsstand.adresse(Server.BETRIEB, seite))
                     },
                     beiImWeb = { imWeb("") },
+                    beiStartweg = { weg ->
+                        steuerung.navigate(
+                            when (weg) {
+                                de.pagerspass.pagerspass.ansichten.Startweg.Uebungen -> UNTERSEITE_UEBUNGEN
+                                de.pagerspass.pagerspass.ansichten.Startweg.Leitstellenbau -> UNTERSEITE_LEITSTELLENBAU
+                                else -> UNTERSEITE_LEHRGANG
+                            },
+                        )
+                    },
+                    vorlagen = if (stand.konto == null) null else {
+                        {
+                            de.pagerspass.pagerspass.ansichten.Vorlagenknopf(
+                                anzahl = werk.rundenvorlagen.inhalt?.size ?: 0,
+                                beiDruck = { steuerung.navigate(UNTERSEITE_RUNDENVORLAGEN) },
+                            )
+                        }
+                    },
+                    zusatz = {
+                        LaunchedEffect(Unit) { werkstatt.startLaden() }
+                        de.pagerspass.pagerspass.ansichten.Umfragekarte(
+                            umfrage = werk.umfrage,
+                            dank = werk.umfrageDank,
+                            beiAntworten = { werkstatt.umfrageAntworten(it) },
+                        )
+                    },
+                    kacheln = {
+                        de.pagerspass.pagerspass.ansichten.Startkacheln(
+                            kacheln = werk.startkacheln,
+                            premium = stand.konto?.premiumAktiv == true,
+                            laeuft = stand.laeuft,
+                            beiKachel = { k ->
+                                when {
+                                    k.premiumNoetig && stand.konto?.premiumAktiv != true -> premiumImWeb()
+                                    k.aktion == "link" -> browser.openUri(k.ziel)
+                                    k.aktion == "raum" -> beitreten(k.ziel.trim().uppercase())
+                                    else -> when (val ziel = werkstattziel(k.ziel)) {
+                                        null -> imWeb(k.ziel.trimStart('/'))
+                                        Weg.Dienstbuch.adresse -> zurWahl(steuerung, Weg.Dienstbuch)
+                                        else -> steuerung.navigate(ziel)
+                                    }
+                                }
+                            },
+                        )
+                    },
+                    fussknoepfe = {
+                        de.pagerspass.pagerspass.ansichten.Fussknoepfe(werk.footer) { browser.openUri(it) }
+                    },
                 )
             }
 
             composable(Weg.Dienstbuch.adresse) {
+                LaunchedEffect(Unit) {
+                    sitzung.katalogSicherstellen()
+                    sitzung.buchLaden()
+                }
                 DienstbuchSeite(
                     unterrand = platz,
                     konto = stand.konto,
-                    buch = daten.buch,
-                    beiLaden = { sitzung.buchLaden() },
+                    stand = werk,
+                    fahrzeuge = daten.katalog.inhalt?.fahrzeuge.orEmpty(),
+                    werkstatt = werkstatt,
+                    beiSchicht = { steuerung.navigate("$UNTERSEITE_SCHICHT/$it") },
                     beiGarage = { steuerung.navigate(UNTERSEITE_GARAGE) },
-                    beiBestenliste = { steuerung.navigate(UNTERSEITE_BESTENLISTE) },
                     beiDienst = { zurWahl(steuerung, Weg.Dienst) },
+                    beiPremium = { premiumImWeb() },
                 )
             }
+
+            werkstattwege(
+                platz = platz,
+                steuerung = steuerung,
+                werkstatt = werkstatt,
+                sitzung = sitzung,
+                beitreten = ::beitreten,
+                zuschauen = ::zuschauen,
+                imBrowser = { browser.openUri(it) },
+            )
 
             composable(Weg.Wache.adresse) {
                 val sozialstand by sozial.stand.collectAsStateWithLifecycle()
@@ -877,7 +955,7 @@ private fun unterseitenweg(route: String?): Weg? = when (route) {
     UNTERSEITE_MITTEILUNGEN, UNTERSEITE_BEGLEITER,
     -> Weg.Konto
     UNTERSEITE_OEFFENTLICH, UNTERSEITE_TAGESSCHICHT -> Weg.Dienst
-    else -> when {
+    else -> werkstattweg(route) ?: when {
         route?.startsWith(UNTERSEITE_GESPRAECH) == true -> Weg.Freunde
         route?.startsWith(UNTERSEITE_EINTRAG) == true -> Weg.Freunde
         else -> null
