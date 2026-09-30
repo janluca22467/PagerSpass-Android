@@ -91,6 +91,8 @@ data class Fahrzeugvorlage(
     val besatzung: String = "",
     val kategorie: String = "",
     val kennzahl: String = "",
+    /** Was das Fahrzeug kann — die AAO fordert danach, der Abrollbehälter zeigt es. */
+    val faehigkeiten: List<String> = emptyList(),
 )
 
 // ------------------------------------------------------------------------ Shop

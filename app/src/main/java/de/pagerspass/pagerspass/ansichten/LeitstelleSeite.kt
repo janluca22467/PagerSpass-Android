@@ -18,9 +18,15 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import de.pagerspass.pagerspass.mobil.Raumbefehle
+import de.pagerspass.pagerspass.mobil.Raumneben
+import de.pagerspass.pagerspass.netz.Rundenfahrzeug
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
@@ -79,7 +85,8 @@ fun LeitstelleSeite(
     stand: Rundenstand = Rundenstand(),
     katalog: Katalog? = null,
     beiEinsatzAnlegen: (Stichwort, String, String, String?, String?) -> Unit = { _, _, _, _, _ -> },
-    beiAlarmieren: (String, List<String>) -> Unit = { _, _ -> },
+    beiAlarmieren: (String, List<String>, Map<String, String>, String?, String?) -> Unit =
+        { _, _, _, _, _ -> },
     beiVorschlag: suspend (String) -> List<String> = { emptyList() },
     beiSchliessen: (String) -> Unit = {},
     beiSprechwunsch: (String) -> Unit = {},
@@ -96,12 +103,19 @@ fun LeitstelleSeite(
     beiUeberspringen: () -> Unit = {},
     beiDienstende: () -> Unit = {},
     beiVerlassen: () -> Unit = {},
+    eigeneKennung: String = "",
+    befehle: Raumbefehle = Raumbefehle.Leer,
+    neben: Raumneben = Raumneben(),
 ) {
     var reiter by remember { mutableStateOf(Leitstellenteil.Einsaetze) }
     var kartenwahl by remember { mutableStateOf<String?>(null) }
     var neuOffen by remember { mutableStateOf(false) }
     var alarmFuer by remember { mutableStateOf<Einsatz?>(null) }
     var gespraech by remember { mutableStateOf<String?>(null) }
+    var bogenFuer by remember { mutableStateOf<String?>(null) }
+    var fahrzeugFuer by remember { mutableStateOf<String?>(null) }
+    var besatzungOffen by remember { mutableStateOf(false) }
+    var warnungOffen by remember { mutableStateOf(false) }
 
     val raum = stand.raum
     val oben = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
@@ -141,33 +155,52 @@ fun LeitstelleSeite(
                     Ausbildungsleiste(stand, beiUeberspringen)
 
                     when (reiter) {
-                        Leitstellenteil.Einsaetze -> TeilEinsaetze(
-                            raum = raum,
-                            beiNeu = { neuOffen = true },
-                            beiAlarm = { alarmFuer = it },
-                            beiSchliessen = beiSchliessen,
-                        )
+                        Leitstellenteil.Einsaetze -> {
+                            Feststellungsband(raum, befehle)
+                            TeilEinsaetze(
+                                raum = raum,
+                                beiNeu = { neuOffen = true },
+                                // Ein offener Einsatz will alarmiert werden — dorthin
+                                // direkt; ein laufender öffnet seinen Bogen.
+                                beiAlarm = { e -> if (e.offen) alarmFuer = e else bogenFuer = e.id },
+                                beiSchliessen = beiSchliessen,
+                                beiWuerfeln = if (raum.settings.mode == "Frei") befehle::einsatzWuerfeln else null,
+                            )
+                        }
 
                         // Die Karte wird oben ohne Rollspalte gezeichnet.
                         Leitstellenteil.Karte -> Unit
 
-                        Leitstellenteil.Fahrzeuge -> TeilFahrzeuge(raum, beiSprechwunsch)
-
-                        Leitstellenteil.Notruf -> TeilNotruf(
+                        Leitstellenteil.Fahrzeuge -> TeilFahrzeuge(
                             raum = raum,
-                            beiAnnehmen = { id ->
-                                beiAnrufAnnehmen(id)
-                                gespraech = id
-                            },
-                            beiOeffnen = { gespraech = it },
-                            beiAbweisen = beiAnrufAbweisen,
+                            beiSprechwunsch = beiSprechwunsch,
+                            beiFahrzeug = { fahrzeugFuer = it.id },
                         )
+
+                        Leitstellenteil.Notruf -> {
+                            TeilNotruf(
+                                raum = raum,
+                                beiAnnehmen = { id ->
+                                    beiAnrufAnnehmen(id)
+                                    gespraech = id
+                                },
+                                beiOeffnen = { gespraech = it },
+                                beiAbweisen = beiAnrufAbweisen,
+                            )
+                            Anrufjournal(raum, befehle)
+                        }
 
                         Leitstellenteil.Funk -> TeilLeitstellenfunk(
                             stand, raum, beiFunk, beiSprechstart, beiSprechende, beiDraht,
+                            neben, befehle,
                         )
 
-                        Leitstellenteil.Mehr -> TeilMehrLeitstelle(beiDienstende)
+                        Leitstellenteil.Mehr -> TeilMehrLeitstelle(
+                            raum = raum,
+                            beiDienstende = beiDienstende,
+                            beiBesatzung = { besatzungOffen = true },
+                            beiWarnung = { warnungOffen = true },
+                        )
                     }
                 }
             }
@@ -199,13 +232,73 @@ fun LeitstelleSeite(
         )
     }
 
-    alarmFuer?.let { einsatz ->
+    // Der Bogen folgt dem Raumzustand — gemerkt ist nur die Id, sonst zeigte er
+    // den Stand vom Öffnen.
+    bogenFuer?.let { id ->
+        val einsatz = raum?.incidents?.firstOrNull { it.id == id }
+        if (einsatz == null || raum == null) {
+            bogenFuer = null
+        } else {
+            Einsatzblende(
+                einsatz = einsatz,
+                raum = raum,
+                befehle = befehle,
+                beiAlarmieren = {
+                    bogenFuer = null
+                    alarmFuer = einsatz
+                },
+                beiAbraeumen = {
+                    beiSchliessen(einsatz.id)
+                    bogenFuer = null
+                },
+                beiZu = { bogenFuer = null },
+            )
+        }
+    }
+
+    fahrzeugFuer?.let { id ->
+        val fahrzeug = raum?.vehicles?.firstOrNull { it.id == id }
+        if (fahrzeug == null || raum == null) {
+            fahrzeugFuer = null
+        } else {
+            Fahrzeuggriffe(
+                f = fahrzeug,
+                raum = raum,
+                eigeneKennung = eigeneKennung,
+                befehle = befehle,
+                beiSprechwunsch = beiSprechwunsch,
+                beiZu = { fahrzeugFuer = null },
+            )
+        }
+    }
+
+    if (besatzungOffen && raum != null) {
+        Besatzungsblende(
+            raum = raum,
+            eigeneKennung = eigeneKennung,
+            katalog = katalog?.fahrzeuge.orEmpty(),
+            befehle = befehle,
+            beiZu = { besatzungOffen = false },
+        )
+    }
+
+    if (warnungOffen) {
+        Warnungsblende(befehle) { warnungOffen = false }
+    }
+
+    alarmFuer?.let { gemerkt ->
+        // Wie beim Bogen: der frische Stand, damit eine nachgeschärfte Ordnung
+        // sofort dasteht.
+        val einsatz = raum?.incidents?.firstOrNull { it.id == gemerkt.id } ?: gemerkt
         Alarmblende(
             einsatz = einsatz,
             raum = raum,
+            katalog = katalog,
+            neben = neben,
+            befehle = befehle,
             beiVorschlag = beiVorschlag,
-            beiAlarmieren = { fahrzeuge ->
-                beiAlarmieren(einsatz.id, fahrzeuge)
+            beiAlarmieren = { fahrzeuge, ab, zusatz, meldung ->
+                beiAlarmieren(einsatz.id, fahrzeuge, ab, zusatz, meldung)
                 alarmFuer = null
             },
             beiUmstufen = { p -> beiUmstufen(einsatz.id, p) },
@@ -258,6 +351,11 @@ fun LeitstelleSeite(
                 beiVerwerfen = {
                     beiVorschlagVerwerfen(anruf.id)
                     gespraech = null
+                },
+                werkzeug = {
+                    if (raum != null) {
+                        Telefonwerkzeug(anruf, raum, neben, befehle) { gespraech = null }
+                    }
                 },
             )
         }
@@ -329,6 +427,7 @@ private fun ColumnScope.TeilEinsaetze(
     beiNeu: () -> Unit,
     beiAlarm: (Einsatz) -> Unit,
     beiSchliessen: (String) -> Unit,
+    beiWuerfeln: (() -> Unit)? = null,
 ) {
     Row(
         horizontalArrangement = Arrangement.spacedBy(Abstand.Normal),
@@ -336,6 +435,9 @@ private fun ColumnScope.TeilEinsaetze(
         modifier = Modifier.fillMaxWidth(),
     ) {
         Ueberschrift("Einsätze", Modifier.weight(1f))
+        // Der Würfel gehört der freien Vergabe: Im Zufallsmodus nähme er der
+        // Schicht das Warten, von dem sie lebt.
+        if (beiWuerfeln != null) Knopf("Würfeln", beiWuerfeln, art = Knopfart.Leise, kompakt = true)
         Knopf("Neuer Einsatz", beiNeu, art = Knopfart.Haupt, kompakt = true)
     }
 
@@ -378,7 +480,11 @@ private fun ColumnScope.TeilEinsaetze(
 
 /** Teil 2 — das Tableau: jedes Fahrzeug, sein Status, seine Sprechwünsche. */
 @Composable
-private fun ColumnScope.TeilFahrzeuge(raum: Raumzustand, beiSprechwunsch: (String) -> Unit) {
+private fun ColumnScope.TeilFahrzeuge(
+    raum: Raumzustand,
+    beiSprechwunsch: (String) -> Unit,
+    beiFahrzeug: (Rundenfahrzeug) -> Unit = {},
+) {
     val (wollen, still) = raum.vehicles.partition { it.sprechwunschSeit != null }
 
     if (wollen.isNotEmpty()) {
@@ -402,9 +508,10 @@ private fun ColumnScope.TeilFahrzeuge(raum: Raumzustand, beiSprechwunsch: (Strin
     if (raum.vehicles.isEmpty()) {
         Leerhinweis("Kein Fahrzeug im Dienst.")
     } else {
+        SehrLeise("Antippen: anrufen, auf Streife schicken, Funkgruppe schalten.")
         raum.vehicles
             .sortedWith(compareBy({ it.status !in 1..2 }, { it.funkrufname }))
-            .forEach { Dienstfahrzeugzeile(it) }
+            .forEach { f -> Dienstfahrzeugzeile(f, beiDruck = { beiFahrzeug(f) }) }
     }
 }
 
@@ -476,6 +583,8 @@ private fun ColumnScope.TeilLeitstellenfunk(
     beiSprechstart: () -> Unit,
     beiSprechende: () -> Unit,
     beiDraht: (String) -> Unit,
+    neben: Raumneben = Raumneben(),
+    befehle: Raumbefehle = Raumbefehle.Leer,
 ) {
     var ziel by remember { mutableStateOf<String?>(null) }
     var zielwahl by remember { mutableStateOf(false) }
@@ -504,6 +613,15 @@ private fun ColumnScope.TeilLeitstellenfunk(
 
     if (leitung == "draht") {
         Drahtfaden(stand = stand, beiSenden = beiDraht)
+        // Der Draht spricht auch — eine feste Leitung zwischen den Tischen.
+        Sprechtaste(
+            sendet = neben.sendetAuf == "draht",
+            wirdVerstanden = false,
+            belegtVon = neben.drahtSprecher,
+            gesperrtBis = null,
+            beiDruck = { befehle.drahtSprechenStarten() },
+            beiLoslassen = { befehle.drahtSprechenBeenden() },
+        )
         return
     }
 
@@ -549,14 +667,38 @@ private fun ColumnScope.TeilLeitstellenfunk(
 }
 
 @Composable
-private fun ColumnScope.TeilMehrLeitstelle(beiDienstende: () -> Unit) {
+private fun ColumnScope.TeilMehrLeitstelle(
+    raum: Raumzustand,
+    beiDienstende: () -> Unit,
+    beiBesatzung: () -> Unit = {},
+    beiWarnung: () -> Unit = {},
+) {
+    Ueberschrift("Mannschaft")
+    SehrLeise("Mitspieler werfen, die Leitstelle übergeben, Bot-Besatzungen einteilen.")
+    Row { Knopf("Besatzungen einteilen", beiBesatzung) }
+
+    Ueberschrift("Bevölkerung warnen")
+    SehrLeise("Die Warn-App der Leitstelle — nur zum Spaß, folgenlos fürs Spiel.")
+    Row { Knopf("Warnung senden", beiWarnung, art = Knopfart.Leise) }
+
     Ueberschrift("Dienstende")
     SehrLeise(
         "Das Dienstende ist eine Abstimmung — jeder stimmt mit. Danach steht die " +
             "Auswertung, und die Schicht wandert ins Dienstbuch.",
     )
+    // Der Zwischenstand steht am Knopf: Ohne ihn drückte man, es geschähe nichts
+    // Sichtbares, und man hielte es für einen Fehler.
+    val stand = if (raum.dienstendeStimmen > 0 && raum.dienstendeSchwelle > 1) {
+        " (${raum.dienstendeStimmen}/${raum.dienstendeSchwelle})"
+    } else {
+        ""
+    }
     Row {
-        Knopf("Dienst beenden", beiDienstende, art = Knopfart.Gefahr)
+        Knopf(
+            if (raum.dienstendeEigeneStimme) "Stimme zurücknehmen$stand" else "Dienst beenden$stand",
+            beiDienstende,
+            art = Knopfart.Gefahr,
+        )
     }
 }
 
@@ -658,41 +800,68 @@ private fun EinsatzAnlegen(
  * Jede Zeile ist ein Haken, die Verfügbaren stehen oben. Die Pflichtangabe —
  * wie viele gewählt sind — steht am Fuß neben dem Knopf, nicht im rollenden
  * Inhalt: Was dort hinten steht, fällt bei knapper Höhe heraus.
+ *
+ * <b>Darüber die Ordnung:</b> Wie viele Fahrzeuge die Lage fordert, lässt sich
+ * nachschärfen, aus einer Vorlage übernehmen und als Vorlage sichern — dort, wo
+ * sie entsteht, vor dem Tableau. Darunter die eigene Meldung der Leitstelle,
+ * getippt oder gesprochen, und für Wechsellader der Behälter, mit dem sie fahren.
  */
 @Composable
 private fun Alarmblende(
     einsatz: Einsatz,
     raum: Raumzustand?,
+    katalog: Katalog?,
+    neben: Raumneben,
+    befehle: Raumbefehle,
     beiVorschlag: suspend (String) -> List<String>,
-    beiAlarmieren: (List<String>) -> Unit,
+    beiAlarmieren: (List<String>, Map<String, String>, String?, String?) -> Unit,
     beiUmstufen: (Int) -> Unit,
     beiSchliessen: () -> Unit,
 ) {
     var gewaehlt by remember { mutableStateOf<Set<String>>(emptySet()) }
     var vorschlagGeladen by remember { mutableStateOf(false) }
+    var nachladen by remember { mutableIntStateOf(0) }
+    var zusatztext by remember { mutableStateOf("") }
+    var abrollbehaelter by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    var abWahlFuer by remember { mutableStateOf<Rundenfahrzeug?>(null) }
+    var vorlageWahl by remember { mutableStateOf(false) }
+    var vorlageName by remember(einsatz.id) { mutableStateOf(einsatz.stichwort) }
+    var meldungHat by remember { mutableStateOf(false) }
+    val meldungId = remember(einsatz.id) { java.util.UUID.randomUUID().toString() }
+    val bereich = rememberCoroutineScope()
 
-    // Der Vorschlag kommt einmal, beim Öffnen — und nur in die Vorauswahl:
-    // Was der Mensch danach ändert, bleibt geändert.
-    LaunchedEffect(einsatz.id) {
-        if (!vorschlagGeladen) {
-            gewaehlt = beiVorschlag(einsatz.id).toSet()
-            vorschlagGeladen = true
-        }
+    // Der Vorschlag kommt beim Öffnen und nach jeder geänderten Ordnung — und nur in
+    // die Vorauswahl: Was der Mensch danach ändert, bleibt geändert.
+    LaunchedEffect(einsatz.id, nachladen) {
+        gewaehlt = beiVorschlag(einsatz.id).toSet()
+        vorschlagGeladen = true
     }
+    LaunchedEffect(Unit) { befehle.dauerVorlagenLaden(raum?.settings?.landkreisId) }
 
     val fahrzeuge = raum?.vehicles.orEmpty()
         .filter { it.einsatzId == null || it.einsatzId == einsatz.id }
         .sortedWith(compareBy({ it.status !in 1..2 }, { it.funkrufname }))
+    val behaelter = katalog?.fahrzeuge.orEmpty().filter { it.kategorie == "Abrollbehälter" }
 
     Blende(
         titel = "${einsatz.stichwort} alarmieren",
-        beiSchliessen = beiSchliessen,
+        beiSchliessen = {
+            if (meldungHat) befehle.alarmMeldungVerwerfen(meldungId)
+            beiSchliessen()
+        },
         breite = Dialogbreite.Normal,
         fuss = {
             SehrLeise("${gewaehlt.size} gewählt · empfohlen ${einsatz.empfohleneFahrzeuge}")
             Knopf(
                 aufschrift = "Alarmieren",
-                beiDruck = { beiAlarmieren(gewaehlt.toList()) },
+                beiDruck = {
+                    beiAlarmieren(
+                        gewaehlt.toList(),
+                        abrollbehaelter.filterKeys { it in gewaehlt },
+                        zusatztext,
+                        meldungId.takeIf { meldungHat },
+                    )
+                },
                 art = Knopfart.Alarm,
                 aktiv = gewaehlt.isNotEmpty(),
             )
@@ -700,7 +869,7 @@ private fun Alarmblende(
     ) {
         Text(
             text = listOfNotNull(einsatz.stichwortText, einsatz.adresse.ifBlank { null })
-                .joinToString (" · "),
+                .joinToString(" · "),
             style = Schrift.Klein,
             color = Farben.TextLeise,
         )
@@ -725,6 +894,23 @@ private fun Alarmblende(
             }
         }
 
+        // Die Ordnung — Regler in Schritten, Vorlage, Sichern.
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            SehrLeise("Ordnung: ${einsatz.empfohleneFahrzeuge} Fahrzeuge", modifier = Modifier.weight(1f))
+            Knopf("−", {
+                befehle.ordnungAendern(einsatz.id, (einsatz.empfohleneFahrzeuge - 1).coerceAtLeast(1), einsatz.empfohleneFaehigkeiten)
+                nachladen++
+            }, art = Knopfart.Leise, kompakt = true)
+            Knopf("+", {
+                befehle.ordnungAendern(einsatz.id, (einsatz.empfohleneFahrzeuge + 1).coerceAtMost(12), einsatz.empfohleneFaehigkeiten)
+                nachladen++
+            }, art = Knopfart.Leise, kompakt = true)
+            Knopf("Vorlage", { vorlageWahl = true }, art = Knopfart.Leise, kompakt = true)
+        }
+
         if (!vorschlagGeladen) Ladezeile("Der Vorschlag wird geholt …")
 
         fahrzeuge.forEach { fahrzeug ->
@@ -739,11 +925,174 @@ private fun Alarmblende(
                     gewaehlt = if (neu) gewaehlt + fahrzeug.id else gewaehlt - fahrzeug.id
                 },
             )
+
+            // Ein Wechsellader fährt mit dem Behälter, der hier gewählt ist — sonst
+            // mit dem, der gerade aufsitzt.
+            if (an && fahrzeug.templateId == "wlfab" && behaelter.isNotEmpty()) {
+                val gewaehlterAb = abrollbehaelter[fahrzeug.id] ?: fahrzeug.abrollbehaelterTemplateId
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    SehrLeise("Behälter: ${abBehaelterName(gewaehlterAb, behaelter)}", modifier = Modifier.weight(1f))
+                    Knopf("Wählen", { abWahlFuer = fahrzeug }, art = Knopfart.Leise, kompakt = true)
+                }
+            }
         }
 
         if (fahrzeuge.isEmpty()) {
             Leerhinweis("Kein Fahrzeug frei — alles ist gebunden.")
         }
+
+        // Die eigene Meldung — sie steht auf dem Melder unter der Automatik.
+        Feld(
+            wert = zusatztext,
+            beiAenderung = { zusatztext = it.take(200) },
+            etikett = "Eigene Meldung (optional)",
+            platzhalter = "z. B. Zufahrt über den Hof",
+        )
+        Sprechtaste(
+            sendet = neben.sendetAuf == "meldung",
+            wirdVerstanden = false,
+            belegtVon = null,
+            gesperrtBis = null,
+            beiDruck = {
+                if (meldungHat) befehle.alarmMeldungVerwerfen(meldungId)
+                meldungHat = false
+                befehle.alarmMeldungSprechenStarten(meldungId)
+            },
+            beiLoslassen = {
+                bereich.launch { meldungHat = befehle.alarmMeldungSprechenBeenden(meldungId) }
+            },
+        )
+        if (meldungHat) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                SehrLeise("Gesprochene Meldung liegt bereit — sie geht mit dem Alarm hinaus.", modifier = Modifier.weight(1f))
+                Knopf("Verwerfen", {
+                    befehle.alarmMeldungVerwerfen(meldungId)
+                    meldungHat = false
+                }, art = Knopfart.Leise, kompakt = true)
+            }
+        }
+    }
+
+    abWahlFuer?.let { f ->
+        val belegt = raum?.vehicles.orEmpty()
+            .filter { it.id != f.id }
+            .mapNotNull { it.abrollbehaelterTemplateId }
+            .toSet() + abrollbehaelter.filterKeys { it != f.id }.values
+        Wahlblende(
+            titel = "Behälter für ${f.funkrufname}",
+            gruppen = listOf(null to behaelter.filter { it.id !in belegt }),
+            aufschrift = { it.typ.removePrefix("WLF + ") },
+            unterschrift = { it.faehigkeiten.joinToString(", ").ifBlank { null } },
+            beiWahl = {
+                abrollbehaelter = abrollbehaelter + (f.id to it.id)
+                abWahlFuer = null
+            },
+            beiSchliessen = { abWahlFuer = null },
+        )
+    }
+
+    if (vorlageWahl) {
+        Aaoblende(
+            einsatz = einsatz,
+            raum = raum,
+            neben = neben,
+            befehle = befehle,
+            name = vorlageName,
+            beiName = { vorlageName = it },
+            beiUebernommen = { nachladen++ },
+            beiZu = { vorlageWahl = false },
+        )
+    }
+}
+
+/**
+ * Die Alarm- und Ausrückeordnung als Vorlage — übernehmen oder sichern.
+ *
+ * <b>Zwei Ablagen in einer Liste.</b> Die der Schicht sehen alle Disponenten am Tisch
+ * und sie endet mit ihr; die dauerhaften gehören dem Konto. Wer eine dauerhafte
+ * übernimmt, schiebt sie zugleich in die Schicht — dann hat sie der zweite
+ * Disponent auch.
+ */
+@Composable
+private fun Aaoblende(
+    einsatz: Einsatz,
+    raum: Raumzustand?,
+    neben: Raumneben,
+    befehle: Raumbefehle,
+    name: String,
+    beiName: (String) -> Unit,
+    beiUebernommen: () -> Unit,
+    beiZu: () -> Unit,
+) {
+    val schicht = raum?.aaoVorlagen.orEmpty()
+
+    Blende(titel = "Alarm- und Ausrückeordnung", beiSchliessen = beiZu) {
+        SehrLeise(
+            "Jetzt: ${einsatz.empfohleneFahrzeuge} Fahrzeuge" +
+                einsatz.empfohleneFaehigkeiten.takeIf { it.isNotEmpty() }
+                    ?.joinToString(", ", prefix = " · ").orEmpty(),
+        )
+
+        if (schicht.isNotEmpty()) {
+            Ueberschrift("Vorlagen dieser Schicht")
+            schicht.forEach { v ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(v.name, style = Schrift.Normal, color = Farben.Text)
+                        SehrLeise("${v.empfohleneFahrzeuge} Fahrzeuge · ${v.empfohleneFaehigkeiten.joinToString(", ")}")
+                    }
+                    Knopf("Übernehmen", {
+                        befehle.ordnungAendern(einsatz.id, v.empfohleneFahrzeuge, v.empfohleneFaehigkeiten)
+                        beiUebernommen()
+                        beiZu()
+                    }, kompakt = true)
+                    Knopf("×", { befehle.aaoVorlageLoeschen(v.name) }, art = Knopfart.Gefahr, kompakt = true)
+                }
+            }
+        }
+
+        if (neben.dauerVorlagen.isNotEmpty()) {
+            Ueberschrift("Gespeichert am Konto")
+            neben.dauerVorlagen.forEach { v ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(v.name, style = Schrift.Normal, color = Farben.Text)
+                        SehrLeise(
+                            "${v.empfohleneFahrzeuge} Fahrzeuge · " +
+                                (if (v.landkreisId == null) "alle Runden" else "dieser Kreis"),
+                        )
+                    }
+                    Knopf("Übernehmen", {
+                        befehle.ordnungAendern(einsatz.id, v.empfohleneFahrzeuge, v.empfohleneFaehigkeiten)
+                        befehle.aaoVorlageSpeichern(v.name, v.empfohleneFahrzeuge, v.empfohleneFaehigkeiten)
+                        beiUebernommen()
+                        beiZu()
+                    }, kompakt = true)
+                    Knopf("×", { befehle.dauerVorlageLoeschen(v.id) }, art = Knopfart.Gefahr, kompakt = true)
+                }
+            }
+        }
+
+        if (schicht.isEmpty() && neben.dauerVorlagen.isEmpty()) {
+            SehrLeise("Noch keine Vorlage — sichere die jetzige Ordnung unter einem Namen.")
+        }
+
+        Ueberschrift("Jetzige Ordnung sichern")
+        Feld(wert = name, beiAenderung = { beiName(it.take(60)) }, etikett = "Name")
+        Pillenreihe {
+            Pille("Für diese Schicht", an = false, aktiv = name.isNotBlank(), beiDruck = {
+                befehle.aaoVorlageSpeichern(name, einsatz.empfohleneFahrzeuge, einsatz.empfohleneFaehigkeiten)
+            })
+            Pille("Am Konto · alle Runden", an = false, aktiv = name.isNotBlank(), beiDruck = {
+                befehle.dauerVorlageSichern(name, einsatz.empfohleneFahrzeuge, einsatz.empfohleneFaehigkeiten, null)
+            })
+            raum?.settings?.landkreisId?.let { kreis ->
+                Pille("Am Konto · dieser Kreis", an = false, aktiv = name.isNotBlank(), beiDruck = {
+                    befehle.dauerVorlageSichern(name, einsatz.empfohleneFahrzeuge, einsatz.empfohleneFaehigkeiten, kreis)
+                })
+            }
+        }
+        neben.vorlageMeldung?.let { SehrLeise(it, mono = true) }
     }
 }
 
@@ -763,6 +1112,7 @@ private fun Gespraechsblende(
     beiUebernehmen: (de.pagerspass.pagerspass.netz.Notrufvorschlag) -> Unit,
     beiAuflegen: () -> Unit,
     beiVerwerfen: () -> Unit,
+    werkzeug: @Composable ColumnScope.() -> Unit = {},
 ) {
     val beendet = anruf.zustand == "Beendet"
 
@@ -812,6 +1162,8 @@ private fun Gespraechsblende(
                 }
             }
         }
+
+        werkzeug()
 
         anruf.vorschlag?.let { v ->
             Ueberschrift("Vorschlag")

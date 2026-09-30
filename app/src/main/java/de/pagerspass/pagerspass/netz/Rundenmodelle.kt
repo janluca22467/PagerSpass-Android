@@ -67,6 +67,36 @@ data class Raumzustand(
     val sendegruppe: String? = null,
     /** Der Übungsstand — nur im Szenario-Modus gefüllt. */
     val uebung: Uebungsstand? = null,
+    // ------------------------------------------------ Handgriffe im Raum
+    /** Laufende und klingelnde Einzelrufe — jeder sieht nur die, die ihn betreffen. */
+    val einzelrufe: List<Einzelruf> = emptyList(),
+    /** Eigenfeststellungen der Streifen, aus denen noch kein Einsatz geworden ist. */
+    val feststellungen: List<Feststellung> = emptyList(),
+    /** Jedes abgeschlossene Gespräch der Schicht — nur an Leitstellenplätzen gefüllt. */
+    val anrufjournal: List<AnrufjournalEintrag> = emptyList(),
+    /** Die AAO-Vorlagen dieser Schicht — sie enden mit ihr. */
+    val aaoVorlagen: List<AaoVorlage> = emptyList(),
+    /** Bitten um den Leitstellentisch — gefüllt nur beim Host. */
+    val platzanfragen: List<Platzanfrage> = emptyList(),
+    /** Bitten von Zuschauern um einen Platz in einer vollen Runde. */
+    val beitrittsanfragen: List<Platzanfrage> = emptyList(),
+    /** Ob alle Plätze von Menschen besetzt sind. */
+    val voll: Boolean = false,
+    /** Wie viele Plätze über `maxSpieler` hinaus schon vergeben sind. */
+    val ueberzaehlig: Int = 0,
+    /** Ob dieser Platz der Host ist — er entscheidet über Anfragen. */
+    val istHost: Boolean = false,
+    val minSpieler: Int = 0,
+    /** Wie viele Leitstellenplätze die Runde trägt — je 45 Plätze einer. */
+    val maxLeitstellen: Int = 1,
+    /** Der Zwischenstand der Abstimmung übers Dienstende. */
+    val dienstendeStimmen: Int = 0,
+    val dienstendeSchwelle: Int = 0,
+    val dienstendeEigeneStimme: Boolean = false,
+    /** Das offene Übergabeangebot — `null`, wenn keines läuft. */
+    val uebergabe: Uebergabe? = null,
+    /** Seit wann die einzige Leitstelle ohne Verbindung ist. */
+    val leitstelleVerwaistSeit: String? = null,
 ) {
     val inLobby: Boolean get() = state == "Lobby"
     val laeuft: Boolean get() = state == "Laeuft"
@@ -119,6 +149,43 @@ data class Rundeneinstellungen(
      * spielt, sieht von der ganzen Sache nichts.
      */
     val funkgruppen: List<Funkgruppe> = emptyList(),
+    // ------------------------------------------- Die Regler der Lobby
+    //
+    // `modus` oben ist ein Überbleibsel: Der Server nennt das Feld `mode`. Beide
+    // stehen hier, damit nichts bricht, was `modus` schon liest.
+    /** `Zufall`, `Frei`, `Ausbildung`, `Tagesschicht` oder `Szenario`. */
+    val mode: String = "Zufall",
+    val organisationen: List<String> = emptyList(),
+    val hiOrgs: List<String> = emptyList(),
+    val einsatzIntervallSekunden: Int = 0,
+    val einsatzdichte: String = "Normal",
+    val offeneEinsatzGrenze: Int = 0,
+    val botTempo: String = "Normal",
+    val botGespraechigkeit: String = "Normal",
+    val botFunkAktiv: Boolean = true,
+    val kiFunkAktiv: Boolean = false,
+    val stichwortsetId: String? = null,
+    val telefonischeLeitstelle: Boolean = false,
+    val stoerungshaeufigkeit: String = "Selten",
+    val tagesalarmstaerke: Boolean = false,
+    val loeschwasser: Boolean = false,
+    val sonderobjekte: Boolean = false,
+    val wiederherstellung: Boolean = false,
+    val gefahrgutlagen: Boolean = false,
+    val freischaltungenIgnorieren: Boolean = false,
+    val zeitmodus: String = "Echtzeit",
+    val jahreszeit: String = "Sommer",
+    val silvester: Boolean = false,
+    val suchlagen: Boolean = false,
+    val verlegungsfahrten: Boolean = false,
+    val einsatzarbeit: Boolean = false,
+    val vegetationsbraende: Boolean = false,
+    val arbeitsfunk: String = "NurEinsatzleitung",
+    val einsatzende: String = "Selbsttaetig",
+    val funkverstossSchwelle: Int = 3,
+    val einsatzleitung: Boolean = false,
+    val wachennummerStellen: Int = 1,
+    val laufnummerStellen: Int = 1,
 )
 
 /**
@@ -173,6 +240,10 @@ data class Spieler(
     val rang: String = "",
     val premium: Boolean = false,
     val teammitglied: Boolean = false,
+    /** Ob dieser Platz Einzelrufe von Besatzungen annimmt (die Leitstelle kommt immer durch). */
+    val einzelrufZulassen: Boolean = true,
+    val funkVorlesen: Boolean = false,
+    val live: Boolean = false,
 ) {
     val istLeitstelle: Boolean get() = role == "Leitstelle"
     val istBesatzung: Boolean get() = role == "Fahrzeugbesatzung"
@@ -229,6 +300,30 @@ data class Rundenfahrzeug(
     val route: List<Ort> = emptyList(),
     val routeIndex: Int = 0,
     val einsatzstelleErreicht: Boolean = false,
+    // ------------------------------------------------ Handgriffe am Fahrzeug
+    val hiOrg: String = "Keine",
+    /** Ob der Rufname von Hand gesetzt wurde — dann gibt es etwas zurückzunehmen. */
+    val rufnameVonHand: Boolean = false,
+    val istLuftfahrzeug: Boolean = false,
+    /** Streife: ob dieses Fahrzeug sie fahren kann, ob es gerade fährt, und wohin. */
+    val streifenfaehig: Boolean = false,
+    val aufStreife: Boolean = false,
+    val streifenziel: String? = null,
+    /** Der Abrollbehälter eines Wechselladers — `null` heißt: ohne AB. */
+    val abrollbehaelterTemplateId: String? = null,
+    val zielklinikId: String? = null,
+    val zielklinikErreicht: Boolean = false,
+    /** Index des zugeteilten Suchabschnitts. */
+    val suchabschnitt: Int? = null,
+    /** Nummer der übernommenen Aufgabe an der Einsatzstelle. */
+    val aufgabe: Int? = null,
+    val tankLiter: Double = 0.0,
+    val wasserLiter: Double = 0.0,
+    val entnahmestelleId: String? = null,
+    val entnahmestelleErreicht: Boolean = false,
+    val ausserDienstBis: String? = null,
+    val wiederherstellungBis: String? = null,
+    val notarztBei: String? = null,
 )
 
 /** Ein Punkt auf der Karte. */
@@ -288,6 +383,21 @@ data class Einsatz(
     val brandradiusMeter: Double? = null,
     val suchradiusMeter: Double? = null,
     val suchabschnitte: List<Suchabschnitt> = emptyList(),
+    // ------------------------------------------------ Handgriffe an der Lage
+    val suchfortschritt: Double = 0.0,
+    val personGefundenUm: String? = null,
+    val arbeitsfortschritt: Double = 0.0,
+    val arbeitFertigUm: String? = null,
+    /** Ob die Führung einen Bereitstellungsraum eingerichtet hat. */
+    val bereitstellungsraum: Boolean = false,
+    /** Funkrufnamen der Kräfte, die im Bereitstellungsraum halten. */
+    val inBereitstellung: List<String> = emptyList(),
+    val landeplatz: Landeplatz? = null,
+    val wasserversorgungSteht: Boolean = false,
+    val wasserlageText: String? = null,
+    val terminUm: String? = null,
+    val zielklinikVorgabe: String? = null,
+    val eingangUm: String = "",
 ) {
     val offen: Boolean get() = state == "Offen"
     val abgeschlossen: Boolean get() = state == "Abgeschlossen"
@@ -307,6 +417,19 @@ data class ManvPatient(
     val bedarf: String? = null,
     /** Der Name der Versorgungsstelle, an der er liegt — `null` = im Gelände. */
     val stelle: String? = null,
+    // ------------------------------------------- Die Patientensimulation
+    /** Ob dieser Patient einen Bogen trägt — sonst gibt es nichts zu messen. */
+    val simuliert: Boolean = false,
+    /** Gemessene Werte, Schlüssel wie `Puls`, `Blutdruck` → lesbarer Text. */
+    val werte: Map<String, String>? = null,
+    /** Welche davon außerhalb der Norm liegen — die Antwort kommt vom Server. */
+    val auffaelligeWerte: List<String>? = null,
+    val misstGerade: String? = null,
+    val messungFertigUm: String? = null,
+    val befunde: List<Befundschema>? = null,
+    val massnahmen: List<Patientenmassnahme>? = null,
+    val verdachtsdiagnose: String? = null,
+    val diagnose: String? = null,
 )
 
 /** Verletztenablage oder Behandlungsplatz an einer Lage. */
@@ -328,17 +451,30 @@ data class Einsatzabschnitt(
     val funkrufnamen: List<String> = emptyList(),
 )
 
-/** Eine Aufgabe des Einsatzarbeitsplans — hier zählt nur, ob sie fertig ist. */
+/**
+ * Eine Aufgabe des Einsatzarbeitsplans.
+ *
+ * `begonnen` heißt: an der Reihe. Was noch wartet, lässt sich weder übernehmen noch
+ * zuteilen; `zwingend` mit `faehigkeit` heißt, nur wer sie mitbringt, darf ran.
+ */
 @Serializable
 data class Aufgabe(
+    val nummer: Int = 0,
     val name: String = "",
+    val faehigkeit: String? = null,
+    val zwingend: Boolean = false,
+    val fortschritt: Double = 0.0,
     val fertig: Boolean = false,
+    val begonnen: Boolean = true,
+    val entfallen: Boolean = false,
+    val wartetAuf: String? = null,
 )
 
 /** Ein Sektor des Suchgebiets — acht à 45 Grad. */
 @Serializable
 data class Suchabschnitt(
     val nummer: Int = 0,
+    val name: String = "",
     val fortschritt: Double = 0.0,
 )
 
@@ -554,6 +690,8 @@ data class Anruf(
     val verlauf: List<Gespraechszeile> = emptyList(),
     val erfragt: List<String> = emptyList(),
     val vorschlag: Notrufvorschlag? = null,
+    /** Die Ortung des Anschlusses — `null`, solange niemand geortet hat. */
+    val ortung: Ortung? = null,
 ) {
     val klingelt: Boolean get() = zustand == "Klingelt"
     val imGespraech: Boolean get() = zustand == "ImGespraech"

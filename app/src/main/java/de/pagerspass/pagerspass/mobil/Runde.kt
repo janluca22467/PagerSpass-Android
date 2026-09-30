@@ -53,6 +53,28 @@ class Runde(anwendung: Application) : AndroidViewModel(anwendung) {
     val stand: StateFlow<Rundenstand> = _stand.asStateFlow()
 
     /**
+     * Die Handgriffe über Rolle, Status und Funk hinaus — Lobby-Regler, Übergabe,
+     * Einzelruf, Patientenbogen, Nebenleitungen. Sie teilen sich diese Verbindung;
+     * eine Absage landet in derselben Meldung wie alle anderen.
+     */
+    val befehle = Raumbefehle(
+        leitung = object : Raumbefehle.Leitung {
+            override fun rufen(methode: String, vararg argumente: JsonElement) =
+                draht.rufen(methode, *argumente)
+
+            override suspend fun frage(methode: String, vararg argumente: JsonElement) =
+                draht.frage(methode, *argumente)
+
+            override fun auf(ereignis: String, empfang: (List<JsonElement>) -> Unit) =
+                draht.auf(ereignis, empfang)
+        },
+        bereich = bereich,
+        wege = de.pagerspass.pagerspass.netz.Raumwege(Netz(ablage)),
+        eigeneKennung = { ablage.kennung() },
+        beiFehler = { satz -> _stand.update { it.copy(fehler = satz) } },
+    )
+
+    /**
      * Der Haken für die Benachrichtigung.
      *
      * Der Rahmen hängt sich hier ein und zeigt die Systemmeldung mit Ton — das
@@ -127,6 +149,7 @@ class Runde(anwendung: Application) : AndroidViewModel(anwendung) {
             _stand.update {
                 Rundenstand(fehler = grund ?: "Die Leitstelle hat dich aus dem Raum entfernt.")
             }
+            befehle.zuruecksetzen()
             bereich.launch { ablage.rundeMerken(null) }
         }
 
@@ -594,11 +617,32 @@ class Runde(anwendung: Application) : AndroidViewModel(anwendung) {
         JsonNull, // ursprungEinsatzId
     )
 
-    fun alarmieren(incidentId: String, fahrzeuge: List<String>) = draht.rufen(
+    /**
+     * Alarmieren — immer alle fünf Stellen von `AlarmVehicles`.
+     *
+     * <b>Hier standen früher nur drei.</b> SignalR bindet nach Stelle und
+     * verwirft einen Aufruf mit falscher Argumentzahl im Ganzen; der Alarm aus der
+     * App ging damit nie hinaus, ohne dass irgendwo eine Meldung stand.
+     *
+     * @param abrollbehaelter Fahrzeug-Id → Behälter-Vorlage für Wechsellader.
+     * @param zusatztext Die eigene Meldung der Leitstelle unter der Automatik.
+     * @param meldungId Die Kennung einer gesprochenen Meldung (siehe `Raumbefehle`).
+     */
+    fun alarmieren(
+        incidentId: String,
+        fahrzeuge: List<String>,
+        abrollbehaelter: Map<String, String> = emptyMap(),
+        zusatztext: String? = null,
+        meldungId: String? = null,
+    ) = draht.rufen(
         "AlarmVehicles",
         wert(incidentId),
         liste(fahrzeuge),
-        JsonNull,
+        kotlinx.serialization.json.buildJsonObject {
+            abrollbehaelter.forEach { (f, ab) -> put(f, JsonPrimitive(ab)) }
+        },
+        zusatztext?.trim()?.ifBlank { null }?.let { wert(it) } ?: JsonNull,
+        meldungId?.let { wert(it) } ?: JsonNull,
     )
 
     /**
@@ -792,6 +836,7 @@ class Runde(anwendung: Application) : AndroidViewModel(anwendung) {
     fun verlassen() = viewModelScope.launch {
         sprechenAbbrechen()
         lautsprecher.schliessen()
+        befehle.zuruecksetzen()
         runCatching { draht.rufen("Leave") }
         draht.trennen()
         ablage.rundeMerken(null)
@@ -810,6 +855,7 @@ class Runde(anwendung: Application) : AndroidViewModel(anwendung) {
         // Zustand ohnehin nur die letzten 150 Zeilen — Kennzahlen daraus wären
         // falsch, aber zum Mitlesen reicht es.
         _stand.update { it.copy(raum = raum, code = raum.code, funk = raum.funkprotokoll) }
+        befehle.raumGeaendert(raum)
     }
 
     private fun text(roh: JsonElement): String? = (roh as? JsonPrimitive)?.content
