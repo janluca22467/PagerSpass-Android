@@ -266,6 +266,17 @@ data class Katalog(
     val stichworte: List<Stichwort> = emptyList(),
     val fmsStatus: List<FmsTaste> = emptyList(),
     val meldende: List<String> = emptyList(),
+    /** Die Funktionen, die eine AAO fordern kann — für den Übungseditor. */
+    val faehigkeiten: List<String> = emptyList(),
+    /** Welche Leitstelle für welche Kreise zuständig ist — für den Leitstellenbau. */
+    val leitstellen: List<Katalogleitstelle> = emptyList(),
+)
+
+@Serializable
+data class Katalogleitstelle(
+    val id: String = "",
+    val name: String = "",
+    val kreise: List<String> = emptyList(),
 )
 
 /**
@@ -326,6 +337,8 @@ data class Landkreis(
     val maxSpieler: Int = 0,
     val bundesland: String = "",
     val art: String = "",
+    /** Welche Hilfsorganisationen im Kreis Wachen haben — leer heißt: alle. */
+    val hiOrgs: List<String> = emptyList(),
 ) {
     /**
      * Wie der Kreis in der Liste steht.

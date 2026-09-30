@@ -55,6 +55,9 @@ class MainActivity : ComponentActivity() {
      */
     private val begleiter: de.pagerspass.pagerspass.mobil.Begleiter by viewModels()
 
+    /** Dienstbuch, Lehrgang, Übungen, Leitstellenbau — Entwürfe überleben so das Drehen. */
+    private val werkstatt: de.pagerspass.pagerspass.mobil.Werkstatt by viewModels()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         // Der Melder braucht seinen Kanal, bevor der erste Alarm kommt — und er
         // darf mehrfach angelegt werden: Android behält die Einstellungen.
@@ -74,6 +77,7 @@ class MainActivity : ComponentActivity() {
                     runde = runde,
                     sozial = sozial,
                     begleiter = begleiter,
+                    werkstatt = werkstatt,
                 )
             }
         }
