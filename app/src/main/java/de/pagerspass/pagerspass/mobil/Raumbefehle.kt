@@ -475,6 +475,16 @@ class Raumbefehle internal constructor(
     fun funkgruppeZuweisen(fahrzeugId: String, gruppeId: String?) =
         leitung.rufen("FunkgruppeZuweisen", wert(fahrzeugId), wert(gruppeId ?: ""))
 
+    /**
+     * Den eigenen Leitstellenplatz einstellen: welche Gruppen er hört, auf welcher er
+     * sendet. Leere Liste heißt „alle" — so sitzt man allein am Tisch.
+     */
+    fun funkgruppenPlatz(gruppen: List<String>, sendegruppe: String?) =
+        leitung.rufen("FunkgruppenPlatz", liste(gruppen), wert(sendegruppe ?: ""))
+
+    /** Den eigenen getippten Funk vorlesen lassen — für alle, die mithören. */
+    fun funkVorlesen(an: Boolean) = leitung.rufen("FunkVorlesen", wert(an))
+
     // ========================================================= Fahrzeug
 
     /** Nachfordern — ohne eigenen Text der Satz, den das Web auch schickt. */

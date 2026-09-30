@@ -435,6 +435,47 @@ fun Warnungsblende(befehle: Raumbefehle, beiZu: () -> Unit) {
     }
 }
 
+/**
+ * Der eigene Platz am Funktisch: auf welcher Gruppe gesendet wird, welche
+ * mitgehört werden. Nur, wo die Runde getrennte Funkverkehrskreise fährt.
+ *
+ * <b>Leer heißt alle.</b> Wer allein am Tisch sitzt, hört jede Gruppe; erst ab dem
+ * zweiten Disponenten teilt man sich die Kreise auf.
+ */
+@Composable
+fun ColumnScope.Kanalwahl(raum: Raumzustand, befehle: Raumbefehle) {
+    val kreisgruppen = raum.settings.funkgruppen.filter { it.einsatzId == null }
+    if (kreisgruppen.isEmpty()) return
+    val gehoert = raum.gehoerteFunkgruppen.toSet()
+    val alle = kreisgruppen.all { it.id in gehoert }
+
+    Ueberschrift("Senden auf")
+    Pillenreihe {
+        kreisgruppen.forEach { g ->
+            Pille(
+                g.marke.ifBlank { g.name },
+                an = raum.sendegruppe == g.id,
+                beiDruck = { befehle.funkgruppenPlatz(if (alle) emptyList() else gehoert.toList(), g.id) },
+            )
+        }
+    }
+    Ueberschrift("Mithören")
+    Pillenreihe {
+        kreisgruppen.forEach { g ->
+            val an = g.id in gehoert
+            Pille(
+                g.marke.ifBlank { g.name },
+                an = an,
+                beiDruck = {
+                    val neu = if (an) gehoert - g.id else gehoert + g.id
+                    // Die Sendegruppe hört man immer mit; ganz ohne Gruppe geht nicht.
+                    if (neu.isNotEmpty()) befehle.funkgruppenPlatz(neu.toList(), raum.sendegruppe)
+                },
+            )
+        }
+    }
+}
+
 /** Der Satz zur Ortung — dieselben drei Fassungen wie im Telefonfenster. */
 fun ortungstext(o: Ortung?): String? = when {
     o == null -> null

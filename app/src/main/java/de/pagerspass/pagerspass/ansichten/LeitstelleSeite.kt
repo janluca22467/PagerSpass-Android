@@ -197,6 +197,7 @@ fun LeitstelleSeite(
 
                         Leitstellenteil.Mehr -> TeilMehrLeitstelle(
                             raum = raum,
+                            befehle = befehle,
                             beiDienstende = beiDienstende,
                             beiBesatzung = { besatzungOffen = true },
                             beiWarnung = { warnungOffen = true },
@@ -213,6 +214,11 @@ fun LeitstelleSeite(
                 Leitstellenteil.Notruf.name to klingelnde,
                 Leitstellenteil.Fahrzeuge.name to sprechwuensche,
                 Leitstellenteil.Einsaetze.name to offene,
+                Leitstellenteil.Mehr.name to if (raum?.istHost == true) {
+                    raum.platzanfragen.size + raum.beitrittsanfragen.size
+                } else {
+                    0
+                },
             ),
             // Ein klingelnder Notruf ruft — er ist das Dringendste, was eine
             // Leitstelle haben kann, und er wartet nicht.
@@ -627,6 +633,8 @@ private fun ColumnScope.TeilLeitstellenfunk(
 
     Ueberschrift("Funk")
 
+    Kanalwahl(raum, befehle)
+
     Wahlfeld(
         etikett = "An",
         wert = ziel ?: "Alle Fahrzeuge",
@@ -672,7 +680,12 @@ private fun ColumnScope.TeilMehrLeitstelle(
     beiDienstende: () -> Unit,
     beiBesatzung: () -> Unit = {},
     beiWarnung: () -> Unit = {},
+    befehle: Raumbefehle = Raumbefehle.Leer,
 ) {
+    // Wer mitten im Dienst um den Tisch oder einen Platz bittet, wartet auf den
+    // Host — und der sitzt hier, nicht in der Lobby.
+    Anfragenkasten(raum, befehle)
+
     Ueberschrift("Mannschaft")
     SehrLeise("Mitspieler werfen, die Leitstelle übergeben, Bot-Besatzungen einteilen.")
     Row { Knopf("Besatzungen einteilen", beiBesatzung) }

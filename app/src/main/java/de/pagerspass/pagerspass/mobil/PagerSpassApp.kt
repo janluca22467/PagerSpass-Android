@@ -266,9 +266,14 @@ private fun Rundenrahmen(
     when {
         // Der Zuschauerplatz — vor den Spielerplätzen, denn `ich` gibt es hier
         // nicht: Der Zuschauer steht nie in `players`.
-        stand.zuschauer && raum?.beendet != true -> ZuschauerSeite(
+        // Wer als Zuschauer um einen Platz gebeten hat und angenommen wurde, steht
+        // danach in `players` — dann ist er kein Zuschauer mehr (wie `istZuschauer`
+        // im Web).
+        stand.zuschauer && ich == null && raum?.beendet != true -> ZuschauerSeite(
             stand = stand,
             eigeneKennung = sitzungsstand.konto?.kennung.orEmpty(),
+            premium = sitzungsstand.konto?.premiumAktiv == true,
+            befehle = runde.befehle,
             beiVerlassen = { runde.verlassen() },
             regie = de.pagerspass.pagerspass.ansichten.RegieGriffe(
                 start = { runde.dienstBeginnen() },
@@ -362,6 +367,8 @@ private fun Rundenrahmen(
                 verstorbene = { runde.verstorbeneUebergeben(it) },
                 triage = { runde.triageKoordinieren(it) },
             ),
+            befehle = runde.befehle,
+            neben = neben,
         )
 
         else -> LobbySeite(

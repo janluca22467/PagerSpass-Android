@@ -452,6 +452,31 @@ fun Lagekarte(
                 }
             }
 
+            // ----------------------------------------- Ortungen und Feststellungen
+            //
+            // Ein georteter Anrufer ist ein Kreis, kein Punkt: Die Ortung sagt nur,
+            // in welchem Umkreis der Anschluss liegt — die Adresse fragt man weiter.
+            (raum.anrufe.mapNotNull { it.ortung } + raum.anrufjournal.mapNotNull { it.ortung })
+                .filter { it.erfolgreich == true && it.lat != null && it.lon != null }
+                .forEach { o ->
+                    kreis(bildschirm(o.lat!!, o.lon!!), o.lat, o.radiusMeter ?: 150.0, Color(0xFF7C9CFF))
+                }
+            // Was eine Streife gesehen hat, steht als kleiner Rhombus da, bis
+            // jemand entscheidet.
+            raum.feststellungen.forEach { f ->
+                val o = bildschirm(f.lat, f.lon)
+                val a = 7.dp.toPx()
+                val rhombus = Path().apply {
+                    moveTo(o.x, o.y - a)
+                    lineTo(o.x + a, o.y)
+                    lineTo(o.x, o.y + a)
+                    lineTo(o.x - a, o.y)
+                    close()
+                }
+                drawPath(rhombus, Color(0xFF4FC3D9))
+                drawPath(rhombus, Farben.BgTief, style = Stroke(1.5.dp.toPx()))
+            }
+
             // ------------------------------------------------------ Strecke
             val strecke = raum.vehicles.firstOrNull { it.id == gewaehltesFahrzeug }
             if (strecke?.lat != null && strecke.lon != null) {
