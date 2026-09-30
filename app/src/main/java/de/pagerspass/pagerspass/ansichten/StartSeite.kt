@@ -95,6 +95,8 @@ fun StartSeite(
     beiImWeb: () -> Unit = {},
     beiTagesschicht: () -> Unit = {},
     beiOeffentlicheRunden: () -> Unit = {},
+    /** PagerSpass - World, nativ — ohne Angabe führt der Weg wie bisher ins Web. */
+    beiWelt: (() -> Unit)? = null,
     mitteilungen: List<de.pagerspass.pagerspass.netz.Betreibermitteilung> = emptyList(),
     gelesen: Set<String> = emptySet(),
     einladungen: List<de.pagerspass.pagerspass.netz.Einladung> = emptyList(),
@@ -276,6 +278,7 @@ fun StartSeite(
                         Startweg.Ausbildung -> beiAusbildung()
                         Startweg.Tagesschicht -> beiTagesschicht()
                         Startweg.OeffentlicheRunden -> beiOeffentlicheRunden()
+                        Startweg.Welt -> beiWelt?.invoke() ?: beiImWeb()
                         else -> beiImWeb()
                     }
                 },
@@ -654,7 +657,7 @@ enum class Startweg {
                 Eintrag(
                     weg = Welt,
                     titel = "World",
-                    unterzeile = "Eine Karte, alle Leitstellen — im Browser",
+                    unterzeile = "Eine Karte, alle Leitstellen",
                     zeichen = Zeichen.Welt,
                     schild = if (premium) null else "Premium",
                 ),

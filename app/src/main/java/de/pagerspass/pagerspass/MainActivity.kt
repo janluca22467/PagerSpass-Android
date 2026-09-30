@@ -55,6 +55,12 @@ class MainActivity : ComponentActivity() {
      */
     private val begleiter: de.pagerspass.pagerspass.mobil.Begleiter by viewModels()
 
+    /**
+     * PagerSpass - World — an der Activity aus demselben Grund wie die Runde:
+     * Takt und Funkverbindung sollen ein Drehen des Geräts überleben.
+     */
+    private val welt: de.pagerspass.pagerspass.mobil.Welt by viewModels()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         // Der Melder braucht seinen Kanal, bevor der erste Alarm kommt — und er
         // darf mehrfach angelegt werden: Android behält die Einstellungen.
@@ -74,6 +80,7 @@ class MainActivity : ComponentActivity() {
                     runde = runde,
                     sozial = sozial,
                     begleiter = begleiter,
+                    welt = welt,
                 )
             }
         }

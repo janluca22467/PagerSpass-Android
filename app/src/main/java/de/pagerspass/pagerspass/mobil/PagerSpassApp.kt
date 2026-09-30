@@ -103,10 +103,20 @@ fun PagerSpassApp(
     sozial: Sozial,
     begleiter: Begleiter,
     steuerung: NavHostController = rememberNavController(),
+    welt: Welt? = null,
 ) {
     val stand by sitzung.stand.collectAsStateWithLifecycle()
     val rundenstand by runde.stand.collectAsStateWithLifecycle()
     val begleiterstand by begleiter.stand.collectAsStateWithLifecycle()
+    val weltOffen = welt?.let { w -> w.stand.collectAsStateWithLifecycle().value.offen } ?: false
+
+    // Abgemeldet oder ein anderes Konto: Die Welt des vorigen schließt — samt
+    // Takt und Funkverbindung, die sonst unter fremdem Namen weiterliefen.
+    LaunchedEffect(stand.konto?.kennung) {
+        if (welt == null) return@LaunchedEffect
+        val k = stand.konto?.kennung
+        if (k == null || (welt.kennung != null && welt.kennung != k)) welt.schliessen()
+    }
 
     // Zurück in die Runde, die vor einem Prozesstod lief — einmal je Konto.
     LaunchedEffect(stand.konto?.kennung) {
@@ -174,7 +184,16 @@ fun PagerSpassApp(
             // begleiten kann.
             begleiterstand.gekoppelt -> Begleiterrahmen(begleiterstand, begleiter)
 
-            else -> Angemeldet(stand, sitzung, runde, sozial, begleiter, steuerung)
+            // <b>Die Welt verdrängt ebenfalls</b> — sie trägt ihre eigene Leiste
+            // (Lagen, Fahrzeuge, Wachen, Bauen, Mehr) und braucht die Karte ganz.
+            weltOffen && welt != null -> de.pagerspass.pagerspass.ansichten.welt.WeltRahmen(
+                welt = welt,
+                konto = stand.konto,
+                server = stand.server,
+                beiVerlassen = { welt.schliessen() },
+            )
+
+            else -> Angemeldet(stand, sitzung, runde, sozial, begleiter, steuerung, welt)
         }
 
         Verbindungsband(
@@ -473,6 +492,7 @@ private fun Angemeldet(
     sozial: Sozial,
     begleiter: Begleiter,
     steuerung: NavHostController,
+    welt: Welt? = null,
 ) {
     val begleiterstand by begleiter.stand.collectAsStateWithLifecycle()
     val daten by sitzung.daten.collectAsStateWithLifecycle()
@@ -538,6 +558,7 @@ private fun Angemeldet(
                         browser.openUri(Rechtsstand.adresse(Server.BETRIEB, seite))
                     },
                     beiImWeb = { imWeb("") },
+                    beiWelt = welt?.let { w -> { w.anzeigen() } },
                 )
             }
 
