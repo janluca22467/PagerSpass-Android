@@ -1,7 +1,5 @@
 package de.pagerspass.pagerspass.ansichten
 
-import android.media.AudioManager
-import android.media.ToneGenerator
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -36,8 +34,16 @@ import de.pagerspass.pagerspass.ui.theme.Abstand
 import de.pagerspass.pagerspass.ui.theme.Farben
 import de.pagerspass.pagerspass.ui.theme.Rundung
 import de.pagerspass.pagerspass.ui.theme.Schrift
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalContext
+import de.pagerspass.pagerspass.ansichten.melder.Melderbild
+import de.pagerspass.pagerspass.melder.Melderbauplan
+import de.pagerspass.pagerspass.melder.Meldergeraet
+import de.pagerspass.pagerspass.melder.Melderkatalog
+import de.pagerspass.pagerspass.melder.Melderspieler
+import de.pagerspass.pagerspass.netz.Begleitergeraete
 
 /**
  * Der Melder — das Alarmbild, das den Dienst unterbricht.
@@ -48,35 +54,48 @@ import kotlinx.coroutines.isActive
  * nicht:</b> Der Alarm bleibt am Fahrzeug offen (`alarmOffen`), und die
  * Leitstelle sieht weiter, dass niemand reagiert hat.
  *
- * <b>Der Ton kommt vom Gerät, nicht aus einer Datei.</b> Fünf kurze Töne, eine
- * Pause, von vorn — die Kadenz eines Funkmeldeempfängers. `ToneGenerator` auf
- * dem Alarmkanal des Systems heißt: Er folgt der Alarm-Lautstärke des Geräts,
- * nicht der Medienlautstärke, die beim Spielen oft auf null steht.
+ * <b>Der Ton ist der gewählte Melderton</b> (`Melderspieler`, auf dem
+ * Alarmkanal des Systems): Er folgt der Alarm-Lautstärke des Geräts, nicht der
+ * Medienlautstärke, die beim Spielen oft auf null steht. Die Alarmierungsart
+ * entscheidet, ob er klingt und ob das Handy vibriert.
+ *
+ * <b>Zwei Gestalten, wie im Web</b> (`MelderToggle.vue`): Als Piepser (`dme`)
+ * steht das gewählte Gerät da — quittiert wird an seiner Quittierstelle oder am
+ * Knopf darunter. Als Alarm-App (und „Im Funk", das am Handy kein Funkdisplay
+ * hat) liegt die Meldung in großer Schrift über allem.
  */
 @Composable
 fun Melderblende(
     alarm: Alarmmeldung,
     beiQuittieren: () -> Unit,
     beiWegtippen: () -> Unit,
+    /** Am Begleiter: der Gerätestand des Rechners, der hier gespiegelt wird. */
+    geraete: Begleitergeraete? = null,
 ) {
-    // Der Piepton, bis jemand reagiert.
+    val zusammenhang = LocalContext.current
+    val geraet = remember { Meldergeraet.bereit(zusammenhang) }
+
+    // Was gilt: am Begleiter der Stand des Rechners, sonst die Wahl dieses Geräts.
+    val bauart = geraete?.bauart ?: geraet.bauart
+    val bauform = geraete?.bauform?.takeIf { Melderkatalog.bauform(it) != null } ?: geraet.wirksameBauform()
+    val gesicht = geraete?.gesicht ?: geraet.gesicht
+    val ton = geraete?.melderton?.takeIf { t -> Melderkatalog.TOENE.any { it.id == t } } ?: geraet.ton
+    val art = Melderkatalog.alarmierungsart(geraet.alarmierungsart)
+
+    // Der Ton, bis jemand reagiert — der gewählte Melderton auf dem Alarmkanal,
+    // und die Vibration, wenn die Alarmierungsart sie will.
     LaunchedEffect(alarm.incidentId) {
-        val ton = runCatching { ToneGenerator(AudioManager.STREAM_ALARM, 90) }.getOrNull()
-        try {
-            while (isActive) {
-                repeat(5) {
-                    ton?.startTone(ToneGenerator.TONE_PROP_BEEP2, 160)
-                    delay(240)
-                }
-                delay(1_200)
-            }
-        } finally {
-            ton?.release()
-        }
+        if (art.ton) Melderspieler.starten(zusammenhang, ton, alarm.prioritaet.coerceIn(1, 3))
+        if (art.vibration) Melderspieler.vibrieren(zusammenhang)
     }
 
     // Aufräumen, falls der Rahmen die Blende abbaut, ohne dass jemand tippte.
-    DisposableEffect(Unit) { onDispose { } }
+    DisposableEffect(Unit) {
+        onDispose {
+            Melderspieler.stoppen("alarm")
+            Melderspieler.vibrationAus()
+        }
+    }
 
     val puls = rememberInfiniteTransition(label = "alarm")
     val glut by puls.animateFloat(
@@ -101,6 +120,17 @@ fun Melderblende(
                 .background(Farben.Ueberlagerung)
                 .padding(Abstand.Gross),
         ) {
+            if (bauart == "dme") {
+                Geraeteblende(
+                    alarm = alarm,
+                    bauform = bauform,
+                    gesicht = gesicht,
+                    plan = if (geraete == null) geraet.eigenerPlan().takeIf { bauform.startsWith("eigen:") } else null,
+                    beiQuittieren = beiQuittieren,
+                    beiWegtippen = beiWegtippen,
+                )
+                return@Box
+            }
             Column(
                 verticalArrangement = Arrangement.spacedBy(Abstand.Normal),
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -182,5 +212,54 @@ fun Melderblende(
                 )
             }
         }
+    }
+}
+
+/**
+ * Der Alarm als Gerät — das gewählte Gehäuse, groß, mit der Meldung auf seinem
+ * Glas. Der Knopf darunter ist dieselbe Handlung wie die Quittierstelle am
+ * Gerät: An einem gezeichneten Knopf vorbeizutippen darf im Einsatz nicht
+ * heißen, dass der Alarm weiterläuft.
+ */
+@Composable
+private fun Geraeteblende(
+    alarm: Alarmmeldung,
+    bauform: String,
+    gesicht: String,
+    plan: Melderbauplan?,
+    beiQuittieren: () -> Unit,
+    beiWegtippen: () -> Unit,
+) {
+    val quer = Melderkatalog.bauform(bauform)?.quer == true || (plan != null && plan.breite > plan.hoehe)
+    Column(
+        verticalArrangement = Arrangement.spacedBy(Abstand.Normal),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Text(
+            text = "ALARM",
+            style = Schrift.Etikett.copy(letterSpacing = 0.3.em),
+            color = Farben.SignalHell,
+        )
+        Melderbild(
+            bauform = bauform,
+            gesicht = gesicht,
+            alarm = alarm,
+            plan = plan,
+            beiQuittieren = beiQuittieren,
+            modifier = Modifier.widthIn(max = if (quer) 460.dp else 300.dp).heightIn(max = 440.dp),
+        )
+        Knopf(
+            aufschrift = "Alarm quittieren",
+            beiDruck = beiQuittieren,
+            art = Knopfart.Alarm,
+            breit = true,
+        )
+        Knopf(
+            aufschrift = "Wegtippen — bleibt offen",
+            beiDruck = beiWegtippen,
+            art = Knopfart.Leise,
+            kompakt = true,
+        )
     }
 }

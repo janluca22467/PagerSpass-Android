@@ -36,6 +36,7 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
+import de.pagerspass.pagerspass.mobil.packFahrzeug
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -198,6 +199,9 @@ fun Weltkarte(
         freigabe = ablage.karteFreigabe()
         stil = Kartenstil.entries.firstOrNull { it.name == ablage.karteStil() } ?: Kartenstil.Dunkel
     }
+    // Das Icon-Pack, das auf dieser Karte gilt — einmal beim Aufbau; eine neue
+    // Wahl in den Einstellungen lädt es selbst nach.
+    LaunchedEffect(Unit) { de.pagerspass.pagerspass.mobil.Iconpack.laden(zusammenhang) }
     var stilwahl by remember { mutableStateOf(false) }
     var ebenenwahl by remember { mutableStateOf(false) }
 
@@ -449,6 +453,7 @@ fun Weltkarte(
                     val l = fahrt.lage(f.fahrt())
                     val p = o(l.lat, l.lon)
                     if (!imBild(p)) return@forEach
+                    if (packFahrzeug(f.vorlageId, p, l.kurs.toFloat(), f.blaulicht, (uhr / 400) % 2 == 0L)) return@forEach
                     drawCircle(Farben.BgTief, 5.dp.toPx(), p)
                     drawCircle(Color(0xFF8291A5), 3.5.dp.toPx(), p)
                     if (f.blaulicht && (uhr / 400) % 2 == 0L) {
@@ -482,19 +487,22 @@ fun Weltkarte(
                     val p = o(l.lat, l.lon)
                     if (!imBild(p)) return@forEach
                     val farbe = orgFarbe(zustand.vorlage(f.vorlageId)?.organisation)
-                    rotate(l.kurs.toFloat(), p) {
-                        val pfeil = Path().apply {
-                            moveTo(p.x, p.y - 9.dp.toPx())
-                            lineTo(p.x + 6.dp.toPx(), p.y + 6.dp.toPx())
-                            lineTo(p.x, p.y + 3.dp.toPx())
-                            lineTo(p.x - 6.dp.toPx(), p.y + 6.dp.toPx())
-                            close()
+                    // Das Icon des gewählten Packs — oder, wo es keins gibt, der Pfeil.
+                    if (!packFahrzeug(f.vorlageId, p, l.kurs.toFloat(), f.blaulicht, (uhr / 400) % 2 == 0L)) {
+                        rotate(l.kurs.toFloat(), p) {
+                            val pfeil = Path().apply {
+                                moveTo(p.x, p.y - 9.dp.toPx())
+                                lineTo(p.x + 6.dp.toPx(), p.y + 6.dp.toPx())
+                                lineTo(p.x, p.y + 3.dp.toPx())
+                                lineTo(p.x - 6.dp.toPx(), p.y + 6.dp.toPx())
+                                close()
+                            }
+                            drawPath(pfeil, Farben.BgTief, style = Stroke(3.dp.toPx()))
+                            drawPath(pfeil, farbe, style = Fill)
                         }
-                        drawPath(pfeil, Farben.BgTief, style = Stroke(3.dp.toPx()))
-                        drawPath(pfeil, farbe, style = Fill)
-                    }
-                    if (f.blaulicht && (uhr / 400) % 2 == 0L) {
-                        drawCircle(Color(0xFF4D8DFF), 11.dp.toPx(), p, style = Stroke(2.dp.toPx()))
+                        if (f.blaulicht && (uhr / 400) % 2 == 0L) {
+                            drawCircle(Color(0xFF4D8DFF), 11.dp.toPx(), p, style = Stroke(2.dp.toPx()))
+                        }
                     }
                     if (f.id == gewaehltesFahrzeug) {
                         drawCircle(Farben.Amber, 13.dp.toPx(), p, style = Stroke(2.dp.toPx()))

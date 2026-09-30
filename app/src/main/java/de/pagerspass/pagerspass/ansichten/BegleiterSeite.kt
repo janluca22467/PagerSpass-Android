@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -742,6 +743,22 @@ private fun ColumnScope.Melderteil(
                 style = Schrift.Klein,
                 color = Farben.TextLeise,
                 textAlign = TextAlign.Center,
+            )
+        }
+    } else if (de.pagerspass.pagerspass.melder.Melderkatalog.bauform(stand.geraete.bauform ?: "dienst") != null) {
+        // Das Gehäuse, das am Rechner gewählt ist — gezeichnet wie dort, im
+        // Gesicht des Kontos. Quittiert wird an seiner Quittierstelle.
+        val bauform = stand.geraete.bauform ?: "dienst"
+        Box(contentAlignment = Alignment.Center, modifier = breite.fillMaxWidth()) {
+            de.pagerspass.pagerspass.ansichten.melder.Melderbild(
+                bauform = bauform,
+                gesicht = stand.geraete.gesicht ?: "standard",
+                alarm = stand.alarm ?: stand.melderverlauf.lastOrNull(),
+                laeuft = stand.alarm != null,
+                beiQuittieren = beiQuittieren,
+                modifier = Modifier
+                    .widthIn(max = if (stand.geraete.querformat || bauform in setOf("quad", "leucht", "fax")) 440.dp else 280.dp)
+                    .heightIn(max = 460.dp),
             )
         }
     } else {

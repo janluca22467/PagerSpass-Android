@@ -24,8 +24,9 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
     <!--
-        Einzelruf und Bevölkerungswarnung vibrieren, jede mit eigener Folge
-        (`Raumtoene.kt`). Eine gewöhnliche Berechtigung ohne Rückfrage.
+        Der Melder vibriert, solange der Alarm läuft („Ton und Vibration",
+        „Nur Vibration"); Einzelruf und Bevölkerungswarnung vibrieren, jede mit
+        eigener Folge (`Raumtoene.kt`). Eine gewöhnliche Berechtigung ohne Rückfrage.
     -->
     <uses-permission android:name="android.permission.VIBRATE" />
 

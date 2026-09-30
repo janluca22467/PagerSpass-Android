@@ -550,6 +550,7 @@ private fun Begleiterrahmen(stand: Begleiterstand, begleiter: Begleiter) {
             alarm = alarm,
             beiQuittieren = { begleiter.alarmQuittieren() },
             beiWegtippen = { begleiter.alarmWegtippen() },
+            geraete = stand.geraete,
         )
     }
 }
@@ -579,6 +580,16 @@ private fun Angemeldet(
     val browser = LocalUriHandler.current
     var loeschenOffen by remember { mutableStateOf(false) }
     val kontostand by sitzung.kontodienst.stand.collectAsStateWithLifecycle()
+
+    // Der Melder dieses Geräts erfährt Stufe und Abo, sobald das Konto da ist —
+    // eine Bauform oder ein Ton, der nicht (mehr) offensteht, fällt zurück.
+    val melderzusammenhang = LocalContext.current
+    LaunchedEffect(stand.konto?.level, stand.konto?.premiumAktiv) {
+        stand.konto?.let {
+            de.pagerspass.pagerspass.melder.Meldergeraet.bereit(melderzusammenhang)
+                .kontoMerken(it.level, it.premiumAktiv, null)
+        }
+    }
     // Der Bereich, in dem der Shop aufgehen soll — „Premium ansehen" im Konto.
     var shopWunsch by remember { mutableStateOf<String?>(null) }
 
@@ -935,6 +946,26 @@ private fun Angemeldet(
                     beiPostfach = { steuerung.navigate(UNTERSEITE_POSTFACH) },
                     beiMitteilungen = { steuerung.navigate(UNTERSEITE_MITTEILUNGEN) },
                     beiBegleiter = { steuerung.navigate(UNTERSEITE_BEGLEITER) },
+                    beiMelder = { steuerung.navigate(UNTERSEITE_MELDER) },
+                )
+            }
+
+            composable(UNTERSEITE_MELDER) {
+                // Der Shop sagt, welche Töne und Gesichter gekauft sind — ohne ihn
+                // stünde jedes gekaufte Stück gesperrt da (siehe Profilseite).
+                LaunchedEffect(Unit) { sitzung.shopLaden() }
+                de.pagerspass.pagerspass.ansichten.melder.MelderSeite(
+                    unterrand = platz,
+                    konto = stand.konto,
+                    profil = daten.profil,
+                    server = stand.server,
+                    gekauft = daten.shop.inhalt?.imBesitz?.map { it.id }?.toSet(),
+                    laeuft = stand.laeuft,
+                    beiLaden = { sitzung.profilLaden() },
+                    beiGesicht = {
+                        sitzung.profilAendern(de.pagerspass.pagerspass.netz.Profilaenderung(melderGesicht = it))
+                    },
+                    beiZurueck = { steuerung.popBackStack() },
                 )
             }
 
@@ -1289,6 +1320,7 @@ private fun Angemeldet(
 private const val UNTERSEITE_GARAGE = "garage"
 private const val UNTERSEITE_BESTENLISTE = "bestenliste"
 private const val UNTERSEITE_PROFIL = "profil"
+private const val UNTERSEITE_MELDER = "melder"
 private const val UNTERSEITE_PRIVATSPHAERE = "privatsphaere"
 private const val UNTERSEITE_POSTFACH = "postfach"
 private const val UNTERSEITE_MITTEILUNGEN = "mitteilungen"
@@ -1305,7 +1337,7 @@ private const val UNTERSEITE_WACHENSHOP = "wachenshop"
 /** Zu welchem Weg der Leiste eine Unterseite gehört. */
 private fun unterseitenweg(route: String?): Weg? = when (route) {
     UNTERSEITE_GARAGE, UNTERSEITE_BESTENLISTE -> Weg.Dienstbuch
-    UNTERSEITE_PROFIL, UNTERSEITE_PRIVATSPHAERE, UNTERSEITE_POSTFACH,
+    UNTERSEITE_PROFIL, UNTERSEITE_MELDER, UNTERSEITE_PRIVATSPHAERE, UNTERSEITE_POSTFACH,
     UNTERSEITE_MITTEILUNGEN, UNTERSEITE_BEGLEITER, UNTERSEITE_DISCORD,
     -> Weg.Konto
     UNTERSEITE_OEFFENTLICH, UNTERSEITE_TAGESSCHICHT -> Weg.Dienst
