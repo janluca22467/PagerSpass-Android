@@ -15,7 +15,8 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 /**
- * Der Bildlader — für Profilbilder, und bisher nur dafür.
+ * Der Bildlader — für Profilbilder und die Kulissen der World-Events
+ * (`GrosslageSeite.kt`).
  *
  * <b>Warum keine Bibliothek.</b> Coil oder Glide brächten einen
  * Abhängigkeitsbaum mit, dessen Gewinn hier gesparte Zeilen wären: Die App lädt

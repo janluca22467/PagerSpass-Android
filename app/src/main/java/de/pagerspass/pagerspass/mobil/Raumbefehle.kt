@@ -21,6 +21,10 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import de.pagerspass.pagerspass.netz.Kreiswache
+import de.pagerspass.pagerspass.netz.Wachenwahl
 
 /**
  * Die Handgriffe im Raum, die über Rolle, Status und Funk hinausgehen — das
@@ -316,10 +320,12 @@ class Raumbefehle internal constructor(
     /**
      * Die Rundeneinstellungen ändern — alle 44 Stellen von `UpdateSettings`.
      *
-     * Was `null` bleibt, heißt „nicht anfassen". Die Wachenwahl, die Rufname-Wörter,
-     * die Kennzahlen, die Funkgruppen-Maske und die Wachnummern stehen hier fest auf
-     * `null`: Sie werden in der App (noch) nicht verstellt, und ein `null` an ihrer
-     * Stelle lässt sie, wie sie sind.
+     * Was `null` bleibt, heißt „nicht anfassen". Nur die Kennzahlen stehen fest auf
+     * `null` — sie setzt der Leitstellenbau, nicht die Lobby (wie im Web).
+     *
+     * <b>Wachen, Funkgruppen und die beiden Wörterbücher ersetzen das Ganze.</b>
+     * Ein Löschen ließe sich anders nicht ausdrücken; eine leere Liste ist deshalb
+     * eine gültige Ansage („alle Wachen", „ein Kanal für alle").
      */
     fun einstellungen(a: Einstellungsaenderung) = leitung.rufen(
         "UpdateSettings",
@@ -352,19 +358,19 @@ class Raumbefehle internal constructor(
         opt(a.einsatzende),
         opt(a.einsatzleitung),
         opt(a.maxSpieler),
-        JsonNull, // wachen
-        JsonNull, // rufnamenpraefixe
+        a.wachen?.let { wachenliste(it) } ?: JsonNull,
+        a.rufnamenpraefixe?.let { woerterbuch(it) } ?: JsonNull,
         JsonNull, // kennzahlen
         opt(a.wachennummerStellen),
         opt(a.laufnummerStellen),
-        JsonNull, // funkgruppen
-        JsonNull, // wachnummern
+        a.funkgruppen?.let { gruppenliste(it) } ?: JsonNull,
+        a.wachnummern?.let { m -> buildJsonObject { m.forEach { (k, v) -> put(k, v) } } } ?: JsonNull,
         opt(a.funkverstossSchwelle),
         opt(a.einsatzdichte),
-        JsonNull, // streamermodus
-        JsonNull, // streamerplattform
-        JsonNull, // streamerkanal
-        JsonNull, // streameraufzeichnung
+        opt(a.streamermodus),
+        opt(a.streamerplattform),
+        opt(a.streamerkanal),
+        opt(a.streameraufzeichnung),
         opt(a.kiFunkAktiv),
         opt(a.stichwortsetId),
     )
@@ -712,6 +718,42 @@ class Raumbefehle internal constructor(
         _neben.update { it.copy(raumwachen = liste) }
     }
 
+    /**
+     * Die Wachen des Kreises für die Wachenmaske — einmal je Kreis und erst, wenn
+     * der Kasten aufgeht. Ein Kreis liefert bis zu 155 Wachen; die bei jedem
+     * Beitritt mitzuladen verzögerte ihn für eine Einstellung, die kaum jemand
+     * anfasst. Ein Fehlschlag lässt die Liste leer und sagt nichts — eine Meldung
+     * für eine Nebeneinstellung wäre lauter als die Sache (wie im Web).
+     */
+    fun kreiswachenLaden(landkreisId: String) = bereich.launch {
+        if (_neben.value.kreiswachenFuer == landkreisId) return@launch
+        val liste = runCatching { wege?.kreiswachen(landkreisId) }.getOrNull().orEmpty()
+        _neben.update { it.copy(kreiswachen = liste, kreiswachenFuer = landkreisId) }
+    }
+
+    /**
+     * Die echten Straßen des Kreises — einmal geladen und dann aus dem Speicher.
+     * Leer ist kein Fehler: Für den Kreis liegen dann noch keine OSM-Daten vor.
+     */
+    fun strassenLaden(landkreisId: String) = bereich.launch {
+        if (_neben.value.strassenFuer == landkreisId) return@launch
+        val liste = runCatching { wege?.strassen(landkreisId) }.getOrNull().orEmpty()
+        _neben.update { it.copy(strassen = liste, strassenFuer = landkreisId) }
+    }
+
+    // ============================================================ Übertragung
+
+    /** „Ich streame gerade" — die Marke am eigenen Namen, an oder aus. */
+    fun live(an: Boolean) = leitung.rufen("Live", wert(an))
+
+    /**
+     * Nach dem Erteilen am schon besetzten Platz: „sieh noch mal nach". Der
+     * Server schlägt selbst nach — der Aufruf behauptet nichts.
+     */
+    suspend fun streamerfreigabeNachtragen(): Boolean =
+        (runCatching { leitung.frage("StreamerfreigabeNachtragen") }.getOrNull() as? JsonPrimitive)
+            ?.content == "true"
+
     fun stichwortsetsLaden() = rest {
         val liste = wege?.stichwortsets() ?: return@rest
         _neben.update { it.copy(stichwortsets = liste) }
@@ -786,6 +828,46 @@ class Raumbefehle internal constructor(
     private fun liste(werte: List<String>): JsonElement =
         buildJsonArray { werte.forEach { add(JsonPrimitive(it)) } }
 
+    private fun woerterbuch(werte: Map<String, String>): JsonElement =
+        buildJsonObject { werte.forEach { (k, v) -> put(k, v) } }
+
+    /**
+     * Die Wachenwahl, wie der Hub sie liest (`WachenwahlEingabe`). Jede Stelle
+     * ausdrücklich, auch die leeren: Ein Eintrag aus dem Sandkasten muss mit
+     * seinem Umbau unverändert zurückgehen.
+     */
+    private fun wachenliste(wachen: List<Wachenwahl>): JsonElement = buildJsonArray {
+        wachen.forEach { w ->
+            add(
+                buildJsonObject {
+                    put("kennung", w.kennung)
+                    put("name", w.name?.let { JsonPrimitive(it) } ?: JsonNull)
+                    put("zugnummer", w.zugnummer)
+                    put("lat", w.lat?.let { JsonPrimitive(it) } ?: JsonNull)
+                    put("lon", w.lon?.let { JsonPrimitive(it) } ?: JsonNull)
+                    put("organisation", w.organisation?.let { JsonPrimitive(it) } ?: JsonNull)
+                    put("traeger", w.traeger?.let { JsonPrimitive(it) } ?: JsonNull)
+                },
+            )
+        }
+    }
+
+    /** Die Funkgruppen als `FunkgruppeEingabe` — leere Id heißt „vergib eine". */
+    private fun gruppenliste(gruppen: List<Funkgruppenentwurf>): JsonElement = buildJsonArray {
+        gruppen.forEach { g ->
+            add(
+                buildJsonObject {
+                    put("id", g.id)
+                    put("nummer", g.nummer.trim())
+                    put("name", g.name.trim())
+                    put("organisationen", liste(g.organisationen))
+                    put("hiOrgs", liste(g.hiOrgs))
+                    put("fuehrung", g.fuehrung)
+                },
+            )
+        }
+    }
+
     companion object {
         /**
          * Ein Satz Griffe ohne Leitung — für Vorschauen und als Vorgabewert der
@@ -830,6 +912,27 @@ data class Raumneben(
     val dauerVorlagen: List<AaoVorlagenzeile> = emptyList(),
     /** Die Rückmeldung nach dem Sichern einer Vorlage. */
     val vorlageMeldung: String? = null,
+    /** Die echten Wachen des Kreises — für die Wachenmaske der Lobby. */
+    val kreiswachen: List<Kreiswache> = emptyList(),
+    /** Für welchen Kreis `kreiswachen` geladen ist — `null`: noch keiner. */
+    val kreiswachenFuer: String? = null,
+    /** Echte Straßen des Kreises — die Vorschläge im Adressfeld. */
+    val strassen: List<String> = emptyList(),
+    val strassenFuer: String? = null,
+)
+
+/**
+ * Eine Zeile der Funkgruppen-Maske, wie sie an den Hub geht (`FunkgruppeEingabe`).
+ * Leere Id heißt „vergib eine" — der Server tut das, damit zwei Geräte nicht
+ * dieselbe erfinden.
+ */
+data class Funkgruppenentwurf(
+    val id: String = "",
+    val nummer: String = "",
+    val name: String = "",
+    val organisationen: List<String> = emptyList(),
+    val hiOrgs: List<String> = emptyList(),
+    val fuehrung: Boolean = false,
 )
 
 /**
@@ -875,4 +978,20 @@ data class Einstellungsaenderung(
     val kiFunkAktiv: Boolean? = null,
     /** Leerer Text setzt auf den Grundkatalog zurück. */
     val stichwortsetId: String? = null,
+    /** Ersetzt die ganze Liste; leer heißt „alle Wachen des Kreises". */
+    val wachen: List<Wachenwahl>? = null,
+    /** Ersetzt das ganze Wörterbuch; leere Werte heißen „wie im Buch". */
+    val rufnamenpraefixe: Map<String, String>? = null,
+    /** Ersetzt die ganze Liste; leer heißt „ein Kanal für alle". */
+    val funkgruppen: List<Funkgruppenentwurf>? = null,
+    val wachnummern: Map<String, Int>? = null,
+    /**
+     * Die Übertragung. Beim Einschalten gehen alle vier zusammen: Der Server weist
+     * „an" ohne Kanal ab, übernimmt Kanal, Plattform und Aufzeichnung aber vor dem
+     * Schalter — ein Griff genügt.
+     */
+    val streamermodus: Boolean? = null,
+    val streamerplattform: String? = null,
+    val streamerkanal: String? = null,
+    val streameraufzeichnung: Boolean? = null,
 )

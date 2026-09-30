@@ -1,6 +1,11 @@
 package de.pagerspass.pagerspass.ansichten.welt
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -263,14 +268,91 @@ fun Vorschicken(zustand: Weltzustand, knopf: String, senden: suspend (List<Strin
 }
 
 /**
+ * Ob eine Bildadresse benutzbar ist — dieselbe Prüfung wie `bildBrauchbar` in
+ * `eventbilder.ts` (und `Eventeinsatz.BildInOrdnung` am Server): der hauseigene
+ * Pfad oder eine vollständige http(s)-Adresse, nie ein Doppelschrägstrich am
+ * Anfang — das wäre eine fremde Herkunft ohne Schema. Gibt die volle Adresse.
+ */
+internal fun eventbild(url: String?, server: String?): String? {
+    val wert = url?.trim().orEmpty()
+    return when {
+        wert.isEmpty() || wert.startsWith("//") -> null
+        wert.startsWith("/") -> server?.let { it.trimEnd('/') + wert }
+        Regex("^https?://", RegexOption.IGNORE_CASE).containsMatchIn(wert) -> wert
+        else -> null
+    }
+}
+
+/**
+ * Die Kulisse eines Events (`EventKulisse.vue`): das Banner, dahinter gedämpft der
+ * Hintergrund, und wo beides fehlt oder nicht lädt, ein Verlauf in der Farbe des
+ * Events — nicht das zerbrochene Bildsymbol, das nach „kaputt" aussähe statt nach
+ * „ohne Bild".
+ */
+@Composable
+private fun Eventkulisse(e: WeltEvent, ton: androidx.compose.ui.graphics.Color) {
+    val zusammenhang = androidx.compose.ui.platform.LocalContext.current
+    val server by androidx.compose.runtime.produceState<String?>(null) {
+        value = runCatching { de.pagerspass.pagerspass.netz.Ablage(zusammenhang).server() }.getOrNull()
+    }
+    val banner by de.pagerspass.pagerspass.ui.schmuck.bildVon(eventbild(e.bannerUrl, server))
+    val grund by de.pagerspass.pagerspass.ui.schmuck.bildVon(eventbild(e.hintergrundUrl, server))
+    val form = androidx.compose.foundation.shape.RoundedCornerShape(10.dp)
+
+    androidx.compose.foundation.layout.Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(112.dp)
+            .clip(form)
+            .background(
+                androidx.compose.ui.graphics.Brush.radialGradient(
+                    listOf(ton.copy(alpha = 0.32f), Farben.FlaecheHoch),
+                    radius = 520f,
+                ),
+            ),
+    ) {
+        grund?.let {
+            androidx.compose.foundation.Image(
+                it,
+                contentDescription = null,
+                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                alpha = if (banner == null) 0.45f else 0.25f,
+                modifier = Modifier.matchParentSize(),
+            )
+        }
+        banner?.let {
+            // Der Alternativtext bleibt leer: Was auf dem Bild steht, steht als
+            // Titel darunter.
+            androidx.compose.foundation.Image(
+                it,
+                contentDescription = null,
+                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                modifier = Modifier.matchParentSize(),
+            )
+        }
+        if (e.zustand == "Laeuft") {
+            Text(
+                "Läuft",
+                style = Schrift.Winzig.copy(fontFamily = Schrift.Mono, fontWeight = FontWeight.Bold),
+                color = Farben.AufAmber,
+                modifier = Modifier
+                    .padding(Abstand.Klein)
+                    .background(ton, androidx.compose.foundation.shape.RoundedCornerShape(99.dp))
+                    .padding(horizontal = Abstand.Klein, vertical = 2.dp),
+            )
+        }
+    }
+}
+
+/**
  * Ein Event-Einsatz der World — die Kulisse samt Bereitstellungsraum
- * (`EventKulisse.vue` und `EventRaum.vue`). Die Bilder der Kulisse lädt die App
- * nicht; Titel, Farbe und Text tragen dieselbe Auskunft.
+ * (`EventKulisse.vue` und `EventRaum.vue`).
  */
 @Composable
 fun Eventkasten(welt: Welt, zustand: Weltzustand, e: WeltEvent) {
     val ton = e.farbe?.let(::farbeAus) ?: Farben.Violett
     Weltkasten(randfarbe = ton) {
+        Eventkulisse(e, ton)
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
             Farbpunkt(ton, 10)
             Text(e.titel, style = Schrift.Klein.copy(fontWeight = FontWeight.Bold), color = Farben.Text, modifier = Modifier.weight(1f))

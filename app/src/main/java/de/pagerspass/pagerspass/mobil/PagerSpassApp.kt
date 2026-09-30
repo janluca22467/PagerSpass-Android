@@ -247,6 +247,25 @@ fun PagerSpassApp(
             beiAbmelden = sitzung::abmelden,
         )
     }
+
+    // Die Einwilligung in eine übertragene Schicht — hier und nicht im Raum:
+    // Ein abgewiesener Beitritt steht noch draußen und hat keinen Rundenrahmen.
+    val einwilligung = if (stand.angemeldet) {
+        rundenstand.einwilligung?.bedarf ?: de.pagerspass.pagerspass.ansichten.einwilligungAmPlatz(
+            rundenstand.raum,
+            stand.konto?.kennung.orEmpty(),
+            rundenstand.elternbogenAmPlatz,
+        )
+    } else {
+        null
+    }
+    einwilligung?.let { frage ->
+        de.pagerspass.pagerspass.ansichten.Einwilligungsblende(
+            frage = frage,
+            beiErteilen = { volljaehrig, beiEnde -> runde.einwilligungErteilen(frage, volljaehrig, beiEnde) },
+            beiAblehnen = { runde.einwilligungAblehnen() },
+        )
+    }
 }
 
 /**
@@ -689,10 +708,13 @@ private fun Angemeldet(
                                     k.aktion == "raum" -> beitreten(k.ziel.trim().uppercase())
                                     // World läuft nativ — eine Kachel dorthin öffnet sie hier.
                                     k.ziel.trimStart('/').startsWith("welt") && welt != null -> welt.anzeigen()
-                                    else -> when (val ziel = werkstattziel(k.ziel)) {
-                                        null -> imWeb(k.ziel.trimStart('/'))
-                                        Weg.Dienstbuch.adresse -> zurWahl(steuerung, Weg.Dienstbuch)
-                                        else -> steuerung.navigate(ziel)
+                                    else -> when (val ziel = werkstattziel(k.ziel) ?: appziel(k.ziel)) {
+                                        // Ein Raumcode im Ziel (`/raum/…`, `/code/…`) tritt bei.
+                                        null -> raumcodeAus(k.ziel)?.let { beitreten(it) }
+                                            ?: imWeb(k.ziel.trimStart('/'))
+                                        else -> Weg.entries.firstOrNull { it.adresse == ziel }
+                                            ?.let { zurWahl(steuerung, it) }
+                                            ?: steuerung.navigate(ziel)
                                     }
                                 }
                             },
@@ -1309,6 +1331,48 @@ private fun marken(daten: Seitenstand): Map<Weg, Int> = buildMap {
         put(Weg.Freunde, liste.count { it.angefragt && !it.vonMir })
     }
     daten.garage.inhalt?.let { put(Weg.Shop, it.stand.offeneWahlen) }
+}
+
+/**
+ * Die Wege aus `web/src/router.ts`, die die App selbst kennt — für Startkacheln,
+ * deren Ziel ein Pfad der Webseite ist. `null` heißt: nicht in der App.
+ *
+ * <b>Was mit echtem Geld zu tun hat, bleibt draußen.</b> `/shop?bereich=premium`
+ * führt deshalb ausdrücklich nicht in den Shop der App, sondern an die Webseite;
+ * die Rechtstexte ebenso, sie müssen ohne Anmeldung erreichbar sein.
+ */
+internal fun appziel(ziel: String): String? {
+    val roh = ziel.trim()
+    val pfad = roh.substringBefore('?').trimEnd('/').removePrefix("/play/mobile").removePrefix("/play/desktop")
+    val anfrage = roh.substringAfter('?', "")
+    return when {
+        pfad == "/shop" && "bereich=premium" in anfrage -> null
+        pfad == "/shop" -> Weg.Shop.adresse
+        pfad == "/konto" -> Weg.Konto.adresse
+        pfad == "/konto/privatsphaere" -> UNTERSEITE_PRIVATSPHAERE
+        pfad == "/konto/mitteilungen" -> UNTERSEITE_MITTEILUNGEN
+        pfad == "/discord/verknuepfen" -> UNTERSEITE_DISCORD
+        pfad == "/freunde" || pfad.startsWith("/freunde/") && !pfad.startsWith("/freunde/profil/") -> Weg.Freunde.adresse
+        pfad.startsWith("/freunde/profil/") -> "$UNTERSEITE_FREMDPROFIL/${pfad.substringAfterLast('/')}"
+        pfad == "/gemeinschaft" || pfad == "/gemeinschaften" -> Weg.Wache.adresse
+        pfad == "/gemeinschaften/rangliste" -> UNTERSEITE_WACHENRANGLISTE
+        pfad == "/gemeinschaft/shop" -> UNTERSEITE_WACHENSHOP
+        pfad == "/oeffentliche-runden" -> UNTERSEITE_OEFFENTLICH
+        pfad == "/scan" -> UNTERSEITE_BEGLEITER
+        // Die alten Adressen aus der Zeit vor dem Dienstbuch — wie die Weiterleitungen im Web.
+        pfad == "/garage" -> UNTERSEITE_GARAGE
+        pfad == "/bestenliste" -> UNTERSEITE_BESTENLISTE
+        pfad == "/chronik" || pfad == "/archiv" -> Weg.Dienstbuch.adresse
+        pfad == "" -> Weg.Dienst.adresse
+        else -> null
+    }
+}
+
+/** Der Raumcode aus `/raum/ABC123` oder `/code/ABC123` — sonst `null`. */
+internal fun raumcodeAus(ziel: String): String? {
+    val pfad = ziel.trim().substringBefore('?').trimEnd('/').removePrefix("/play/mobile").removePrefix("/play/desktop")
+    val treffer = Regex("^/(raum|code)/([A-Za-z0-9]{4,12})$").find(pfad) ?: return null
+    return treffer.groupValues[2].uppercase()
 }
 
 /**

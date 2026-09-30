@@ -300,13 +300,19 @@ class Runde(anwendung: Application) : AndroidViewModel(anwendung) {
                 .getOrNull()
         }
 
+        // Allein an der Übertragungseinwilligung gescheitert: eine offene Frage,
+        // kein Fehlschlag. Gesetzt *vor* dem Wurf — der Dialog steht damit schon.
+        einwilligungMerken(ergebnis, sauber, name, alsZuschauer = false)
+
         when {
             ergebnis == null -> throw IllegalStateException("Die Leitstelle antwortet nicht.")
             !ergebnis.ok -> throw IllegalStateException(
                 ergebnis.fehler ?: "Diesen Raum gibt es nicht (mehr).",
             )
             else -> {
-                _stand.update { it.copy(raum = ergebnis.state, fehler = null) }
+                _stand.update {
+                    it.copy(raum = ergebnis.state, fehler = null, zuschauer = false, elternbogenAmPlatz = null)
+                }
                 // Für die Rückkehr nach einem Prozesstod — siehe `wiederAufnehmen`.
                 ablage.rundeMerken(sauber)
                 // Die App hat keine eigene Spracherkennung — der Server soll
@@ -383,13 +389,18 @@ class Runde(anwendung: Application) : AndroidViewModel(anwendung) {
             runCatching { Netz.abgabe.decodeFromJsonElement(Beitrittsergebnis.serializer(), it) }
                 .getOrNull()
         }
+        // Wie beim Beitritt als Spieler — der Name eines Zuschauers steht in der
+        // Liste, und die Liste steht auf dem übertragenen Bild.
+        einwilligungMerken(ergebnis, sauber, name, alsZuschauer = true)
         when {
             ergebnis == null -> throw IllegalStateException("Die Leitstelle antwortet nicht.")
             !ergebnis.ok -> throw IllegalStateException(
                 ergebnis.fehler ?: "Zuschauen ist hier gerade nicht möglich.",
             )
             else -> {
-                _stand.update { it.copy(raum = ergebnis.state, fehler = null, zuschauer = true) }
+                _stand.update {
+                    it.copy(raum = ergebnis.state, fehler = null, zuschauer = true, elternbogenAmPlatz = null)
+                }
                 // Mit Vorzeichen gemerkt: Die Wiederaufnahme muss wissen, dass
                 // sie als Zuschauer zurückkommt, nicht als Spieler.
                 ablage.rundeMerken("Z:$sauber")
@@ -856,6 +867,110 @@ class Runde(anwendung: Application) : AndroidViewModel(anwendung) {
         // falsch, aber zum Mitlesen reicht es.
         _stand.update { it.copy(raum = raum, code = raum.code, funk = raum.funkprotokoll) }
         befehle.raumGeaendert(raum)
+        if (_stand.value.zuschauer) zuschauerAufgenommen(raum)
+    }
+
+    /**
+     * Ein Zuschauer, dessen Bitte um einen Platz angenommen wurde, steht ab jetzt
+     * in `players` — und ist damit Spieler.
+     *
+     * <b>Das muss auch die Ablage erfahren.</b> Dort stand der Raum mit `Z:` davor;
+     * nach einem Prozesstod käme das Gerät sonst als Zuschauer zurück und säße
+     * neben seinem eigenen, verwaisten Platz. Im Web räumt `beitreten` den
+     * Zuschauer-Merker ab — hier geschieht der Übergang ohne neuen Beitritt,
+     * deshalb am Raumzustand.
+     */
+    private fun zuschauerAufgenommen(raum: Raumzustand) = bereich.launch {
+        val kennung = ablage.kennung() ?: return@launch
+        if (raum.players.none { it.id == kennung }) return@launch
+        if (!_stand.value.zuschauer) return@launch
+        _stand.update { it.copy(zuschauer = false) }
+        ablage.rundeMerken(raum.code)
+        // Als Spieler funkt er jetzt selbst — die Übersetzung der Durchsagen
+        // gehört dazu wie beim gewöhnlichen Beitritt.
+        draht.rufen("FunkerkennungWuenschen", wert(true))
+    }
+
+    // ------------------------------------------------- Übertragung einer Schicht
+
+    private fun einwilligungMerken(
+        ergebnis: Beitrittsergebnis?,
+        code: String,
+        name: String,
+        alsZuschauer: Boolean,
+    ) {
+        val bedarf = ergebnis?.einwilligung
+        _stand.update {
+            it.copy(
+                einwilligung = if (ergebnis?.ok == false && bedarf != null) {
+                    Einwilligungsfrage(bedarf, alsZuschauer, code, name)
+                } else {
+                    null
+                },
+            )
+        }
+    }
+
+    /**
+     * Erteilt die Einwilligung und macht dort weiter, wo es unterbrochen wurde —
+     * das Gegenstück zu `einwilligungErteilen` in `stores/spiel.ts`.
+     *
+     * <b>Sie kann gültig sein oder nicht.</b> Bei „unter 18" wartet sie auf den
+     * Bogen der Erziehungsberechtigten; dann bleibt der Dialog offen und zeigt ihn.
+     * `beiEnde` bekommt, ob sie gilt, und bei einem Fehlschlag den Satz dazu.
+     */
+    fun einwilligungErteilen(
+        frage: de.pagerspass.pagerspass.netz.Einwilligungsbedarf,
+        volljaehrig: Boolean,
+        beiEnde: (gilt: Boolean, fehler: String?) -> Unit,
+    ) = viewModelScope.launch {
+        val gilt = runCatching {
+            val kennung = ablage.kennung() ?: throw IllegalStateException("Bitte melde dich zuerst an.")
+            val erteilt = de.pagerspass.pagerspass.netz.Kontowege(Netz(ablage))
+                .einwilligungErteilen(kennung, frage.raumCode, volljaehrig, frage.fassung)
+
+            if (!erteilt.gilt) {
+                // Noch nicht durch: Der Bogen wandert in die offene Frage, damit der
+                // Dialog ihn zeigen kann — auch im Fall „am Platz".
+                _stand.update { s ->
+                    val offen = s.einwilligung
+                    if (offen != null) {
+                        s.copy(
+                            einwilligung = offen.copy(
+                                bedarf = offen.bedarf.copy(wartetAufEltern = true, elternbogen = erteilt.elternbogen),
+                            ),
+                        )
+                    } else {
+                        s.copy(elternbogenAmPlatz = erteilt.elternbogen)
+                    }
+                }
+                return@runCatching false
+            }
+
+            _stand.update { it.copy(elternbogenAmPlatz = null) }
+            val offen = _stand.value.einwilligung
+            if (offen != null) {
+                // Der Beitritt, der vorhin abgewiesen wurde — jetzt noch einmal.
+                if (offen.alsZuschauer) zuschauen(offen.code, offen.name) else beitreten(offen.code, offen.name)
+            } else {
+                befehle.streamerfreigabeNachtragen()
+            }
+            true
+        }
+        beiEnde(gilt.getOrDefault(false), gilt.exceptionOrNull()?.let { it.message ?: "Das hat gerade nicht geklappt." })
+    }
+
+    /**
+     * Die Frage abbrechen. Ein abgewiesener Beitritt wird nur vergessen — man
+     * stand ohnehin draußen. <b>Wer schon saß, verlässt die Runde</b>: Ein „nein"
+     * ist nur folgenlos, wenn danach nichts mehr von einem übertragen werden kann.
+     */
+    fun einwilligungAblehnen() {
+        if (_stand.value.einwilligung != null) {
+            _stand.update { it.copy(einwilligung = null) }
+            return
+        }
+        if (_stand.value.raum != null) verlassen()
     }
 
     private fun text(roh: JsonElement): String? = (roh as? JsonPrimitive)?.content
@@ -912,6 +1027,10 @@ data class Rundenstand(
     val zuschauer: Boolean = false,
     /** Drahtzeilen aus Push-Ereignissen — beim Vollstand abgeglichen. */
     val drahtzeilen: List<de.pagerspass.pagerspass.netz.Drahtnachricht> = emptyList(),
+    /** Die offene Einwilligungsfrage eines abgewiesenen Beitritts (`Streamerdialog.kt`). */
+    val einwilligung: Einwilligungsfrage? = null,
+    /** Der Elternbogen im Fall „saß schon" — er kommt aus der Antwort des Servers. */
+    val elternbogenAmPlatz: String? = null,
 ) {
     /** Der Draht, wie er angezeigt wird: Vollstand plus Zwischenzeilen. */
     val drahtGesamt: List<de.pagerspass.pagerspass.netz.Drahtnachricht>
@@ -931,3 +1050,19 @@ data class Rundenstand(
  * Speicher für Zeilen, die nie jemand sieht.
  */
 private const val FUNKZEILEN = 200
+
+/**
+ * Eine offene Einwilligungsfrage aus einem abgewiesenen Beitritt — und wie es nach
+ * dem Erteilen weitergeht: als Spieler oder als Zuschauer, mit Code und Namen.
+ *
+ * <b>Sie steht an der Runde und nicht in der Ansicht, die beitreten wollte.</b> Es
+ * sind viele Wege, die beitreten (Start, öffentliche Runden, Einladungen, Wache,
+ * Gespräch); ein Dialog in jedem davon wäre derselbe Dialog mit derselben
+ * Wiederholung hinterher.
+ */
+data class Einwilligungsfrage(
+    val bedarf: de.pagerspass.pagerspass.netz.Einwilligungsbedarf,
+    val alsZuschauer: Boolean,
+    val code: String,
+    val name: String,
+)

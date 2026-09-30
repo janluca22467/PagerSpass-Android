@@ -321,6 +321,8 @@ private fun Dienstleiste(
                     text = "${raum.players.size} / ${raum.maxSpieler} Spieler",
                     farbe = if (raum.players.size < 2) Farben.AmberHell else Farben.TextLeise,
                 )
+                Zuschauerzaehler(raum)
+                if (raum.settings.streamermodus) Marke("Wird übertragen", farbe = Farben.SignalHell)
             }
         }
     }
@@ -606,11 +608,26 @@ private fun ColumnScope.TeilMehr(
         Rundenvorlage(raum, neben, befehle)
     }
 
-    Ueberschrift("Noch nicht in der App")
-    SehrLeise(
-        "Streamer-Modus, Funkgruppen-Maske, Rufname-Wörter und die Wachenliste " +
-            "richtest du bis auf Weiteres im Browser ein. Der Dienst selbst läuft hier.",
-    )
+    // Die eine Streamer-Stelle der Lobby: Übertragung der Runde und eigene
+    // Live-Meldung in einem Dialog (`LiveKnopf.vue`). Hier und nicht am
+    // Arbeitsplatz — es ist keine Einstellung des Platzes, sondern eine
+    // Abmachung mit den anderen.
+    if (raum != null) {
+        var streamenOffen by remember { mutableStateOf(false) }
+        Ueberschrift("Streamen")
+        SehrLeise(
+            if (ich?.live == true) "Du stehst gerade als live." else "Übertragung der Runde und die eigene Live-Meldung.",
+        )
+        Knopf(
+            aufschrift = if (ich?.live == true) "LIVE — Streamen" else "Streamen",
+            beiDruck = { streamenOffen = true },
+            kompakt = true,
+            art = if (ich?.live == true) Knopfart.Haupt else Knopfart.Normal,
+        )
+        if (streamenOffen) {
+            Streamenblende(raum, ich?.id.orEmpty(), befehle) { streamenOffen = false }
+        }
+    }
 }
 
 /** Eine Zeile aus Etikett und Wert — die Bauform des Runden-Teils. */
@@ -656,6 +673,8 @@ private fun Spielerzeile(spieler: Spieler, funkrufname: String?, beiKick: (() ->
         premium = spieler.premium,
         teammitglied = spieler.teammitglied,
         hinten = {
+            // Wer streamt, trägt es am Namen — dort, wo man erfährt, mit wem man fährt.
+            if (spieler.live) Livemarke()
             when {
                 spieler.istBot -> Marke("Bot", farbe = Farben.ViolettHell)
                 !spieler.verbunden -> Marke("Weg", farbe = Farben.TextSehrLeise)
@@ -695,6 +714,9 @@ private fun Startblock(
         mannschaft.any { it.vehicleId == null } ->
             "Es warten noch Mannschaftsmitglieder auf ihre Fahrzeugwahl."
         mannschaft.any { !it.bereit } -> "Noch nicht alle Mannschaftsmitglieder sind bereit."
+        // Im Streamer-Modus startet die Runde erst, wenn alle geantwortet haben.
+        raum.settings.streamermodus && raum.players.any { !it.istBot && !it.streamerfreigabe } ->
+            "Noch nicht alle haben der Übertragung zugestimmt — wer, steht unter Mehr → Streamen."
         else -> null
     }
 

@@ -359,7 +359,11 @@ fun ColumnScope.Rundenregler(
         "Nach 20 Sekunden endet die Sendung automatisch, dann folgen Sendepause und ein " +
             "Verstoß. Beim ${s.funkverstossSchwelle}. Verstoß wird der Platz aus dieser Runde entfernt.",
     )
-    SehrLeise("Rufname-Wörter, Funkgruppen und die Wachenliste stellst du im Browser ein.")
+    // Wie die Kennungen heißen, über welchen Kanal sie laufen und auf welchen
+    // Wachen sie stehen — wer das eine einstellt, stellt meistens das andere mit.
+    Rufnamewoerter(raum, einstellbar, befehle)
+    Funkgruppenmaske(raum, istLeitstelle, befehle)
+    Wachenmaske(raum, istLeitstelle, neben, befehle)
 
     // ------------------------------------------------------------------- Bots
     if (raum.players.any { it.istBot }) {

@@ -21,6 +21,21 @@ class Raumwege(private val netz: Netz) {
     suspend fun raumwachen(code: String): List<Raumwache> =
         netz.hole("/api/rooms/${teil(code)}/wachen")
 
+    /**
+     * Die echten Wachen des Kreises — für die Wachenmaske der Lobby. Nicht dasselbe
+     * wie `raumwachen`: Das hier ist eine Auskunft über die Karte, jenes eine über
+     * die Runde.
+     */
+    suspend fun kreiswachen(landkreisId: String): List<Kreiswache> =
+        netz.hole("/api/landkreise/${teil(landkreisId)}/wachen")
+
+    /**
+     * Echte Straßennamen des Kreises — leer, solange für ihn keine OSM-Daten
+     * vorliegen. Die Vorschläge im Adressfeld des neuen Einsatzes.
+     */
+    suspend fun strassen(landkreisId: String): List<String> =
+        netz.hole("/api/landkreise/${teil(landkreisId)}/strassen")
+
     /** Die Stichwort-Sets, aus denen die Leitstelle wählen kann. */
     suspend fun stichwortsets(): List<Stichwortset> = netz.hole("/api/stichwortsets")
 

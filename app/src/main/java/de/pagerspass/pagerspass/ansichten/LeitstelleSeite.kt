@@ -228,8 +228,12 @@ fun LeitstelleSeite(
     }
 
     if (neuOffen && katalog != null) {
+        // Die echten Straßen des Kreises — einmal geladen, danach aus dem Speicher.
+        val kreisId = raum?.settings?.landkreisId
+        LaunchedEffect(kreisId) { kreisId?.let { befehle.strassenLaden(it) } }
         EinsatzAnlegen(
             katalog = katalog,
+            strassen = if (kreisId != null && neben.strassenFuer == kreisId) neben.strassen else emptyList(),
             beiAnlegen = { stichwort, meldebild, adresse, meldender ->
                 beiEinsatzAnlegen(stichwort, meldebild, adresse, meldender, null)
                 neuOffen = false
@@ -726,6 +730,7 @@ private fun ColumnScope.TeilMehrLeitstelle(
 @Composable
 private fun EinsatzAnlegen(
     katalog: Katalog,
+    strassen: List<String> = emptyList(),
     beiAnlegen: (Stichwort, String, String, String?) -> Unit,
     beiSchliessen: () -> Unit,
 ) {
@@ -772,6 +777,30 @@ private fun EinsatzAnlegen(
             etikett = "Adresse",
             platzhalter = "Straße und Hausnummer",
         )
+
+        // Das Ortsverzeichnis: echte Straßen des Kreises, sofern für ihn OSM-Daten
+        // vorliegen (`NeuerEinsatzDialog.vue`). Ein Kreis bringt schnell dreihundert
+        // mit — durch die scrollt in einer Alarmierung niemand, deshalb nur die
+        // passenden zum Getippten und höchstens acht. Die Hausnummer würfelt die
+        // Wahl dazu, wie im Web.
+        if (strassen.isNotEmpty()) {
+            val getippt = adresse.trim().lowercase()
+            val passend = strassen
+                .filter { getippt.isEmpty() || it.lowercase().contains(getippt) }
+                .filter { it != adresse.trim() }
+                .take(8)
+            if (passend.isNotEmpty() && !strassen.any { adresse.startsWith("$it ") }) {
+                SehrLeise(if (getippt.isEmpty()) "Straßen im Kreis — antippen übernimmt sie:" else "Passende Straßen:")
+                Pillenreihe {
+                    passend.forEach { s ->
+                        Pille(s, an = false, beiDruck = { adresse = "$s ${(1..119).random()}" })
+                    }
+                }
+            }
+            Knopf("Würfeln", {
+                strassen.randomOrNull()?.let { adresse = "$it ${(1..119).random()}" }
+            }, art = Knopfart.Leise, kompakt = true)
+        }
 
         stichwort?.let { s ->
             SehrLeise(

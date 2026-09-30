@@ -64,6 +64,9 @@ fun BoxScope.Raumueberlagerungen(
 ) {
     val oben = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
 
+    // Klingeln und Warnton — sie hängen am selben Zustand wie Leiste und Band.
+    de.pagerspass.pagerspass.mobil.Raumtoene(raum, neben.warnungUm, eigeneKennung)
+
     Column(
         verticalArrangement = Arrangement.spacedBy(Abstand.Klein),
         horizontalAlignment = Alignment.CenterHorizontally,

@@ -186,6 +186,26 @@ data class Rundeneinstellungen(
     val einsatzleitung: Boolean = false,
     val wachennummerStellen: Int = 1,
     val laufnummerStellen: Int = 1,
+    /**
+     * Die bespielten Wachen — leer heißt „alle, die der Kreis hergibt". Die
+     * Wachenmaske der Lobby lässt hier nur weg; umbauen darf der Sandkasten.
+     */
+    val wachen: List<Wachenwahl> = emptyList(),
+    /** Eigene Wachnummern je Wachenkennung — die Zahl vor dem ersten Schrägstrich. */
+    val wachnummern: Map<String, Int> = emptyMap(),
+    /** Eigene Rufname-Wörter je Organisation bzw. Träger („Florian" → „Christoph"). */
+    val rufnamenpraefixe: Map<String, String> = emptyMap(),
+    /**
+     * Die Übertragung dieser Schicht (siehe `Streamerdialog.kt`). Die drei
+     * Angaben darunter sind der Gegenstand der Einwilligung und stehen auch ohne
+     * den Schalter im Zustand — ein Kanal ohne Schalter ist ein Entwurf.
+     */
+    val streamermodus: Boolean = false,
+    val streamerplattform: String = "Twitch",
+    val streamerkanal: String? = null,
+    val streameraufzeichnung: Boolean = false,
+    /** Wer überträgt — die Spieler-Id dessen, der den Schalter umgelegt hat. */
+    val streamerKontoId: String? = null,
 )
 
 /**
@@ -244,6 +264,11 @@ data class Spieler(
     val einzelrufZulassen: Boolean = true,
     val funkVorlesen: Boolean = false,
     val live: Boolean = false,
+    /**
+     * Ob für diesen Platz eine Einwilligung in die Übertragung vorliegt. Ohne
+     * Streamer-Modus immer `true` — dann gibt es nichts zu erlauben.
+     */
+    val streamerfreigabe: Boolean = true,
 ) {
     val istLeitstelle: Boolean get() = role == "Leitstelle"
     val istBesatzung: Boolean get() = role == "Fahrzeugbesatzung"
@@ -770,4 +795,9 @@ data class Beitrittsergebnis(
     val ok: Boolean = false,
     val state: Raumzustand? = null,
     val fehler: String? = null,
+    /**
+     * Gesetzt, wenn der Beitritt allein an der Übertragungseinwilligung scheitert
+     * — dann ist er keine Absage, sondern eine offene Frage (`Streamerdialog.kt`).
+     */
+    val einwilligung: Einwilligungsbedarf? = null,
 )
