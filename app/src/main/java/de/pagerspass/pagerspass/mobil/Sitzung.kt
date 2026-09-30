@@ -808,6 +808,27 @@ class Sitzung(anwendung: Application) : AndroidViewModel(anwendung) {
     }
 
     /**
+     * Das Konto still neu holen — nach einer Einzahlung in die Wachenkasse oder
+     * einem Kauf für die Wache stimmen die Credits am Konto sonst nicht mehr.
+     *
+     * <b>Still heißt: ohne `laedt`.</b> Das setzte das Band „Verbindung wird
+     * hergestellt" — für einen Kontostand, der sich um zwei Zahlen ändert.
+     */
+    fun kontoAuffrischen() = viewModelScope.launch {
+        val kennung = _stand.value.konto?.kennung ?: return@launch
+        runCatching { konten.laden(kennung) }
+            .onSuccess { konto -> _stand.update { it.copy(konto = konto) } }
+    }
+
+    /**
+     * Die Detailansicht der Wache übernehmen, die eine Antwort gleich
+     * mitgebracht hat (Shop, Aussehen, Tag, Einstellungen) — statt sie ein
+     * zweites Mal zu holen.
+     */
+    fun wacheDetailSetzen(detail: de.pagerspass.pagerspass.netz.GemeinschaftDetail) =
+        _daten.update { d -> d.copy(wacheDetail = Bereich(detail, geladen = true)) }
+
+    /**
      * Der gemeinsame Mantel um alles, was eine Weile dauert und schiefgehen kann.
      *
      * <b>Er nimmt dem Aufrufer drei Dinge ab</b>, die im Web an jeder Stelle

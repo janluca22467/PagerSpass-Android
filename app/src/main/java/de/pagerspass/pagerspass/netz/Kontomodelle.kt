@@ -178,13 +178,7 @@ data class Schenkfreund(
     val wartetage: Int = 0,
 )
 
-/** Was beim Öffnen eines Geschenks herauskam. */
-@Serializable
-data class Geschenkinhalt(
-    val artikelId: String = "",
-    val artikelName: String = "",
-    val vonName: String = "",
-)
+// `Geschenkinhalt` (was beim Öffnen eines Geschenks herauskam) steht in Freundemodelle.kt.
 
 // ------------------------------------------------------ Datenschutz, Sitzungen
 

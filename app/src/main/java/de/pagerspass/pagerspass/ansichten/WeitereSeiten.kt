@@ -21,7 +21,6 @@ import androidx.compose.ui.unit.dp
 import de.pagerspass.pagerspass.mobil.Bereich as Bereichsstand
 import de.pagerspass.pagerspass.mobil.Buchdaten
 import de.pagerspass.pagerspass.netz.Abzeichen
-import de.pagerspass.pagerspass.netz.Freund
 import de.pagerspass.pagerspass.netz.Gemeinschaft
 import de.pagerspass.pagerspass.netz.Konto
 import de.pagerspass.pagerspass.netz.Schicht
@@ -33,7 +32,6 @@ import de.pagerspass.pagerspass.ui.bausteine.Knopf
 import de.pagerspass.pagerspass.ui.bausteine.Knopfart
 import de.pagerspass.pagerspass.ui.bausteine.Leerhinweis
 import de.pagerspass.pagerspass.ui.bausteine.Marke
-import de.pagerspass.pagerspass.ui.bausteine.Markenzahl
 import de.pagerspass.pagerspass.ui.bausteine.Reiter
 import de.pagerspass.pagerspass.ui.bausteine.Reiterreihe
 import de.pagerspass.pagerspass.ui.bausteine.SehrLeise
@@ -41,6 +39,7 @@ import de.pagerspass.pagerspass.ui.bausteine.Seite
 import de.pagerspass.pagerspass.ui.bausteine.Seitenkopf
 import de.pagerspass.pagerspass.ui.bausteine.Wegzeile
 import de.pagerspass.pagerspass.ui.schmuck.Profilzeile
+import de.pagerspass.pagerspass.ui.schmuck.Profilbanner
 import de.pagerspass.pagerspass.ui.theme.Abstand
 import de.pagerspass.pagerspass.ui.theme.Farben
 import de.pagerspass.pagerspass.ui.theme.Schrift
@@ -76,144 +75,9 @@ import de.pagerspass.pagerspass.ui.zeichen.Zeichen
  * denselben Weg nehmen.
  */
 // ------------------------------------------------------------------ Freunde
-
-/**
- * Freunde — Liste, Anfragen, Vorschläge.
- *
- * <b>Eine Liste trägt alle drei Reiter.</b> Der Server liefert sie in einem Zug;
- * `stand` sagt, wohin jemand gehört, und bei einer offenen Anfrage entscheidet
- * `vonMir`, ob man wartet oder am Zug ist. Genau dieser Unterschied macht den
- * Reiter „Anfragen" nützlich: Nur die eine Hälfte davon kann man beantworten.
- */
-@Composable
-fun FreundeSeite(
-    modifier: Modifier = Modifier,
-    unterrand: Dp = 0.dp,
-    freunde: Bereichsstand<List<Freund>> = Bereichsstand(),
-    server: String = "",
-    beiLaden: () -> Unit = {},
-    beiAntwort: (String, Boolean) -> Unit = { _, _ -> },
-    /** Ein Tipp auf einen bestätigten Freund öffnet das Gespräch. */
-    beiGespraech: (Freund) -> Unit = {},
-    brett: @Composable ColumnScope.() -> Unit = {},
-) {
-    var reiter by rememberSaveable { mutableStateOf(0) }
-    LaunchedEffect(Unit) { beiLaden() }
-
-    val alle = freunde.inhalt.orEmpty()
-    val liste = alle.filter { it.bestaetigt }
-    val anfragen = alle.filter { it.angefragt }
-    val zuBeantworten = anfragen.count { !it.vonMir }
-    val ungelesen = liste.sumOf { it.ungelesen }
-
-    Seite(modifier = modifier, unterrand = unterrand) {
-        Seitenkopf(titel = "Freunde", unterzeile = "Brett, Gespräche und wer mit dir fährt")
-
-        Reiterreihe {
-            Reiter("Brett", offen = reiter == 0, beiDruck = { reiter = 0 })
-            Reiter(
-                "Freunde",
-                offen = reiter == 1,
-                beiDruck = { reiter = 1 },
-                marke = ungelesen,
-            )
-            Reiter(
-                "Anfragen",
-                offen = reiter == 2,
-                beiDruck = { reiter = 2 },
-                marke = zuBeantworten,
-            )
-        }
-
-        if (reiter == 0) {
-            brett()
-            return@Seite
-        }
-
-        Bereich(
-            laedt = freunde.laedt,
-            fehler = freunde.fehler,
-            inhalt = freunde.inhalt,
-            beiErneut = beiLaden,
-        ) {
-            if (reiter == 1) {
-                if (liste.isEmpty()) {
-                    Leerhinweis(
-                        "Noch niemand auf der Liste. Im Web kannst du jemanden über seinen " +
-                            "Benutzernamen suchen.",
-                    )
-                } else {
-                    liste.forEach { freund ->
-                        Freundzeile(freund, server, beiDruck = { beiGespraech(freund) })
-                    }
-                }
-            } else {
-                if (anfragen.isEmpty()) {
-                    Leerhinweis("Keine offenen Anfragen.")
-                } else {
-                    anfragen.forEach { Freundzeile(it, server, beiAntwort) }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun Freundzeile(
-    freund: Freund,
-    server: String,
-    beiAntwort: ((String, Boolean) -> Unit)? = null,
-    beiDruck: (() -> Unit)? = null,
-) {
-    val offenVonAnderen = freund.angefragt && !freund.vonMir
-
-    Profilzeile(
-        beiDruck = beiDruck,
-        kennung = freund.kennung,
-        anzeigename = freund.anzeigename.ifBlank { freund.benutzername },
-        // Wer gerade fährt, ist die interessantere Auskunft als „zuletzt online"
-        // — sie verdrängt diese, statt danebenzustehen.
-        unterzeile = listOfNotNull(
-            "Stufe ${freund.level}",
-            freund.rang.ifBlank { null },
-            freund.anwesenheit?.ansage
-                ?: seither(freund.zuletztGesehen)?.let { "zuletzt $it" },
-        ).joinToString(" · "),
-        wappen = freund.wappen,
-        wappenfarbe = freund.wappenfarbe,
-        kopfmuster = freund.kopfmuster,
-        profilrahmen = freund.profilrahmen,
-        bildAdresse = bildweg(server, freund.profilbild),
-        premium = freund.premium,
-        teammitglied = freund.teammitglied,
-        imDienst = freund.anwesenheit != null,
-        hinten = {
-            when {
-                freund.ungelesen > 0 -> Markenzahl(freund.ungelesen)
-                freund.angefragt && freund.vonMir -> Marke("Gesendet")
-                freund.anwesenheit != null -> Marke("Im Dienst", farbe = Farben.GruenHell)
-            }
-        },
-        unten = {
-            if (offenVonAnderen && beiAntwort != null) {
-                Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
-                    Knopf(
-                        "Annehmen",
-                        { beiAntwort(freund.kennung, true) },
-                        art = Knopfart.Haupt,
-                        kompakt = true,
-                    )
-                    Knopf(
-                        "Ablehnen",
-                        { beiAntwort(freund.kennung, false) },
-                        art = Knopfart.Leise,
-                        kompakt = true,
-                    )
-                }
-            }
-        },
-    )
-}
+//
+// Die Freundeseite steht seit dem Ausbau auf vier Wege (Brett, Freunde,
+// Nachrichten, Kontakte) in `FreundeSeiten.kt`.
 
 // Shop und Konto stehen in `ShopSeiten.kt` und `KontoSeiten.kt` — sie sind
 // mit Premium, Postfach und den Nebenwegen des Kontos zu groß für diese Sammlung
