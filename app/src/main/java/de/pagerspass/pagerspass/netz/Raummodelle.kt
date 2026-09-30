@@ -205,17 +205,7 @@ data class Stichwortset(
     val lagen: Int = 0,
 )
 
-/** Eine gespeicherte Rundenvorlage — der Reglerstand einer Lobby. */
-@Serializable
-data class Rundenvorlagenzeile(
-    val id: String = "",
-    val name: String = "",
-    val landkreisId: String? = null,
-    val leitstelleId: String? = null,
-    val ganzerBereich: Boolean = false,
-    val code: String = "",
-    val geaendertUm: String = "",
-)
+// `Rundenvorlagenzeile` (eine gespeicherte Rundenvorlage) steht in Werkmodelle.kt.
 
 /** Eine dauerhafte Alarm- und Ausrückeordnung am Konto (`/api/aao`). */
 @Serializable
