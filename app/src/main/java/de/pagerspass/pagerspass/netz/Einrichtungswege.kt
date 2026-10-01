@@ -95,7 +95,6 @@ data class Einrichtung(
     val patientensimulation: Boolean = true,
 )
 
-@Serializable
-data class Massnahmenkatalog(val alle: Boolean = false)
+// `Massnahmenkatalog` (einfach oder erweitert) steht in Fahrzeugmodelle.kt.
 
 private fun teil(wert: String): String = URLEncoder.encode(wert, "UTF-8")
