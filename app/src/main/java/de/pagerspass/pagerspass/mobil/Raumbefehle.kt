@@ -433,6 +433,32 @@ class Raumbefehle internal constructor(
 
     fun anrufOrten(anrufId: String) = leitung.rufen("AnrufOrten", wert(anrufId))
 
+    /**
+     * Die Premium-Abfragehilfe: Das Modell liest das laufende Gespräch und schlägt für
+     * den offenen Schritt der Notrufabfrage eine Antwort vor (`GameHub.NotrufabfrageKi`).
+     *
+     * <b>Ein älterer Server kennt die Methode nicht</b> — dann kommt keine Antwort oder
+     * ein Fehler, und daraus wird hier eine Absage mit Satz statt einer Ausnahme. Nach
+     * zwanzig Sekunden gilt dasselbe: Die Abfrage geht von Hand weiter.
+     */
+    suspend fun notrufabfrageKi(anrufId: String, frage: String, antworten: List<String>): de.pagerspass.pagerspass.netz.NotrufabfrageKiAntwort {
+        val roh = runCatching {
+            kotlinx.coroutines.withTimeoutOrNull(20_000) {
+                leitung.frage("NotrufabfrageKi", wert(anrufId), wert(frage), liste(antworten))
+            }
+        }.getOrNull()
+        return roh?.let {
+            runCatching {
+                de.pagerspass.pagerspass.netz.Netz.abgabe.decodeFromJsonElement(
+                    de.pagerspass.pagerspass.netz.NotrufabfrageKiAntwort.serializer(),
+                    it,
+                )
+            }.getOrNull()
+        } ?: de.pagerspass.pagerspass.netz.NotrufabfrageKiAntwort(
+            fehler = "Die KI-Hilfe antwortet hier nicht. Die Abfrage geht von Hand weiter.",
+        )
+    }
+
     fun journalOrten(anrufId: String) = leitung.rufen("JournalOrten", wert(anrufId))
 
     /** Dieser Anrufer meldet eine Lage, die schon läuft — kein zweiter Einsatz. */

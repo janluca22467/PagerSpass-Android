@@ -411,6 +411,13 @@ fun LeitstelleSeite(
                 anruf = anruf,
                 katalog = katalog,
                 beiFrage = { beiAnrufFrage(anruf.id, it) },
+                beiOrten = { befehle.anrufOrten(anruf.id) },
+                // Die KI-Hilfe gehört zu Premium — ohne Abo öffnet der Knopf den Hinweis.
+                beiKi = if (raum?.players?.firstOrNull { it.id == eigeneKennung }?.premium == true) {
+                    { frage, antworten -> befehle.notrufabfrageKi(anruf.id, frage, antworten) }
+                } else {
+                    null
+                },
                 beiUebernehmen = { vorschlag ->
                     // Der Vorschlag wird der Einsatz — mit der Anruf-Id, damit
                     // der Server Gespräch und Lage verknüpft. Das Auflegen
@@ -430,6 +437,8 @@ fun LeitstelleSeite(
                         vorschlag.meldender,
                         anruf.id,
                     )
+                    // Der Einsatz steht, die Abfrage ist erledigt.
+                    abfragestaende.remove(anruf.id)
                     gespraech = null
                 },
                 beiAuflegen = {
@@ -440,6 +449,7 @@ fun LeitstelleSeite(
                 },
                 beiVerwerfen = {
                     beiVorschlagVerwerfen(anruf.id)
+                    abfragestaende.remove(anruf.id)
                     gespraech = null
                 },
                 werkzeug = {
@@ -1093,8 +1103,13 @@ private fun Gespraechsblende(
     beiAuflegen: () -> Unit,
     beiVerwerfen: () -> Unit,
     werkzeug: @Composable ColumnScope.() -> Unit = {},
+    beiOrten: () -> Unit = {},
+    beiKi: (suspend (String, List<String>) -> de.pagerspass.pagerspass.netz.NotrufabfrageKiAntwort)? = null,
 ) {
     val beendet = anruf.zustand == "Beendet"
+    // Am Handy zwei Reiter statt zwei Spalten: Gespräch und Abfrage. Der Stand der
+    // Abfrage hängt am Anruf, nicht am Reiter — ein Wechsel verliert nichts.
+    var teil by remember(anruf.id) { mutableStateOf("gespraech") }
 
     Blende(
         titel = "Notruf ${anruf.nummer}",
@@ -1106,6 +1121,25 @@ private fun Gespraechsblende(
             }
         },
     ) {
+        if (!beendet) {
+            Reiterreihe {
+                Reiter("Gespräch", offen = teil == "gespraech", beiDruck = { teil = "gespraech" })
+                Reiter("Abfrage", offen = teil == "abfrage", beiDruck = { teil = "abfrage" })
+            }
+        }
+
+        if (!beendet && teil == "abfrage") {
+            Notrufabfrage(
+                anruf = anruf,
+                katalog = katalog?.stichworte.orEmpty(),
+                beiFrage = beiFrage,
+                beiOrten = beiOrten,
+                beiKi = beiKi,
+                beiAuflegen = beiAuflegen,
+            )
+            return@Blende
+        }
+
         // Der Verlauf — die Leitstelle rechts wäre am Handy verschenkter Platz;
         // wer spricht, steht vorn an der Zeile.
         if (anruf.verlauf.isEmpty()) {
@@ -1148,8 +1182,18 @@ private fun Gespraechsblende(
 
         werkzeug()
 
-        anruf.vorschlag?.let { v ->
+        // Was die Abfrage ergeben hat, geht in den Vorschlag: Stichwort, Dringlichkeit,
+        // Befunde hinter dem Meldebild des Gesprächs.
+        val ausAbfrage = abfrageauswertung(anruf.id)
+        anruf.vorschlag?.let { abfrageUebernehmen(it, ausAbfrage, katalog?.stichworte.orEmpty()) }?.let { v ->
             Ueberschrift("Vorschlag")
+            if (ausAbfrage != null) {
+                SehrLeise(
+                    "Aus der Abfrage übernommen" +
+                        ausAbfrage.mitalarm.filter { it != v.organisation }.takeIf { it.isNotEmpty() }
+                            ?.let { " — außerdem: ${it.joinToString(", ")}" }.orEmpty(),
+                )
+            }
             Kasten(marke = true, wartet = true, abstandInnen = Abstand.Klein) {
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),

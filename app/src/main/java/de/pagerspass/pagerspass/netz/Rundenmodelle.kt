@@ -807,12 +807,14 @@ data class Notrufvorschlag(
  * Die Reihenfolge ist die des Webs: Ort zuerst, denn ohne Ort fährt niemand.
  */
 val FAKTENARTEN: List<Pair<String, String>> = listOf(
-    "Ort" to "Wo genau ist das?",
-    "Was" to "Was ist passiert?",
-    "Betroffene" to "Sind Menschen betroffen?",
-    "Ausmass" to "Wie groß ist das Ausmaß?",
+    // Wortgleich mit `NOTRUF_FRAGEN` im Web und `Notrufabfrage.Fragen` am Server —
+    // der schreibt die angeklickte Frage ins Protokoll.
+    "Ort" to "Wo genau ist der Notfallort?",
+    "Was" to "Was genau ist passiert?",
+    "Betroffene" to "Sind Menschen betroffen oder verletzt?",
+    "Ausmass" to "Wie groß ist das Ganze?",
     "Gefahren" to "Gibt es besondere Gefahren?",
-    "Anrufer" to "Wie heißen Sie?",
+    "Anrufer" to "Wer spricht da bitte?",
 )
 
 /** Was der Server nach Dienstende gutgeschrieben hat. */
