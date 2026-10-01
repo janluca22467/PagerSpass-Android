@@ -1,6 +1,21 @@
 package de.pagerspass.pagerspass.ansichten
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.material3.Icon
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import de.pagerspass.pagerspass.mobil.Einrichtungsdienst
+import de.pagerspass.pagerspass.mobil.Einrichtungsstand
+import de.pagerspass.pagerspass.ui.bausteine.Etikett
+import de.pagerspass.pagerspass.ui.bausteine.Fortschritt
+import de.pagerspass.pagerspass.ui.theme.Rundung
+import de.pagerspass.pagerspass.ui.theme.Ziel
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -78,23 +93,26 @@ import de.pagerspass.pagerspass.ui.zeichen.Zeichen
 import java.util.Locale
 
 /**
- * Die Konto-Zentrale — das Gegenstück zu `KontoView.vue` in der Handy-Fassung.
+ * Die Konto-Zentrale — das Gegenstück zu `KontoView.vue` (v6) in der Handy-Fassung.
  *
- * <b>Dieselbe Reihenfolge wie im Web:</b> der Kopf mit Person und Stand, die kurzen
- * Wege, dann die Karten Spielweise, Premium, Sicherheit und E-Mail-Adresse, die
- * Wachengemeinschaft, „Freunde werben", „Fehler melden", das Rechtliche und ganz
- * unten die beiden Gefahrenbereiche. Wer beide Fassungen kennt, soll nicht suchen.
+ * <b>Zwei Ebenen wie im Web am Handy:</b> oben der Kopf mit Person, Stand und der
+ * einen Handlung, darunter das Menü — sechs Rubriken unter „Einstellungen", die
+ * Unterseiten unter „Weitere Seiten", ganz unten „Abmelden". Eine Rubrik nimmt die
+ * ganze Seite ein und trägt oben „‹ Alle Einstellungen"; die Zurück-Taste tut
+ * dasselbe. Vorher standen hier vierzehn Karten untereinander, und wer das
+ * Passwort ändern wollte, rollte an Werbung, Rechtlichem und Spielweise vorbei.
  *
- * <b>Zwei Zeilen hat nur die App:</b> den mobilen Begleiter und das Postfach der
- * Verwaltung. Beide stehen oben, weil sie Wege auf diesem Gerät sind.
+ * <b>Drei Zeilen hat nur die App:</b> den mobilen Begleiter, den Melder dieses
+ * Geräts und das Postfach der Verwaltung — unter „Weitere Seiten", weil sie Wege
+ * auf diesem Gerät sind.
  *
- * <b>Geld nur auf der Webseite.</b> Die Premium-Karte zeigt den Stand und führt
+ * <b>Geld nur auf der Webseite.</b> „Premium & Verträge" zeigt den Stand und führt
  * zum Abschließen, Verwalten und Kündigen auf pagerspass.de — und sagt das auch.
- * Kommt die App danach aus dem Hintergrund zurück, holt sie Konto und Abo neu:
- * Genau dann kann sich dort etwas geändert haben.
+ * Kommt die App danach aus dem Hintergrund zurück, holt sie Konto und Abo neu.
  *
- * <b>„Konto löschen" gehört hierher und nirgendwo sonst.</b> Google Play verlangt
- * für jede App, in der man ein Konto anlegen kann, einen Löschweg in der App.
+ * <b>„Konto löschen" gehört hierher und nirgendwo sonst</b> (Rubrik „Konto &
+ * Daten"). Google Play verlangt für jede App, in der man ein Konto anlegen kann,
+ * einen Löschweg in der App.
  */
 @Composable
 fun KontoSeite(
@@ -122,9 +140,14 @@ fun KontoSeite(
     beiPremium: () -> Unit = {},
     /** „Dein Melder" — Bauform, Gesicht, Alarmton und die Werkstätten. */
     beiMelder: () -> Unit = {},
+    /** Altersfrage, Einrichtungsbogen, Maßnahmenübersicht — `null` auf einem Server ohne sie. */
+    einrichtung: Einrichtungsstand = Einrichtungsstand(),
+    einrichtungsdienst: Einrichtungsdienst? = null,
+    /** „Profil ansehen" — das eigene Profil, wie andere es sehen. */
+    beiProfilAnsehen: (() -> Unit)? = null,
 ) {
-    val browser = LocalUriHandler.current
     val p = profil.inhalt
+    var rubrik by rememberSaveable { mutableStateOf<Kontorubrik?>(null) }
 
     BeiRueckkehr {
         beiProfilLaden()
@@ -133,6 +156,7 @@ fun KontoSeite(
         dienst?.postfachLaden()
         dienst?.werbungLaden()
         dienst?.simulationLaden()
+        einrichtungsdienst?.laden()
     }
 
     // Erst mit dem Premiumstand: Ohne Abo antwortet die Welt mit 403, und die Zeile
@@ -140,139 +164,445 @@ fun KontoSeite(
     val premiumAktiv = stand.premium.inhalt?.aktiv ?: (konto?.premiumAktiv == true)
     androidx.compose.runtime.LaunchedEffect(premiumAktiv) { dienst?.weltPruefen(premiumAktiv) }
 
+    // Die Zurück-Taste führt aus der Rubrik ins Menü — wie der Knopf darüber.
+    if (rubrik != null) androidx.activity.compose.BackHandler { rubrik = null }
+
     Seite(modifier = modifier, unterrand = unterrand) {
-        Profilbanner(
-            kennung = konto?.kennung.orEmpty(),
-            anzeigename = konto?.anzeigename.orEmpty(),
-            benutzername = konto?.benutzername,
-            augenbraue = "Dein Konto",
-            wappen = p?.wappen ?: "Keines",
-            wappenfarbe = p?.wappenfarbe ?: 0,
-            kopfmuster = p?.kopfmuster ?: "keines",
-            profilrahmen = p?.profilrahmen ?: "keiner",
-            bildAdresse = bildweg(server, p?.profilbild),
-            premium = premiumAktiv,
-            teammitglied = konto?.teammitglied == true,
-            marken = listOfNotNull(
-                konto?.rang,
-                konto?.let { "Stufe ${it.level}" },
-                if (premiumAktiv) "Premium" else "Free",
-            ),
-            werte = listOfNotNull(
-                konto?.let { "Credits" to zahl(it.credits) },
-                "Dabei seit" to tag(konto?.erstelltUm),
-                "Profil" to if (p != null) "Bereit" else "Wird geladen",
-            ),
-            knoepfe = {
-                Knopf(
-                    if (p != null) "Profil gestalten" else "Profil wird geladen …",
-                    beiProfil,
-                    art = Knopfart.Haupt,
-                    aktiv = p != null,
-                    kompakt = true,
-                )
-            },
-        )
-
-        // Die Wege des Handys zuerst: Wer die Kontoseite mit einem QR-Code vor sich
-        // öffnet, will in zwei Griffen funken — alles darunter kann warten.
-        Abschnitt("Dieses Gerät") {
-            Wegzeile(
-                "Mobiler Begleiter",
-                beiBegleiter,
-                unterzeile = "QR-Code scannen: Funkgerät und Melder aufs Handy",
-                zeichen = Zeichen.Funk,
+        val offen = rubrik
+        if (offen == null || dienst == null) {
+            Kontokopf(konto, p, server, premiumAktiv, beiProfil, beiProfilAnsehen)
+            Kontomenue(
+                stand = stand,
+                einrichtung = einrichtung,
+                postfachFrei = postfachFrei,
+                beiRubrik = { if (dienst != null) rubrik = it },
+                beiPrivatsphaere = beiPrivatsphaere,
+                beiMitteilungen = beiMitteilungen,
+                beiDiscord = beiDiscord,
+                beiBegleiter = beiBegleiter,
+                beiMelder = beiMelder,
+                beiPostfach = beiPostfach,
+                beiAbmelden = beiAbmelden,
             )
-            Wegzeile(
-                "Dein Melder",
-                beiMelder,
-                unterzeile = "Bauform, Gesicht und Alarmton für dieses Gerät",
-                zeichen = Zeichen.Melder,
-            )
-            Wegzeile(
-                "Postfach",
-                beiPostfach,
-                unterzeile = if (postfachFrei) {
-                    "Nachrichten der Verwaltung"
-                } else {
-                    "Vom Betrieb — dein Postfach ist noch nicht freigeschaltet"
-                },
-                zeichen = Zeichen.Forum,
-            )
+            return@Seite
         }
 
-        Abschnitt("Schnellzugriff") {
-            Wegzeile("Privatsphäre", beiPrivatsphaere, unterzeile = "Sichtbarkeit und Einladungen", zeichen = Zeichen.Handy)
-            Wegzeile("Mitteilungen", beiMitteilungen, unterzeile = "Alarm und Nachrichten", zeichen = Zeichen.Melder)
-            Wegzeile("Discord", beiDiscord, unterzeile = "Rolle und Verknüpfung", zeichen = Zeichen.Kanal)
-            Wegzeile("Gemeinschaft", beiGemeinschaft, unterzeile = "Mannschaft und Wachenchat", zeichen = Zeichen.Gemeinschaft)
-            Wegzeile("Shop", beiShop, unterzeile = "Credits und Freischaltungen", zeichen = Zeichen.WegShop)
-        }
-
-        if (dienst == null) return@Seite
-
-        Spielweise(stand, dienst)
-        Premiumkarte(stand, server, beiPremium = beiPremium)
-        Sicherheit(konto, stand, dienst, beiAbmelden)
-        Emailkarte(stand, dienst)
-        Bedienungskarte()
-
-        Karte(
-            titel = "Wachengemeinschaft",
-            zeichen = Zeichen.Gemeinschaft,
-            text = "Deine feste Mannschaft mit eigenem Chat und gemeinsamen Runden.",
-            knoepfe = { Knopf("Gemeinschaft öffnen", beiGemeinschaft, kompakt = true) },
-        )
-
-        Werbeabschnitt(stand, dienst)
-        Fehlermeldung(stand, dienst)
-
-        Karte(titel = "Rechtliches", zeichen = Zeichen.Wiki, text = "Alle verbindlichen Texte und Kontaktangaben.") {
-            val recht = { seite: String -> browser.openUri(Rechtsstand.adresse(Server.BETRIEB, seite)) }
-            Wegzeile("Nutzungsbedingungen", { recht(Rechtsstand.NUTZUNGSBEDINGUNGEN) })
-            Wegzeile("AGB", { recht(Rechtsstand.AGB) })
-            Wegzeile("Datenschutzerklärung", { recht(Rechtsstand.DATENSCHUTZ) })
-            Wegzeile("Impressum", { recht(Rechtsstand.IMPRESSUM) })
-            Wegzeile("Verträge hier kündigen", { browser.openUri(imWeb(server, "vertrag-kuendigen")) })
-            Wegzeile("Vertrag widerrufen", { browser.openUri(imWeb(server, "vertrag-widerrufen")) })
-        }
-
-        if (stand.weltVorhanden) Weltreset(stand, dienst)
-
-        Gefahrenkarte(
-            titel = "Konto dauerhaft löschen",
-            text = "Garage, Erfahrung, Dienstbuch und Freundschaften werden gelöscht. " +
-                "Gemeinsame Schichten bleiben als Historie der Mannschaft bestehen. Ein " +
-                "laufendes Premium-Abo wird dabei sofort beendet.",
+        // Der Weg zurück ins Menü — am Handy sind Menü und Rubrik je eine Ebene.
+        Textweg("‹ Alle Einstellungen", { rubrik = null })
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(Abstand.Normal),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Knopf("Konto löschen", beiLoeschen, art = Knopfart.Alarm, kompakt = true)
+            Menuezeichen(offen.zeichen, gefahr = offen == Kontorubrik.Gefahr, gross = true)
+            Text(offen.titel, style = Schrift.Titel, color = Farben.Text)
         }
+
+        when (offen) {
+            Kontorubrik.Spiel -> {
+                Spielweise(stand, dienst, einrichtung, einrichtungsdienst)
+                Text("NUR AUF DIESEM GERÄT", style = Schrift.Etikett, color = Farben.AmberHell)
+                Bedienungskarte()
+            }
+            Kontorubrik.Sicherheit -> {
+                Sicherheit(konto, stand, dienst)
+                Emailkarte(stand, dienst)
+            }
+            Kontorubrik.Premium -> Premiumkarte(stand, server, beiPremium = beiPremium)
+            Kontorubrik.Werben -> Werbeabschnitt(stand, dienst)
+            Kontorubrik.Hilfe -> {
+                Fehlermeldung(stand, dienst)
+                Rechtskarte()
+            }
+            Kontorubrik.Gefahr -> {
+                Text(
+                    "Was hier geschieht, lässt sich nicht rückgängig machen. Jeder Schritt verlangt " +
+                        "dein Passwort.",
+                    style = Schrift.Normal,
+                    color = Farben.TextLeise,
+                )
+                if (stand.weltVorhanden) {
+                    Weltreset(stand, dienst)
+                } else {
+                    Rueckmeldungszeile(stand.meldung(Kontodienst.WELT)?.takeIf { !it.fehler })
+                }
+                Gefahrenkarte(
+                    titel = "Konto dauerhaft löschen",
+                    text = "Garage, Erfahrung, Dienstbuch und Freundschaften werden gelöscht. " +
+                        "Gemeinsame Schichten bleiben als Historie der Mannschaft bestehen. Ein " +
+                        "laufendes Premium-Abo wird dabei sofort beendet.",
+                ) {
+                    Knopf("Konto löschen", beiLoeschen, art = Knopfart.Alarm, kompakt = true)
+                }
+            }
+        }
+    }
+}
+
+/** Die sechs Rubriken unter „Einstellungen" — `menue` in `KontoView.vue`. */
+enum class Kontorubrik(val titel: String, val zeichen: ImageVector) {
+    Spiel("Spiel & Bedienung", KontoZeichen.Fahrzeuge),
+    Sicherheit("Anmeldung & Sicherheit", KontoZeichen.Sicherheit),
+    Premium("Premium & Verträge", KontoZeichen.Stern),
+    Werben("Freunde werben", KontoZeichen.Werben),
+    Hilfe("Hilfe & Rechtliches", KontoZeichen.Rettungsring),
+    Gefahr("Konto & Daten", KontoZeichen.Gefahr),
+}
+
+/**
+ * Der Kopf — der eine Ort, an dem Person, Stand und wichtigste Handlung
+ * zusammenkommen. Die Rubriken darunter wiederholen diese Angaben nicht.
+ */
+@Composable
+private fun Kontokopf(
+    konto: Konto?,
+    p: Profil?,
+    server: String,
+    premiumAktiv: Boolean,
+    beiProfil: () -> Unit,
+    beiProfilAnsehen: (() -> Unit)?,
+) {
+    Profilbanner(
+        kennung = konto?.kennung.orEmpty(),
+        anzeigename = konto?.anzeigename.orEmpty(),
+        benutzername = konto?.benutzername,
+        wappen = p?.wappen ?: "Keines",
+        wappenfarbe = p?.wappenfarbe ?: 0,
+        kopfmuster = p?.kopfmuster ?: "keines",
+        profilrahmen = p?.profilrahmen ?: "keiner",
+        bildAdresse = bildweg(server, p?.profilbild),
+        premium = premiumAktiv,
+        teammitglied = konto?.teammitglied == true,
+        // Rang und Stufe sind zwei Marken und nicht eine: Zusammen ergäben sie rund
+        // 300 Punkte, neben dem Profilbild stehen am Handy 230 zur Verfügung.
+        marken = listOfNotNull(
+            konto?.rang,
+            konto?.let { "Stufe ${it.level}" },
+            if (premiumAktiv) "Premium" else "Free",
+        ),
+        werte = listOfNotNull(
+            konto?.let { "Credits" to zahl(it.credits) },
+            "Dabei seit" to tag(konto?.erstelltUm),
+        ),
+        knoepfe = {
+            Knopf(
+                if (p != null) "Profil gestalten" else "Profil wird geladen …",
+                beiProfil,
+                art = Knopfart.Haupt,
+                aktiv = p != null,
+                kompakt = true,
+            )
+            if (p != null && beiProfilAnsehen != null) {
+                Knopf("Profil ansehen", beiProfilAnsehen, art = Knopfart.Leise, kompakt = true)
+            }
+        },
+    ) {
+        // Der Aufstieg als Balken und als Satz — am Handy gibt es kein Überfahren,
+        // also steht die Zahl hier und nicht in einem Hinweis.
+        if (konto != null) Fortschritt(anteil = konto.stufenanteil, text = konto.stufentext)
+    }
+}
+
+/**
+ * Das Menü. Jeder Eintrag sagt in seiner zweiten Zeile, wie es dort steht — „E-Mail
+ * noch nicht bestätigt" in Amber, „Premium aktiv" in Grün —, damit man nicht erst
+ * hineingehen muss, um zu sehen, ob es etwas zu tun gibt.
+ */
+@Composable
+private fun Kontomenue(
+    stand: Kontostand,
+    einrichtung: Einrichtungsstand,
+    postfachFrei: Boolean,
+    beiRubrik: (Kontorubrik) -> Unit,
+    beiPrivatsphaere: () -> Unit,
+    beiMitteilungen: () -> Unit,
+    beiDiscord: () -> Unit,
+    beiBegleiter: () -> Unit,
+    beiMelder: () -> Unit,
+    beiPostfach: () -> Unit,
+    beiAbmelden: () -> Unit,
+) {
+    val pf = stand.postfach.inhalt
+    val sicherheit: Pair<String, Color?> = when {
+        pf == null -> "Passwort und E-Mail-Adresse" to null
+        pf.email == null -> "Keine E-Mail-Adresse hinterlegt" to Farben.AmberHell
+        !pf.bestaetigt -> "E-Mail noch nicht bestätigt" to Farben.AmberHell
+        else -> "E-Mail bestätigt" to null
+    }
+    val w = stand.werbung.inhalt
+    val werben = when {
+        w == null -> "Code weitergeben oder einlösen"
+        w.aktionTitel != null -> "${w.aktionTitel} · ${w.aktionFaktor}-fach"
+        w.code != null -> "${w.geworben} geworben · Code ${w.code}"
+        else -> "Code weitergeben oder einlösen"
+    }
+    val premium = stand.premium.inhalt
+    val spiel = if (einrichtung.katalogBekannt) {
+        "PatSim · Maßnahmen ${if (einrichtung.massnahmenAlle) "erweitert" else "einfach"}"
+    } else {
+        "Spielweise und Bedienung"
+    }
+
+    Column(
+        verticalArrangement = Arrangement.spacedBy(Abstand.Haar),
+        modifier = Modifier
+            .fillMaxWidth()
+            .flaeche()
+            .padding(Abstand.Klein),
+    ) {
+        Menuegruppe("Einstellungen", erste = true)
+        Menueweg(Kontorubrik.Spiel.titel, spiel, Kontorubrik.Spiel.zeichen) { beiRubrik(Kontorubrik.Spiel) }
+        Menueweg(Kontorubrik.Sicherheit.titel, sicherheit.first, Kontorubrik.Sicherheit.zeichen, standfarbe = sicherheit.second) {
+            beiRubrik(Kontorubrik.Sicherheit)
+        }
+        Menueweg(
+            Kontorubrik.Premium.titel,
+            if (premium != null) premiumHinweis(premium) else "Abo und Verträge",
+            Kontorubrik.Premium.zeichen,
+            standfarbe = when {
+                premium?.zahlungOffen == true -> Farben.AmberHell
+                premium?.aktiv == true -> Farben.GruenHell
+                else -> null
+            },
+        ) { beiRubrik(Kontorubrik.Premium) }
+        Menueweg(
+            Kontorubrik.Werben.titel,
+            werben,
+            Kontorubrik.Werben.zeichen,
+            standfarbe = if (w?.aktionTitel != null) Farben.GruenHell else null,
+        ) { beiRubrik(Kontorubrik.Werben) }
+        Menueweg(Kontorubrik.Hilfe.titel, "Fehler melden, Rechtstexte", Kontorubrik.Hilfe.zeichen) {
+            beiRubrik(Kontorubrik.Hilfe)
+        }
+        Menueweg(
+            Kontorubrik.Gefahr.titel,
+            if (stand.weltVorhanden) "Welt zurücksetzen, löschen" else "Konto löschen",
+            Kontorubrik.Gefahr.zeichen,
+            gefahr = true,
+        ) { beiRubrik(Kontorubrik.Gefahr) }
+
+        Menuegruppe("Weitere Seiten")
+        Menueweg("Privatsphäre", "Sichtbarkeit und Einladungen", KontoZeichen.Privatsphaere, beiDruck = beiPrivatsphaere)
+        Menueweg("Mitteilungen", "Alarm und Nachrichten", KontoZeichen.Mitteilungen, beiDruck = beiMitteilungen)
+        Menueweg("Discord", "Rolle und Verknüpfung", KontoZeichen.Discord, beiDruck = beiDiscord)
+        // Die Wege dieses Geräts — nur in der App.
+        Menueweg("Mobiler Begleiter", "Funkgerät und Melder aufs Handy", Zeichen.Funk, beiDruck = beiBegleiter)
+        Menueweg("Dein Melder", "Bauform, Gesicht und Alarmton", Zeichen.Melder, beiDruck = beiMelder)
+        Menueweg(
+            "Postfach",
+            if (postfachFrei) "Nachrichten der Verwaltung" else "Noch nicht freigeschaltet",
+            KontoZeichen.Brief,
+            beiDruck = beiPostfach,
+        )
+
+        // Abmelden steht unter dem Menü und nicht in einer Rubrik: Es ist der eine
+        // Handgriff, den man sucht, ohne zu wissen, wo er einsortiert wäre.
+        Box(
+            Modifier
+                .padding(top = Abstand.Klein)
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(Farben.Rand),
+        )
+        Menueweg("Abmelden", "Nur auf diesem Gerät", KontoZeichen.Abmelden, pfeil = false, beiDruck = beiAbmelden)
+    }
+}
+
+/** Ein Gruppentitel im Menü — Versalien in Amber, wie `.kontomenue__gruppe`. */
+@Composable
+private fun Menuegruppe(text: String, erste: Boolean = false) {
+    Text(
+        text.uppercase(),
+        style = Schrift.Etikett.copy(letterSpacing = androidx.compose.ui.unit.TextUnit(0.1f, androidx.compose.ui.unit.TextUnitType.Em)),
+        color = Farben.AmberHell,
+        modifier = Modifier.padding(
+            start = Abstand.Klein,
+            end = Abstand.Klein,
+            top = if (erste) Abstand.Winzig else Abstand.Normal,
+            bottom = Abstand.Winzig,
+        ),
+    )
+}
+
+/** Ein Eintrag im Menü — `.menueweg`: Zeichen im Kästchen, Titel, Stand, Pfeil. */
+@Composable
+private fun Menueweg(
+    titel: String,
+    standtext: String,
+    zeichen: ImageVector,
+    standfarbe: Color? = null,
+    gefahr: Boolean = false,
+    pfeil: Boolean = true,
+    beiDruck: () -> Unit,
+) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(Abstand.Normal),
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .defaultMinSize(minHeight = Ziel.Normal)
+            .clip(Rundung.Klein)
+            .clickable(onClick = beiDruck, role = Role.Button)
+            .padding(Abstand.Klein),
+    ) {
+        Menuezeichen(zeichen, gefahr)
+        Column(verticalArrangement = Arrangement.spacedBy(Abstand.Haar), modifier = Modifier.weight(1f)) {
+            Text(
+                titel,
+                style = Schrift.Normal.copy(fontWeight = FontWeight.Bold, lineHeight = Schrift.NORMAL * Schrift.ZEILE_KNAPP),
+                color = Farben.Text,
+            )
+            Text(
+                standtext,
+                style = Schrift.Klein.copy(lineHeight = Schrift.KLEIN * Schrift.ZEILE_KNAPP),
+                color = standfarbe ?: Farben.TextSehrLeise,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        if (pfeil) {
+            Icon(Zeichen.Weiter, contentDescription = null, tint = Farben.TextSehrLeise, modifier = Modifier.size(21.dp))
+        }
+    }
+}
+
+/** Das Kästchen um ein Menüzeichen — eingelassen, Amber; Rot für die Gefahr. */
+@Composable
+private fun Menuezeichen(zeichen: ImageVector, gefahr: Boolean, gross: Boolean = false) {
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier
+            .size(Ziel.Normal)
+            .background(Farben.BgTief, Rundung.Klein)
+            .border(1.dp, Farben.Rand, Rundung.Klein),
+    ) {
+        Icon(
+            zeichen,
+            contentDescription = null,
+            tint = if (gefahr) Farben.SignalHell else Farben.AmberHell,
+            modifier = Modifier.size(if (gross) 24.dp else 21.dp),
+        )
     }
 }
 
 // ---------------------------------------------------------------- Die Karten
 
 /**
- * Die Spielweise — ein Schalter, und er legt eine ganze Art um, Einsätze zu fahren.
- * Am Konto und nicht in der Lobby: eine Frage des Geschmacks, keine der Schicht.
+ * Die Spielweise — PatSim ist seit 5.0.0.15 Pflicht, für jede Runde und jedes
+ * Konto. Hier steht deshalb kein Schalter mehr, sondern was sie ist, die Wahl der
+ * Maßnahmenübersicht (einfach oder erweitert), die Vorgabe „Anrufe annehmen" und
+ * der Weg, den Einrichtungsbogen noch einmal durchzugehen.
+ *
+ * <b>Gegen einen älteren Server</b> (keine Maßnahmenübersicht, kein Bogen) bleibt
+ * der alte Schalter stehen — dort ist PatSim noch eine Wahl.
  */
 @Composable
-private fun Spielweise(stand: Kontostand, dienst: Kontodienst) {
-    Karte(titel = "Spielweise", zeichen = Zeichen.Fahrzeug, text = "Wie ausführlich du am Patienten arbeitest.") {
-        Schalterzeile(
-            titel = "Patientensimulation",
-            unterzeile = "Vitalwerte messen (der Blutdruck dauert 20 Sekunden), xABCDE, SAMPLER " +
-                "und OPQRST abarbeiten, Verdachtsdiagnose festhalten, behandeln. Aus heißt: " +
-                "genau wie bisher.",
-            an = stand.patientensimulation,
-            beiWechsel = { dienst.simulationSetzen(it) },
-            aktiv = stand.laeuft == null,
-        )
+private fun Spielweise(
+    stand: Kontostand,
+    dienst: Kontodienst,
+    einrichtung: Einrichtungsstand,
+    einrichtungsdienst: Einrichtungsdienst?,
+) {
+    Karte(
+        titel = "Spielweise",
+        text = "Wie du am Patienten, an der Polizeilage und am Telefon arbeitest. Gilt für dein " +
+            "Konto, auf jedem Gerät.",
+    ) {
+        if (!einrichtung.katalogBekannt) {
+            Schalterzeile(
+                titel = "Patientensimulation",
+                unterzeile = "Vitalwerte messen (der Blutdruck dauert 20 Sekunden), xABCDE, SAMPLER " +
+                    "und OPQRST abarbeiten, Verdachtsdiagnose festhalten, behandeln. Aus heißt: " +
+                    "genau wie bisher.",
+                an = stand.patientensimulation,
+                beiWechsel = { dienst.simulationSetzen(it) },
+                aktiv = stand.laeuft == null,
+            )
+        } else {
+            Column(verticalArrangement = Arrangement.spacedBy(Abstand.Haar)) {
+                Text("PatSim · immer an", style = Schrift.Normal.copy(fontWeight = FontWeight.Bold), color = Farben.Text)
+                SehrLeise(
+                    "Am Patienten arbeiten wie im Dienst: Vitalwerte und EKG messen, xABCDE, SAMPLER " +
+                        "und OPQRST abarbeiten, behandeln, Verdachtsdiagnose festhalten. Bei der Polizei: " +
+                        "nach dem Ausweis fragen, Person, Fahrzeug und Register abfragen — selbst oder " +
+                        "über die Leitstelle —, Maßnahmen treffen, Tatvorwurf festhalten.",
+                )
+            }
+        }
         SehrLeise(
             "Sie bringt keinen Vorteil — weder mehr Punkte noch schnelleren Aufstieg. Sie " +
                 "ist eine Art zu spielen und kein Weg nach oben.",
         )
+
+        if (einrichtung.katalogBekannt && einrichtungsdienst != null) {
+            Etikett("Maßnahmen")
+            Wahlzeile(
+                titel = "Einfach",
+                text = "Vorgeschlagene Maßnahmen zum Patienten.",
+                an = !einrichtung.massnahmenAlle,
+                beiDruck = { einrichtungsdienst.massnahmenSetzen(false) },
+            )
+            Wahlzeile(
+                titel = "Erweitert",
+                text = "Alle rund 90 Maßnahmen, mit Suche und Gruppen.",
+                an = einrichtung.massnahmenAlle,
+                beiDruck = { einrichtungsdienst.massnahmenSetzen(true) },
+            )
+        }
+
+        val bogen = einrichtung.einrichtung
+        if (bogen != null && einrichtungsdienst != null) {
+            Schalterzeile(
+                titel = "Anrufe annehmen",
+                unterzeile = "Die Vorgabe für Runden, die du eröffnest: Notrufe kommen als Anruf herein. " +
+                    "In der Lobby lässt es sich für jede Runde umlegen.",
+                an = bogen.anrufeAnnehmen,
+                beiWechsel = { einrichtungsdienst.anrufeSetzen(it) },
+                aktiv = !einrichtung.laeuft,
+            )
+            Knopf("Einrichtung wiederholen", { einrichtungsdienst.wiederholen() }, art = Knopfart.Leise, kompakt = true)
+        }
         Rueckmeldungszeile(stand.meldung(Kontodienst.SIMULATION))
+    }
+}
+
+/** Eine Wahl aus zweien mit Satz darunter — `.katalogwahl__weg`. */
+@Composable
+private fun Wahlzeile(titel: String, text: String, an: Boolean, beiDruck: () -> Unit) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(Abstand.Normal),
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .defaultMinSize(minHeight = Ziel.Normal)
+            .border(1.dp, if (an) Farben.Amber else Farben.Rand, Rundung.Klein)
+            .clip(Rundung.Klein)
+            .clickable(onClick = beiDruck, role = Role.RadioButton)
+            .padding(horizontal = Abstand.Normal, vertical = Abstand.Klein),
+    ) {
+        Box(
+            Modifier
+                .size(18.dp)
+                .border(2.dp, if (an) Farben.Amber else Farben.RandHell, CircleShape)
+                .padding(4.dp)
+                .background(if (an) Farben.Amber else Color.Transparent, CircleShape),
+        )
+        Column(verticalArrangement = Arrangement.spacedBy(Abstand.Haar), modifier = Modifier.weight(1f)) {
+            Text(titel, style = Schrift.Normal.copy(fontWeight = FontWeight.Bold), color = Farben.Text)
+            SehrLeise(text)
+        }
+    }
+}
+
+/** Die Rechtstexte — `Rechtliches` in „Hilfe & Rechtliches". */
+@Composable
+private fun Rechtskarte() {
+    val browser = LocalUriHandler.current
+    Karte(titel = "Rechtliches", text = "Alle verbindlichen Texte und Kontaktangaben.") {
+        val recht = { seite: String -> browser.openUri(Rechtsstand.adresse(Server.BETRIEB, seite)) }
+        Wegzeile("Nutzungsbedingungen", { recht(Rechtsstand.NUTZUNGSBEDINGUNGEN) })
+        Wegzeile("AGB", { recht(Rechtsstand.AGB) })
+        Wegzeile("Datenschutzerklärung", { recht(Rechtsstand.DATENSCHUTZ) })
+        Wegzeile("Impressum", { recht(Rechtsstand.IMPRESSUM) })
     }
 }
 
@@ -292,7 +622,7 @@ internal fun Premiumkarte(
     val browser = LocalUriHandler.current
     val premium = stand.premium.inhalt
 
-    Karte(titel = "Premium", zeichen = KontoZeichen.Stern, text = "Dein Plan und die Abo-Verwaltung.") {
+    Karte(titel = "Dein Plan", text = "Der Zustand deines Abos und die Verwaltung bei Stripe.") {
         Row(
             horizontalArrangement = Arrangement.spacedBy(Abstand.Normal),
             verticalAlignment = Alignment.CenterVertically,
@@ -322,14 +652,14 @@ internal fun Premiumkarte(
         Echtgeldhinweis()
 
         if (stand.premium.fehler != null) Rueckmeldungszeile(Rueckmeldung(stand.premium.fehler, true))
+    }
 
-        // Die beiden gesetzlichen Wege (§ 312k, § 356a BGB) — sie stehen immer da,
-        // nicht nur bei laufendem Abo: Wer gerade gekündigt hat und widerrufen will,
-        // muss sie genauso finden.
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(Abstand.Normal)) {
-            Textweg("Verträge hier kündigen", { browser.openUri(imWeb(server, "vertrag-kuendigen")) })
-            Textweg("Vertrag widerrufen", { browser.openUri(imWeb(server, "vertrag-widerrufen")) })
-        }
+    // Die beiden gesetzlichen Wege (§ 312k, § 356a BGB) neben der Abo-Verwaltung. Sie
+    // stehen immer da und nicht nur bei laufendem Abo: Wer gerade gekündigt hat und
+    // widerrufen will, muss sie genauso finden.
+    Karte(titel = "Verträge", text = "Die gesetzlichen Wege — unabhängig davon, wie dein Abo gerade steht.") {
+        Wegzeile("Verträge hier kündigen", { browser.openUri(imWeb(server, "vertrag-kuendigen")) })
+        Wegzeile("Vertrag widerrufen", { browser.openUri(imWeb(server, "vertrag-widerrufen")) })
     }
 }
 
@@ -377,7 +707,7 @@ private fun premiumUnter(premium: Premiumstand?): String = when {
  * lassen wäre ein Bogen, den niemand ausfüllt.
  */
 @Composable
-private fun Sicherheit(konto: Konto?, stand: Kontostand, dienst: Kontodienst, beiAbmelden: () -> Unit) {
+private fun Sicherheit(konto: Konto?, stand: Kontostand, dienst: Kontodienst) {
     var offen by rememberSaveable { mutableStateOf<String?>(null) }
     var aktuelles by remember { mutableStateOf("") }
     var neues by remember { mutableStateOf("") }
@@ -385,9 +715,9 @@ private fun Sicherheit(konto: Konto?, stand: Kontostand, dienst: Kontodienst, be
     var name by remember { mutableStateOf("") }
     val laeuft = stand.laeuft != null
 
-    Karte(titel = "Sicherheit", zeichen = KontoZeichen.Schloss, text = "Passwort und Sitzung auf diesem Gerät.") {
+    Karte(titel = "Zugang", text = "Damit meldest du dich auf jedem Gerät an.") {
         Tatzeile("Passwort", "••••••••", mono = true) {
-            Knopf("Ändern", { offen = if (offen == "passwort") null else "passwort" }, kompakt = true)
+            Knopf(if (offen == "passwort") "Abbrechen" else "Ändern", { offen = if (offen == "passwort") null else "passwort" }, kompakt = true)
         }
         if (offen == "passwort") {
             Feld(aktuelles, { aktuelles = it }, etikett = "Aktuelles Passwort", geheim = true)
@@ -434,10 +764,6 @@ private fun Sicherheit(konto: Konto?, stand: Kontostand, dienst: Kontodienst, be
             )
         }
         Rueckmeldungszeile(stand.meldung(Kontodienst.BENUTZERNAME))
-
-        Tatzeile("Dieses Gerät", "Nur diese Sitzung wird beendet.") {
-            Knopf("Abmelden", beiAbmelden, art = Knopfart.Leise, kompakt = true)
-        }
     }
 }
 
@@ -461,7 +787,6 @@ private fun Emailkarte(stand: Kontostand, dienst: Kontodienst) {
 
     Karte(
         titel = "E-Mail-Adresse",
-        zeichen = KontoZeichen.Brief,
         text = "Für ein vergessenes Passwort und — wenn du ihn bestellst — den Newsletter.",
     ) {
         if (postfach != null && !postfach.versandbereit) {
@@ -590,13 +915,18 @@ private fun Werbeabschnitt(stand: Kontostand, dienst: Kontodienst) {
     var kopiert by remember { mutableStateOf(false) }
     val laeuft = stand.laeuft != null
 
-    Abschnitt("Freunde werben") {
-        SehrLeise("Code weitergeben oder als neues Konto einen fremden Code einlösen.")
+    Column(verticalArrangement = Arrangement.spacedBy(Abstand.Normal)) {
+        Text(
+            "Gib deinen Code weiter — oder löse als neues Konto den Code eines Freundes ein. " +
+                "Beides zugleich geht nicht.",
+            style = Schrift.Normal,
+            color = Farben.TextLeise,
+        )
 
         val werbung: Werbung? = stand.werbung.inhalt
         if (werbung == null) {
             SehrLeise(stand.werbung.fehler ?: "Der Werbestand wird geholt …")
-            return@Abschnitt
+            return@Column
         }
 
         if (werbung.aktionTitel != null) {
@@ -694,7 +1024,7 @@ private fun Fehlermeldung(stand: Kontostand, dienst: Kontodienst) {
     var hergang by remember { mutableStateOf("") }
     var seite by remember { mutableStateOf("") }
 
-    Karte(titel = "Fehler melden", zeichen = KontoZeichen.Hilfe, text = "Beschreibe den Weg zum Problem direkt aus dem Spiel.") {
+    Karte(titel = "Fehler melden", text = "Beschreibe den Weg zum Problem — die Meldung geht direkt ans Team.") {
         Knopf(
             "Bug melden",
             {
@@ -1365,7 +1695,6 @@ private fun Gefahrenkarte(titel: String, text: String, knopf: @Composable () -> 
     Column(
         verticalArrangement = Arrangement.spacedBy(Abstand.Klein),
         modifier = Modifier
-            .padding(top = Abstand.SehrGross)
             .fillMaxWidth()
             .flaeche(randfarbe = Farben.SignalTief)
             .padding(Abstand.Gross),
@@ -1395,6 +1724,20 @@ internal object KontoZeichen {
     val Schloss = strich("schloss", "M6 11h12v10H6z", "M8.5 11V8a3.5 3.5 0 0 1 7 0v3")
     val Brief = strich("brief", "M3.5 6h17v12h-17z", "m3.5 6 8.5 7 8.5-7")
     val Hilfe = strich("hilfe", "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z", "M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.6", "M12 17h.01")
+    val Fahrzeuge = strich("fahrzeuge", "m5 15 1.3-5h11.4l1.3 5", "M4 15h16v4H4Z", "M7 19v2M17 19v2M7.5 15v1M16.5 15v1", "M9 10V7h6v3")
+    val Sicherheit = strich("sicherheit", "M12 3 19 6v5c0 4.7-2.8 8.2-7 10-4.2-1.8-7-5.3-7-10V6Z", "M10 10.5h4a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1Z", "M10.5 10.5V9a1.5 1.5 0 0 1 3 0v1.5")
+    val Werben = strich("werben", "M6 8a3 3 0 1 0 6 0 3 3 0 1 0-6 0", "M3.5 19c.4-3.4 2.2-5.2 5.5-5.2s5.1 1.8 5.5 5.2", "M18 8v6M15 11h6")
+    val Rettungsring = strich("rettungsring", "M3 12a9 9 0 1 0 18 0 9 9 0 1 0-18 0", "M8 12a4 4 0 1 0 8 0 4 4 0 1 0-8 0", "m5.6 5.6 3.6 3.6M14.8 14.8l3.6 3.6M18.4 5.6l-3.6 3.6M9.2 14.8l-3.6 3.6")
+    val Gefahr = strich("gefahr", "M12 3.5 21 19.5H3Z", "M12 10v4.5", "M12 17h.01")
+    val Abmelden = strich("abmelden", "M10 4H5.5A1.5 1.5 0 0 0 4 5.5v13A1.5 1.5 0 0 0 5.5 20H10", "M14 8l4 4-4 4M18 12H9")
+    val Privatsphaere = strich("privatsphaere", "M12 3 19 6v5c0 4.7-2.8 8.2-7 10-4.2-1.8-7-5.3-7-10V6Z", "M8.3 12s1.4-2.2 3.7-2.2 3.7 2.2 3.7 2.2-1.4 2.2-3.7 2.2S8.3 12 8.3 12Z", "M11 12a1 1 0 1 0 2 0 1 1 0 1 0-2 0")
+    val Mitteilungen = strich("mitteilungen", "M7 9a5 5 0 0 1 10 0c0 6 2.2 6 2.2 7.5H4.8C4.8 15 7 15 7 9Z", "M10 19h4")
+    val Discord = strich(
+        "discord",
+        "M7.2 7.3A12 12 0 0 1 12 6.2c1.7 0 3.3.4 4.8 1.1 1.2 1.7 2 4.2 2.1 6.7-1.5 1.3-3 2.1-4.5 2.6l-1-1.4c.8-.2 1.6-.6 2.3-1.1-2.4 1.1-5 1.1-7.4 0 .7.5 1.5.9 2.3 1.1l-1 1.4A13 13 0 0 1 5.1 14c.1-2.5.9-5 2.1-6.7Z",
+        "M8.5 11.7a1 1 0 1 0 2 0 1 1 0 1 0-2 0",
+        "M13.5 11.7a1 1 0 1 0 2 0 1 1 0 1 0-2 0",
+    )
     val Geschenk = strich("geschenk", "M4 10h16v4H4z", "M5.5 14h13v7h-13z", "M12 10v11", "M12 10c-2.5 0-4.5-1-4.5-3a2 2 0 0 1 4.5 0c0-2 2-2 2-2a2 2 0 0 1 2.5 2c0 2-2 3-4.5 3")
 }
 

@@ -283,6 +283,8 @@ data class Katalog(
     val faehigkeiten: List<String> = emptyList(),
     /** Welche Leitstelle für welche Kreise zuständig ist — für den Leitstellenbau. */
     val leitstellen: List<Katalogleitstelle> = emptyList(),
+    /** Was Deutschland, Österreich und die Schweiz anders nennen (v6) — leer auf älteren Servern. */
+    val staaten: List<Staatsprofil> = emptyList(),
 )
 
 @Serializable
@@ -290,6 +292,10 @@ data class Katalogleitstelle(
     val id: String = "",
     val name: String = "",
     val kreise: List<String> = emptyList(),
+    /** Wo sie sitzt — „Sitz Celle" in der Fußnote unter „Dienst aufnehmen". */
+    val sitz: String = "",
+    /** Ihr Land — die des eigenen Landes stehen bei mehreren zuerst. */
+    val bundesland: String = "",
 )
 
 /**
@@ -363,7 +369,7 @@ data class Landkreis(
      */
     val aufschrift: String
         get() = when {
-            art == "KreisfreieStadt" -> "$name (Stadt)"
+            art == "KreisfreieStadt" || art == "Statutarstadt" -> "$name (Stadt)"
             kreisstadt.isNotBlank() && kreisstadt != name -> "$name ($kreisstadt)"
             else -> name
         }
@@ -400,7 +406,7 @@ val BUNDESLAENDER: Map<String, String> = mapOf(
 )
 
 /** Der lesbare Name eines Bundeslands. */
-fun bundeslandname(roh: String): String = BUNDESLAENDER[roh] ?: roh
+fun bundeslandname(roh: String): String = BUNDESLAENDER[roh] ?: Staaten.LAENDER[roh] ?: roh
 
 /** Die Antwort auf „Leitstelle besetzen". */
 @Serializable

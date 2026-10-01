@@ -589,6 +589,7 @@ private fun Angemeldet(
     val browser = LocalUriHandler.current
     var loeschenOffen by remember { mutableStateOf(false) }
     val kontostand by sitzung.kontodienst.stand.collectAsStateWithLifecycle()
+    val einrichtung by sitzung.einrichtungsdienst.stand.collectAsStateWithLifecycle()
 
     // Der Melder dieses Geräts erfährt Stufe und Abo, sobald das Konto da ist —
     // eine Bauform oder ein Ton, der nicht (mehr) offensteht, fällt zurück.
@@ -661,6 +662,11 @@ private fun Angemeldet(
                     beiKatalog = { sitzung.katalogSicherstellen() },
                     beiUmbenennen = { sitzung.umbenennen(it) },
                     beiBesetzen = { kreis -> sitzung.raumEroeffnen(kreis?.id) },
+                    beiBesetzenMit = { kreis, leitstelle, bereich ->
+                        sitzung.raumEroeffnen(kreis?.id, leitstelle, bereich)
+                    },
+                    leitstellen = daten.katalog.inhalt?.leitstellen.orEmpty(),
+                    staaten = daten.katalog.inhalt?.staaten.orEmpty(),
                     beiAusbildung = { sitzung.ausbildungEroeffnen() },
                     beiBeitreten = { code ->
                         runde.beitreten(code, stand.konto?.anzeigename.orEmpty())
@@ -963,6 +969,11 @@ private fun Angemeldet(
                     beiMitteilungen = { steuerung.navigate(UNTERSEITE_MITTEILUNGEN) },
                     beiBegleiter = { steuerung.navigate(UNTERSEITE_BEGLEITER) },
                     beiMelder = { steuerung.navigate(UNTERSEITE_MELDER) },
+                    einrichtung = einrichtung,
+                    einrichtungsdienst = sitzung.einrichtungsdienst,
+                    beiProfilAnsehen = stand.konto?.benutzername?.takeIf { it.isNotBlank() }?.let { name ->
+                        { profilOeffnen(name) }
+                    },
                 )
             }
 
@@ -1275,7 +1286,6 @@ private fun Angemeldet(
     }
 
     // Bogen und Maßnahmenübersicht einmal je Konto — still; ohne sie gibt es nichts zu fragen.
-    val einrichtung by sitzung.einrichtungsdienst.stand.collectAsStateWithLifecycle()
     LaunchedEffect(stand.konto?.kennung) {
         if (stand.konto != null) sitzung.einrichtungsdienst.laden()
     }

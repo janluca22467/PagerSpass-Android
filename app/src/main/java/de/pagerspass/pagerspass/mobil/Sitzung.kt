@@ -712,8 +712,8 @@ class Sitzung(anwendung: Application) : AndroidViewModel(anwendung) {
      * kein `TODO` — ein Knopf, der nichts tut, ist schlechter als einer, der
      * ehrlich sagt, wie weit er kommt.
      */
-    fun raumEroeffnen(landkreisId: String?) = arbeiten {
-        val raum = wege.raumAnlegen(landkreisId)
+    fun raumEroeffnen(landkreisId: String?, leitstelleId: String? = null, ganzerBereich: Boolean = true) = arbeiten {
+        val raum = wege.raumAnlegen(landkreisId, ganzerBereich, leitstelleId)
         _stand.update { it.copy(raumcode = raum.code) }
     }
 

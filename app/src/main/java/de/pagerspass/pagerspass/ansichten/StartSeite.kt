@@ -89,6 +89,12 @@ fun StartSeite(
     beiKatalog: () -> Unit = {},
     beiUmbenennen: (String) -> Unit = {},
     beiBesetzen: (Landkreis?) -> Unit = {},
+    /** Besetzen mit Leitstelle und Bereich (v6) — ohne Angabe gilt `beiBesetzen`. */
+    beiBesetzenMit: ((Landkreis?, String?, Boolean) -> Unit)? = null,
+    /** Welche Leitstelle für welche Kreise disponiert — für Wahl und Fußnote. */
+    leitstellen: List<de.pagerspass.pagerspass.netz.Katalogleitstelle> = emptyList(),
+    /** Was Deutschland, Österreich und die Schweiz anders nennen. */
+    staaten: List<de.pagerspass.pagerspass.netz.Staatsprofil> = emptyList(),
     beiAusbildung: () -> Unit = {},
     beiBeitreten: (String) -> Unit = {},
     beiZuschauen: (String) -> Unit = {},
@@ -124,17 +130,7 @@ fun StartSeite(
     var umbenennen by remember { mutableStateOf(false) }
     var name by remember(konto?.anzeigename) { mutableStateOf(konto?.anzeigename.orEmpty()) }
 
-    // Die Wahl überlebt das Drehen des Geräts, aber nicht das Beenden — wie im
-    // Web, wo sie im Formular steht und nicht am Konto.
-    var bundesland by rememberSaveable { mutableStateOf<String?>(null) }
-    var landkreisId by rememberSaveable { mutableStateOf<String?>(null) }
-    var offeneWahl by remember { mutableStateOf<Wahl?>(null) }
     var raumcode by rememberSaveable { mutableStateOf("") }
-
-    val laender = remember(landkreise) { landkreise.bundeslaender() }
-    val landkreis = remember(landkreisId, landkreise) {
-        landkreise.firstOrNull { it.id == landkreisId }
-    }
 
     Seite(modifier = modifier, unterrand = unterrand) {
         Empfangszeile()
@@ -192,59 +188,16 @@ fun StartSeite(
         if (!einweisung) {
             Ueberschrift("Schicht starten")
 
-            Karte(
-                titel = "Dienst aufnehmen",
-                zeichen = Zeichen.Leitstelle,
-                text = "Du übernimmst die Leitstelle und bekommst einen Raumcode zum Weitergeben.",
-                haupt = true,
-                knoepfe = {
-                    Knopf(
-                        aufschrift = "Leitstelle besetzen",
-                        beiDruck = { beiBesetzen(landkreis) },
-                        art = Knopfart.Haupt,
-                        aktiv = !laeuft && landkreis != null,
-                    )
-                    vorlagen?.invoke()
+            DienstaufnahmeKarte(
+                landkreise = landkreise,
+                leitstellen = leitstellen,
+                staaten = staaten,
+                laeuft = laeuft,
+                beiBesetzen = { kreis, leitstelle, bereich ->
+                    beiBesetzenMit?.invoke(kreis, leitstelle, bereich) ?: beiBesetzen(kreis)
                 },
-            ) {
-                if (landkreise.isEmpty()) {
-                    // Der Katalog ist das Größte, was die App lädt (401 Kreise).
-                    // Solange er unterwegs ist, stehen hier keine leeren
-                    // Auswahlfelder, die aussehen, als gäbe es nichts zu wählen.
-                    Ladezeile("Landkreise werden geladen …")
-                } else {
-                    Wahlfeld(
-                        etikett = "Bundesland",
-                        wert = bundesland?.let { bundeslandname(it) },
-                        beiDruck = { offeneWahl = Wahl.Bundesland },
-                    )
-                    Wahlfeld(
-                        etikett = "Landkreis",
-                        wert = landkreis?.aufschrift,
-                        beiDruck = { offeneWahl = Wahl.Landkreis },
-                        aktiv = bundesland != null,
-                        platzhalter = if (bundesland == null) {
-                            "Zuerst ein Bundesland wählen"
-                        } else {
-                            "Bitte wählen"
-                        },
-                    )
-
-                    // Der Hinweis steht bei der Wahl und nicht als Fußnote
-                    // darunter. Im Web stand er weiter unten und wurde wie eine
-                    // Fehlermeldung gelesen: „du hast falsch gewählt" statt
-                    // „hier ist die Karte erfunden".
-                    if (landkreis != null && !landkreis.hatDaten) {
-                        Text(
-                            text = "Für diesen Kreis liegen keine echten Wachen- und " +
-                                "Straßendaten vor. Die Runde läuft im erfundenen " +
-                                "Standardbereich — spielbar, aber nicht die echte Karte.",
-                            style = Schrift.Klein,
-                            color = Farben.AmberHell,
-                        )
-                    }
-                }
-            }
+                vorlagen = vorlagen,
+            )
 
             // Die zweite Karte: beitreten statt eröffnen. Sie stand im Web
             // gleichberechtigt neben der ersten — wer verabredet ist, kommt
@@ -306,55 +259,8 @@ fun StartSeite(
         Fuss(beta = beta, version = version, beiRechtstext = beiRechtstext, knoepfe = fussknoepfe)
     }
 
-    when (offeneWahl) {
-        Wahl.Bundesland -> Wahlblende(
-            titel = "Bundesland",
-            gruppen = listOf(null to laender),
-            // Angezeigt wird der lesbare Name, gerechnet wird mit dem rohen:
-            // Der Kreis trägt `RheinlandPfalz`, nicht „Rheinland-Pfalz".
-            aufschrift = { bundeslandname(it) },
-            gewaehlt = bundesland,
-            beiWahl = { gewaehlt ->
-                bundesland = gewaehlt
-                // Der Kreis gehört zum Land. Wer das Land wechselt, hat keinen
-                // Kreis mehr — ihn stehen zu lassen hieße, mit einem Kreis zu
-                // besetzen, der im gewählten Land gar nicht vorkommt.
-                landkreisId = null
-                offeneWahl = null
-            },
-            beiSchliessen = { offeneWahl = null },
-            suchbar = laender.size > 8,
-        )
-
-        Wahl.Landkreis -> {
-            val (mitDaten, ohneDaten) = landkreise.nachBundesland(bundesland.orEmpty())
-            Wahlblende(
-                titel = bundesland?.let { bundeslandname(it) } ?: "Landkreis",
-                gruppen = listOf("Mit echten Wachen" to mitDaten, "Ohne Geodaten" to ohneDaten),
-                aufschrift = { it.aufschrift },
-                unterschrift = { kreis ->
-                    if (kreis.hatDaten) {
-                        "${kreis.wachen} Wachen · bis ${kreis.maxSpieler} Spieler"
-                    } else {
-                        "erfundener Standardbereich"
-                    }
-                },
-                gewaehlt = landkreis,
-                beiWahl = {
-                    landkreisId = it.id
-                    offeneWahl = null
-                },
-                beiSchliessen = { offeneWahl = null },
-                suchbar = true,
-            )
-        }
-
-        null -> Unit
-    }
 }
 
-/** Welche Auswahl gerade offen ist. */
-private enum class Wahl { Bundesland, Landkreis }
 
 /**
  * Die Empfangszeile des Startbildschirms.

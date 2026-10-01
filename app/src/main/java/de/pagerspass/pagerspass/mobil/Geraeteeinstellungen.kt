@@ -6,6 +6,7 @@ import androidx.compose.runtime.State
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
+import de.pagerspass.pagerspass.netz.Staaten
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -29,6 +30,7 @@ object Geraeteeinstellungen {
     private const val EINGABEWEG = "notruf.eingabeweg"
     private const val KENNUNGSFORM = "kennung.form"
     private const val FUNK_VORLESEN = "funk.vorlesen"
+    private const val KATALOGSTAAT = "katalog.staat"
 
     /** `fragen`, `tippen` oder `sprechen` — dieselben Wörter wie im Web. */
     val EINGABEWEGE = listOf("fragen", "tippen", "sprechen")
@@ -50,6 +52,15 @@ object Geraeteeinstellungen {
     private val _funkVorlesen = MutableStateFlow<Boolean?>(null)
     val funkVorlesen: StateFlow<Boolean?> = _funkVorlesen.asStateFlow()
 
+    /**
+     * Der Staat der Leitstelle und des Fahrzeugkatalogs — `katalogStaat` im Web (v6).
+     * Wer in Österreich spielt, will beim nächsten Start nicht wieder bei
+     * Niedersachsen anfangen. Dieselbe Stelle sagt Autohaus und Garage, welche
+     * Fahrzeuge sie zeigen.
+     */
+    private val _katalogstaat = MutableStateFlow(Staaten.DEUTSCHLAND)
+    val katalogstaat: StateFlow<String> = _katalogstaat.asStateFlow()
+
     @Volatile private var geladen = false
 
     /** Einmal je Prozess aus der Gerätedatei lesen — Unbekanntes fällt auf die Vorgabe. */
@@ -61,11 +72,18 @@ object Geraeteeinstellungen {
         }.getOrNull() ?: return
         _eingabeweg.value = datei.getString(EINGABEWEG, null)?.takeIf { it in EINGABEWEGE } ?: "fragen"
         _kennungsform.value = datei.getString(KENNUNGSFORM, null)?.takeIf { it in KENNUNGSFORMEN } ?: "kennzahl"
+        _katalogstaat.value = datei.getString(KATALOGSTAAT, null)?.takeIf { it in Staaten.ALLE } ?: Staaten.DEUTSCHLAND
         _funkVorlesen.value = when (datei.getString(FUNK_VORLESEN, null)) {
             "ja" -> true
             "nein" -> false
             else -> null
         }
+    }
+
+    fun katalogstaatSetzen(zusammenhang: Context, staat: String) {
+        if (staat !in Staaten.ALLE) return
+        _katalogstaat.value = staat
+        schreiben(zusammenhang, KATALOGSTAAT, staat)
     }
 
     fun funkVorlesenSetzen(zusammenhang: Context, an: Boolean) {
@@ -90,6 +108,7 @@ object Geraeteeinstellungen {
         _eingabeweg.value = "fragen"
         _kennungsform.value = "kennzahl"
         _funkVorlesen.value = null
+        _katalogstaat.value = Staaten.DEUTSCHLAND
     }
 
     private fun schreiben(zusammenhang: Context, schluessel: String, wert: String) {
@@ -155,4 +174,11 @@ fun kennungsformState(): State<String> {
     val zusammenhang = LocalContext.current
     remember { Geraeteeinstellungen.laden(zusammenhang) }
     return Geraeteeinstellungen.kennungsform.collectAsState()
+}
+
+@Composable
+fun katalogstaatState(): State<String> {
+    val zusammenhang = LocalContext.current
+    remember { Geraeteeinstellungen.laden(zusammenhang) }
+    return Geraeteeinstellungen.katalogstaat.collectAsState()
 }

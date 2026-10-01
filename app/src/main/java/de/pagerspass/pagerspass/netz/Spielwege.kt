@@ -36,12 +36,14 @@ class Spielwege(private val netz: Netz) {
      * `ganzerBereich` heißt: der ganze Kreis statt eines einzelnen Ortes. Das ist
      * die Vorgabe, wenn jemand nur einen Kreis wählt und sonst nichts.
      */
-    suspend fun raumAnlegen(landkreisId: String?, ganzerBereich: Boolean = true): Raum =
+    suspend fun raumAnlegen(landkreisId: String?, ganzerBereich: Boolean = true, leitstelleId: String? = null): Raum =
         netz.hole(
             "/api/rooms",
             "POST",
             buildJsonObject {
                 if (landkreisId != null) put("landkreisId", landkreisId)
+                // Nur, wo es eine Wahl gab (Österreich, Schweiz); sonst nimmt der Server die erste.
+                if (leitstelleId != null) put("leitstelleId", leitstelleId)
                 put("ganzerBereich", ganzerBereich)
             }.toString(),
         )
