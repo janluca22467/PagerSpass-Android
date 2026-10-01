@@ -139,17 +139,40 @@ fun FreundeSeite(
             )
         }
 
+        // Mit den Zeichen des Webs, am Handy über dem Wort (`FreundeSeite.vue`):
+        // „Nachrichten" passt neben Zeichen und Marke nicht in eine Viertelbreite.
         Reiterreihe {
-            Reiter("Brett", offen = reiter == 0, beiDruck = { reiter = 0 })
+            Reiter(
+                "Brett",
+                offen = reiter == 0,
+                beiDruck = { reiter = 0 },
+                zeichen = pfadzeichen(REITER_BRETT, gefuellt = false),
+                senkrecht = true,
+            )
             // Ohne Marke: „Du hast 14 Freunde" wartet nicht auf dich — die Zahl
             // steht im Ausweis. Eine Marke am Reiter heißt hier „hier wartet etwas".
-            Reiter("Freunde", offen = reiter == 1, beiDruck = { reiter = 1 })
-            Reiter("Nachrichten", offen = reiter == 2, beiDruck = { reiter = 2 }, marke = ungelesen)
+            Reiter(
+                "Freunde",
+                offen = reiter == 1,
+                beiDruck = { reiter = 1 },
+                zeichen = pfadzeichen(REITER_FREUNDE, gefuellt = false),
+                senkrecht = true,
+            )
+            Reiter(
+                "Nachrichten",
+                offen = reiter == 2,
+                beiDruck = { reiter = 2 },
+                marke = ungelesen,
+                zeichen = pfadzeichen(REITER_NACHRICHTEN, gefuellt = false),
+                senkrecht = true,
+            )
             Reiter(
                 "Kontakte",
                 offen = reiter == 3,
                 beiDruck = { reiter = 3 },
                 marke = offeneAnfragen.size + einladungen.size,
+                zeichen = pfadzeichen(REITER_KONTAKTE, gefuellt = false),
+                senkrecht = true,
             )
         }
 
@@ -625,7 +648,7 @@ private fun ColumnScope.Kontakte(
     }
 
     // Suche — über den eindeutigen Benutzernamen, nicht über den Anzeigenamen.
-    Buchkarte("Jemanden hinzufügen") {
+    Buchkarte("Jemanden hinzufügen", geraeumig = true) {
         Row(
             horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
             verticalAlignment = Alignment.Bottom,
@@ -856,6 +879,16 @@ fun kurzzeit(iso: String): String {
         else -> DateTimeFormatter.ofPattern("dd.MM.yy").format(dann)
     }
 }
+
+/** Die Zeichen der vier Reiter — dieselben Pfade wie in `FreundeSeite.vue`. */
+private const val REITER_BRETT =
+    "M5.5 6h13a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2Z M12 3v3 M7.5 11h9 M7.5 15h5.5"
+private const val REITER_FREUNDE =
+    "M6 8a3.5 3.5 0 1 0 7 0a3.5 3.5 0 1 0-7 0 M3.5 19.5a6 6 0 0 1 12 0 M16 5.2a3.5 3.5 0 0 1 0 5.6 M17.5 14.4a6 6 0 0 1 3 5.1"
+private const val REITER_NACHRICHTEN =
+    "M20.5 12.2c0 4-3.8 7.2-8.5 7.2-1 0-2-.15-2.9-.42L4 20.5l1.6-3.6A6.9 6.9 0 0 1 3.5 12.2C3.5 8.2 7.3 5 12 5s8.5 3.2 8.5 7.2Z"
+private const val REITER_KONTAKTE =
+    "M6.5 8.5a3.5 3.5 0 1 0 7 0a3.5 3.5 0 1 0-7 0 M4 19.5a6 6 0 0 1 12 0 M18.5 8.5v5 M16 11h5"
 
 /** Ein ISO-Zeitstempel als Millisekunden — `null`, wenn er nicht zu lesen ist. */
 internal fun zeitwert(iso: String): Long? =

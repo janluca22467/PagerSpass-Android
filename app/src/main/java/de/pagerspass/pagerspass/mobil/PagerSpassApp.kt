@@ -34,6 +34,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
+import de.pagerspass.pagerspass.ansichten.Wachenweg
+import de.pagerspass.pagerspass.ansichten.Wachenwege
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -707,7 +709,17 @@ private fun Angemeldet(
                         sitzung.mitteilungenLaden()
                         sitzung.einladungenLaden(neu = true)
                         sitzung.hinweiseLaden()
+                        // Die eigene Wache trägt die laufende Clanrunde („Dazustoßen").
+                        if (stand.konto != null) sitzung.wacheLaden(neu = true)
+                        // Nachgefragt wird nur, wenn der Ausbildungshinweis sonst stünde.
+                        if (stand.konto?.erfahrung == 0 && stand.konto?.einweisungOffen != true) {
+                            werkstatt.lehrgaengeLaden()
+                        }
                     },
+                    ausbildungErsetzt = werk.lehrgaenge.inhalt.orEmpty().any { it.ersetztEinweisung && it.bestanden },
+                    clanrunde = daten.wache.inhalt?.eigene?.takeIf { !it.laufendeRundeCode.isNullOrBlank() },
+                    beiClanrunde = { code -> dazuschalten(code) },
+                    beiClanrundeSchliessen = { id -> kreis.clanrundeSchliessen(id) },
                     beiGelesen = { sitzung.mitteilungGelesen(it) },
                     beiEinladung = { e ->
                         if (e.alsZuschauer) {
@@ -884,6 +896,9 @@ private fun Angemeldet(
                     sitzung.profilLaden()
                     sitzung.wacheLaden()
                     sitzung.einladungenLaden()
+                    // Die eigenen Schichten: zum Anhängen an einen Beitrag, und erst
+                    // mit einer gefahrenen gibt es „Öffentlich".
+                    sitzung.buchLaden()
                 }
                 FreundeSeite(
                     unterrand = platz,
@@ -930,7 +945,8 @@ private fun Angemeldet(
                             beiReiter = { sitzung.brettLaden(reiter = it) },
                             beiLaden = { sitzung.brettLaden() },
                             beiMehr = { sitzung.brettMehr() },
-                            beiSchreiben = { text, sicht -> sitzung.brettSchreiben(text, sicht) },
+                            beiSchreiben = { text, sicht, schicht -> sitzung.brettSchreiben(text, sicht, schicht) },
+                            schichten = daten.buch.inhalt?.schichten.orEmpty(),
                             beiQuittieren = { sitzung.brettQuittieren(it) },
                             beiOeffnen = { steuerung.navigate("$UNTERSEITE_EINTRAG/$it") },
                             server = stand.server,
@@ -1138,6 +1154,7 @@ private fun Angemeldet(
                     liste = kreisstand.rangliste,
                     beiLaden = { kreis.ranglisteLaden() },
                     beiZurueck = { steuerung.popBackStack() },
+                    wege = { Wachenwegleiste(steuerung, daten.wache.inhalt?.eigene != null, Wachenweg.Rangliste) },
                 )
             }
 
@@ -1163,6 +1180,7 @@ private fun Angemeldet(
                     beiAnpassen = { aussehenOffen = true },
                     beiMeldungWeg = { kreis.meldungWegnehmen() },
                     beiZurueck = { steuerung.popBackStack() },
+                    wege = { Wachenwegleiste(steuerung, eigene != null, Wachenweg.Shop) },
                 )
                 val schatz = detail?.schatz
                 if (aussehenOffen && eigene != null && schatz != null) {
@@ -1630,4 +1648,24 @@ private fun Verbindungsband(sichtbar: Boolean, modifier: Modifier = Modifier) {
             )
         }
     }
+}
+
+/**
+ * Die Reiterreihe des Wachenbereichs über Rangliste und Wachen-Shop. Ein Wechsel
+ * zwischen den beiden ersetzt die Seite, statt sich zu stapeln — sonst führte
+ * „Zurück" erst durch jeden besuchten Reiter.
+ */
+@Composable
+private fun Wachenwegleiste(steuerung: NavHostController, hatWache: Boolean, hier: Wachenweg) {
+    fun hin(ziel: String) = steuerung.navigate(ziel) {
+        popUpTo(Weg.Wache.adresse)
+        launchSingleTop = true
+    }
+    Wachenwege(
+        hier = hier,
+        hatWache = hatWache,
+        beiWache = { zurWahl(steuerung, Weg.Wache) },
+        beiRangliste = { hin(UNTERSEITE_WACHENRANGLISTE) },
+        beiShop = { hin(UNTERSEITE_WACHENSHOP) },
+    )
 }

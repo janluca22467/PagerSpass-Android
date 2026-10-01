@@ -1062,7 +1062,13 @@ private fun ColumnScope.WachenSuche(
     // Ein Satz, nicht drei: Was vorab gebraucht wird, ist „eine feste Mannschaft,
     // und man ist in höchstens einer". Der Rest erklärt sich, sobald man drin ist.
     SehrLeise("Eine feste Mannschaft mit eigenem Chat — jedes Konto gehört höchstens einer an.")
-    Textweg("Rangliste der Wachen", griffe.rangliste)
+    Wachenwege(
+        hier = Wachenweg.Wache,
+        hatWache = false,
+        beiWache = {},
+        beiRangliste = griffe.rangliste,
+        beiShop = {},
+    )
 
     Meldungszeile(kreis.meldung, kreis.hinweis, griffe.meldungWeg)
 
@@ -1089,7 +1095,7 @@ private fun ColumnScope.WachenSuche(
     }
 
     // Zwei Wege hinein — mit Code oder selbst gegründet.
-    Buchkarte("Mit Beitrittscode") {
+    Buchkarte("Mit Beitrittscode", geraeumig = true) {
         SehrLeise("Sechs Zeichen, wie ein Raumcode — vom Zugführer oder von der Leitung.")
         Row(
             horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
@@ -1116,7 +1122,7 @@ private fun ColumnScope.WachenSuche(
     // Wie weit es noch ist, steht an der Karte und nicht erst in der Fehlermeldung
     // nach dem Absenden.
     val darfGruenden = level >= GRUENDEN_AB_LEVEL
-    Buchkarte("Selbst gründen") {
+    Buchkarte("Selbst gründen", geraeumig = true) {
         SehrLeise("Du wirst die Leitung und bestimmst, wer dazukommt und wie.")
         Text(
             if (darfGruenden) {

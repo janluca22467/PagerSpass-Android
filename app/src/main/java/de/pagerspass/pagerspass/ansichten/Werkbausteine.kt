@@ -134,6 +134,11 @@ fun Rollreiter(
 /**
  * Eine Kennzahl der Tafel: Etikett, Wert groß, darunter die Zeile, die ihn
  * einordnet. Zwei davon nebeneinander — am Handy steht die Tafel zweispaltig.
+ *
+ * @param zeichen SVG-Pfaddaten auf dem 24er-Raster. Mit ihnen trägt die Kachel
+ *   das Zeichenquadrat des Webs (`.db-kennzahl__zeichen`) neben dem Etikett, in
+ *   `farbe` getönt — und keine Kante links: Am Handy steht die Farbe im Zeichen
+ *   (mobil.css). Ohne bleibt die Kachel, wie sie war.
  */
 @Composable
 fun Kennzahlkachel(
@@ -142,7 +147,12 @@ fun Kennzahlkachel(
     unter: String,
     modifier: Modifier = Modifier,
     farbe: Color = Farben.Amber,
+    zeichen: String? = null,
 ) {
+    if (zeichen != null) {
+        Tafelkachel(etikett, wert, unter, zeichen, modifier, farbe)
+        return
+    }
     Column(
         verticalArrangement = Arrangement.spacedBy(Abstand.Haar),
         modifier = modifier
@@ -499,50 +509,6 @@ fun Tafelkachel(
 }
 
 /**
- * Eine Karte mit Kopfleiste (`.db-karte` im Web): Titel in Versalien, daneben
- * eine leise Zahl, darunter der Inhalt mit eigenem Polster.
- */
-@Composable
-fun Buchkarte(
-    titel: String,
-    modifier: Modifier = Modifier,
-    zahl: Int? = null,
-    inhalt: @Composable ColumnScope.() -> Unit,
-) {
-    Column(modifier = modifier.fillMaxWidth().flaeche()) {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .fillMaxWidth()
-                .defaultMinSize(minHeight = Ziel.Kompakt)
-                .drawBehind {
-                    val strich = 1.dp.toPx()
-                    drawLine(
-                        color = Farben.Rand,
-                        start = Offset(0f, size.height - strich / 2f),
-                        end = Offset(size.width, size.height - strich / 2f),
-                        strokeWidth = strich,
-                    )
-                }
-                .padding(horizontal = Abstand.Gross, vertical = Abstand.Klein),
-        ) {
-            Text(
-                titel.uppercase(),
-                style = Schrift.Klein.copy(fontWeight = FontWeight.Bold, letterSpacing = 0.08.em),
-                color = Farben.TextLeise,
-            )
-            if (zahl != null) Text(zahl.toString(), style = Schrift.MonoKlein, color = Farben.TextSehrLeise)
-        }
-        Column(
-            verticalArrangement = Arrangement.spacedBy(Abstand.Klein),
-            modifier = Modifier.fillMaxWidth().padding(Abstand.Gross),
-            content = inhalt,
-        )
-    }
-}
-
-/**
  * Der grüne Lernbalken der Lehrgänge (`.balken`): sechs Punkte hoch, Grün für
  * das, was schon sitzt. Daneben, wenn gegeben, die Zahl zum Nachrechnen.
  */
@@ -570,4 +536,37 @@ fun Lernbalken(anteil: Float, modifier: Modifier = Modifier, text: String? = nul
         }
         if (text != null) Text(text, style = Schrift.MonoKlein, color = Farben.TextSehrLeise)
     }
+}
+
+/**
+ * Die Zeichen der Kennzahlkacheln — dieselben Pfade wie `.db-kennzahl__zeichen`
+ * in Dienstbuch, Garage, Shop, Wache, Profil und Rundenliste des Webs. Kreise und
+ * Rechtecke sind als Pfade ausgeschrieben, weil `pfadzeichen` nur Pfade liest.
+ */
+object Tafelzeichen {
+    const val KALENDER = "M6 5h12a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z M8 3v4M16 3v4M4 10h16"
+    const val WARNUNG = "M12 3 2.5 20h19L12 3Z M12 10v4M12 17.5v.01"
+    const val STOPPUHR = "M4 13a8 8 0 1 0 16 0a8 8 0 1 0-16 0 M12 9v4l2.5 2.5M10 2h4"
+    const val STERN = "m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9L12 3Z"
+    const val FAHRZEUG = "M3 15V9l3-4h10l4 4v6 M3 12h17 M5 15a2 2 0 1 0 4 0a2 2 0 1 0-4 0 M15 15a2 2 0 1 0 4 0a2 2 0 1 0-4 0"
+    const val HALLE = "M3 10.5 12 4l9 6.5 M5 10.5V20h14v-9.5 M8.5 20v-6h7v6"
+    const val GUTSCHEIN = "M3 7h18v4a2 2 0 0 0 0 4v4H3v-4a2 2 0 0 0 0-4V7Z M14 7v12"
+    const val GLUECKSRAD = "M3 12a9 9 0 1 0 18 0a9 9 0 1 0-18 0 M12 3v9l6.4 6.4M12 12 3.5 9"
+    const val TASCHE = "M4 8h16l-1 13H5L4 8Z M8 8V6a4 4 0 0 1 8 0v2"
+    const val GELDBOERSE = "M3 6h15a2 2 0 0 1 2 2v11H5a2 2 0 0 1-2-2V6Z M15 11h6v5h-6a2.5 2.5 0 0 1 0-5Z"
+    const val HAUS = "M3 21V9l9-6 9 6v12 M9 21v-6h6v6"
+    const val HERZ = "M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10Z"
+    const val KURVE = "M3 17l5-5 4 4 8-8 M15 8h5v5"
+    const val UHR = "M3.5 12a8.5 8.5 0 1 0 17 0a8.5 8.5 0 1 0-17 0 M12 7.5V12l3 2"
+    const val MELDER = "M8 3h8a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z " +
+        "M9.5 6h5a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1Z M9 15h6M9 18h6"
+    const val TON = "M11 5 6 9H3v6h3l5 4V5Z M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"
+    const val RINGE = "M3.5 12a8.5 8.5 0 1 0 17 0a8.5 8.5 0 1 0-17 0 M7.5 12a4.5 4.5 0 1 0 9 0a4.5 4.5 0 1 0-9 0"
+    const val KACHELN = "M4 3h5a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z " +
+        "M15 3h5a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1h-5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z " +
+        "M4 14h5a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-5a1 1 0 0 1 1-1Z " +
+        "M15 14h5a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1h-5a1 1 0 0 1-1-1v-5a1 1 0 0 1 1-1Z"
+    const val OFFEN = "M4 12h16M12 4v16 M3 12a9 9 0 1 0 18 0a9 9 0 1 0-18 0"
+    const val SONNE = "M12 3v3M5.6 5.6l2.1 2.1M3 12h3M18.4 5.6l-2.1 2.1M21 12h-3 M7 14a5 5 0 1 0 10 0a5 5 0 1 0-10 0"
+    const val PERSON_PLUS = "M5.5 8a3.5 3.5 0 1 0 7 0a3.5 3.5 0 1 0-7 0 M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M18 8v6M15 11h6"
 }

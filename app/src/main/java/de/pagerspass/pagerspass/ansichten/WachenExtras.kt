@@ -15,6 +15,14 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.unit.em
+import de.pagerspass.pagerspass.ui.theme.Rundung
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -61,6 +69,8 @@ import de.pagerspass.pagerspass.ui.bausteine.Fortschritt
 import de.pagerspass.pagerspass.ui.bausteine.Kasten
 import de.pagerspass.pagerspass.ui.bausteine.Knopf
 import de.pagerspass.pagerspass.ui.bausteine.Knopfart
+import de.pagerspass.pagerspass.ui.bausteine.Reiter
+import de.pagerspass.pagerspass.ui.bausteine.Reiterreihe
 import de.pagerspass.pagerspass.ui.bausteine.Leerhinweis
 import de.pagerspass.pagerspass.ui.bausteine.Marke
 import de.pagerspass.pagerspass.ui.bausteine.SehrLeise
@@ -215,12 +225,12 @@ fun Wachentafel(s: Wachenstatistik) {
     val zuletzt = s.letzteSchicht?.let { tag(it).takeIf { t -> t != "—" }?.take(5) }
     Kennzahltafel(
         listOf(
-            { m -> Kennzahlkachel("Schichten", zahl(s.schichten), zuletzt?.let { "zuletzt $it" } ?: "noch keine", m) },
+            { m -> Kennzahlkachel("Schichten", zahl(s.schichten), zuletzt?.let { "zuletzt $it" } ?: "noch keine", m, zeichen = Tafelzeichen.KALENDER) },
             { m ->
-                Kennzahlkachel("Einsätze", zahl(s.einsaetze), jeSchicht?.let { "$it je Schicht" } ?: "—", m, farbe = Farben.BlauHell)
+                Kennzahlkachel("Einsätze", zahl(s.einsaetze), jeSchicht?.let { "$it je Schicht" } ?: "—", m, farbe = Farben.BlauHell, zeichen = Tafelzeichen.WARNUNG)
             },
             { m ->
-                Kennzahlkachel("Ø Hilfsfrist", frist?.let { "$it min" } ?: "—", "über alle Einsätze", m, farbe = Farben.GruenHell)
+                Kennzahlkachel("Ø Hilfsfrist", frist?.let { "$it min" } ?: "—", "über alle Einsätze", m, farbe = Farben.GruenHell, zeichen = Tafelzeichen.STOPPUHR)
             },
             { m ->
                 Kennzahlkachel(
@@ -229,6 +239,7 @@ fun Wachentafel(s: Wachenstatistik) {
                     "${s.aktivitaetSchichten} ${if (s.aktivitaetSchichten == 1) "Schicht" else "Schichten"}",
                     m,
                     farbe = Farben.ViolettHell,
+                    zeichen = Tafelzeichen.KURVE,
                 )
             },
         ),
@@ -263,7 +274,7 @@ fun WachenTag(
 
     // Eine Karte wie die übrigen der Wachenseite. Das Etikett „Wachentag", das
     // bis dahin über dem Satz stand, ist jetzt ihr Titel.
-    Buchkarte("Wachentag") {
+    Buchkarte("Wachentag", geraeumig = true) {
         Row(
             horizontalArrangement = Arrangement.spacedBy(Abstand.Normal),
             verticalAlignment = Alignment.CenterVertically,
@@ -377,7 +388,7 @@ fun WachenLaufbahn(statistik: Wachenstatistik, stufen: List<Wachenrang>) {
 
     // Eine Karte wie die übrigen der Wachenseite: Kopf mit Titel, darunter der
     // Stand und das Band, das seitwärts rollt.
-    Buchkarte("Laufbahn der Wache") {
+    Buchkarte("Laufbahn der Wache", geraeumig = true) {
         SehrLeise(
             "Stufe ${statistik.stufe} · ${zahl(statistik.erfahrung)} Punkte · " +
                 (statistik.bisZurNaechsten?.let { "noch ${zahl(it)} bis Stufe ${statistik.stufe + 1}" }
@@ -1071,6 +1082,49 @@ private fun Stueckwahl(stueck: Wachenstueck, an: Boolean, aktiv: Boolean, beiDru
     }
 }
 
+// ------------------------------------------------------------ Wachenwege
+
+/** Welcher der drei Wege des Wachenbereichs offen ist. */
+enum class Wachenweg { Wache, Rangliste, Shop }
+
+/**
+ * Die Reiterreihe des Wachenbereichs (`WachenNavigation.vue`): „Meine Wache"
+ * oder „Wache finden", „Rangliste" und — nur mit eigener Wache — „Wachen-Shop",
+ * jeder mit seinem Zeichen. Sie steht über der Suche, der Rangliste und dem Shop;
+ * auf der eigenen Wachenseite nicht, dort tragen Knöpfe im Kopf dieselben Wege.
+ */
+@Composable
+fun Wachenwege(
+    hier: Wachenweg,
+    hatWache: Boolean,
+    beiWache: () -> Unit,
+    beiRangliste: () -> Unit,
+    beiShop: () -> Unit,
+) {
+    Reiterreihe {
+        Reiter(
+            if (hatWache) "Meine Wache" else "Wache finden",
+            offen = hier == Wachenweg.Wache,
+            beiDruck = { if (hier != Wachenweg.Wache) beiWache() },
+            zeichen = pfadzeichen("M4 20V8l8-4 8 4v12 M8 20v-6h8v6M3 20h18 M9 9h6", gefuellt = false),
+        )
+        Reiter(
+            "Rangliste",
+            offen = hier == Wachenweg.Rangliste,
+            beiDruck = { if (hier != Wachenweg.Rangliste) beiRangliste() },
+            zeichen = pfadzeichen("M5 20V11h4v9M10 20V5h4v15M15 20v-7h4v7M3 20h18", gefuellt = false),
+        )
+        if (hatWache) {
+            Reiter(
+                "Wachen-Shop",
+                offen = hier == Wachenweg.Shop,
+                beiDruck = { if (hier != Wachenweg.Shop) beiShop() },
+                zeichen = pfadzeichen("M4 9h16l-1 11H5L4 9Z M8 9V7a4 4 0 0 1 8 0v2", gefuellt = false),
+            )
+        }
+    }
+}
+
 // --------------------------------------------------------------- Rangliste
 
 /**
@@ -1085,6 +1139,8 @@ fun WachenranglisteSeite(
     liste: Bereichsstand<List<Wachenplatz>> = Bereichsstand(),
     beiLaden: () -> Unit = {},
     beiZurueck: () -> Unit = {},
+    /** Die Reiterreihe des Wachenbereichs (`Wachenwege`) unter dem Kopf. */
+    wege: (@Composable () -> Unit)? = null,
 ) {
     LaunchedEffect(Unit) { beiLaden() }
 
@@ -1094,6 +1150,7 @@ fun WachenranglisteSeite(
             unterzeile = "Wachengemeinschaften",
             knoepfe = { Knopf("Zurück", beiZurueck, art = Knopfart.Leise, kompakt = true) },
         )
+        wege?.invoke()
         SehrLeise(
             "Eine Wache sammelt, was ihre Mitglieder verdienen. Sortiert nach der Gesamterfahrung; " +
                 "„30 Tage“ zeigt, wer gerade fährt.",
@@ -1289,10 +1346,15 @@ fun WachenShopSeite(
     beiAnpassen: () -> Unit = {},
     beiMeldungWeg: () -> Unit = {},
     beiZurueck: () -> Unit = {},
+    /** Die Reiterreihe des Wachenbereichs (`Wachenwege`) unter dem Kopf. */
+    wege: (@Composable () -> Unit)? = null,
 ) {
     LaunchedEffect(Unit) { beiLaden() }
     var scharf by remember { mutableStateOf<String?>(null) }
     var einzahlung by remember { mutableStateOf("") }
+    // Ton und Initialen der eigenen Wache — die Proben der Auslage stehen auf ihrem Grund.
+    val wachenton = gemeinschaft?.let { Wappen.ton(it.id, it.wappenfarbe) } ?: Farben.Amber
+    val wacheninitialen = gemeinschaft?.let { Wappen.initialen(it.name, "W") } ?: "W"
 
     Seite(modifier = modifier, unterrand = unterrand) {
         Seitenkopf(
@@ -1300,6 +1362,7 @@ fun WachenShopSeite(
             unterzeile = gemeinschaft?.name ?: "Wachengemeinschaft",
             knoepfe = { Knopf("Zurück", beiZurueck, art = Knopfart.Leise, kompakt = true) },
         )
+        wege?.invoke()
 
         // Derselbe Eingang wie im Konto-Shop, nur mit der anderen Kasse. Der Stand
         // steht schon da, bevor die Ware geladen ist.
@@ -1365,6 +1428,7 @@ fun WachenShopSeite(
                         restzeit(schatz.wechseltUm)?.let { "wechselt $it" } ?: "wechselt wöchentlich",
                         m,
                         farbe = Farben.BlauHell,
+                        zeichen = Tafelzeichen.TASCHE,
                     )
                 },
                 { m ->
@@ -1374,15 +1438,17 @@ fun WachenShopSeite(
                         "${ausbau.size} ${if (ausbau.size == 1) "Art" else "Arten"} im Laden",
                         m,
                         farbe = Farben.GruenHell,
+                        zeichen = Tafelzeichen.HAUS,
                     )
                 },
-                { m -> Kennzahlkachel("Offene Wünsche", zahl(offeneWuensche), "aus der Mannschaft", m, farbe = Farben.ViolettHell) },
+                { m -> Kennzahlkachel("Offene Wünsche", zahl(offeneWuensche), "aus der Mannschaft", m, farbe = Farben.ViolettHell, zeichen = Tafelzeichen.HERZ) },
                 { m ->
                     Kennzahlkachel(
                         "Deine Credits",
                         zahl(meineCredits),
                         "reicht für ${meineCredits / 10} ${if (meineCredits / 10 == 1) "Coin" else "Coins"}",
                         m,
+                        zeichen = Tafelzeichen.GELDBOERSE,
                     )
                 },
             ),
@@ -1390,13 +1456,13 @@ fun WachenShopSeite(
 
         if (ausbau.isNotEmpty()) {
             Buchkarte("Ausbau", zahl = ausbau.size.toString()) {
-                ausbau.forEach { a ->
+                Warengitter(ausbau) { a, m ->
                     Ware(a, schatz, scharf, laeuft, ausbau = true, beiKaufen = {
                         if (scharf != a.id) scharf = a.id else {
                             scharf = null
                             beiKaufen(a.id)
                         }
-                    }, beiWunsch = beiWunsch)
+                    }, beiWunsch = beiWunsch, modifier = m, ton = wachenton, initialen = wacheninitialen)
                 }
             }
         }
@@ -1411,13 +1477,13 @@ fun WachenShopSeite(
                         "bleibt euch, auch wenn es nächste Woche nicht mehr hier steht.",
                 )
                 Textweg("Den ganzen Katalog ansehen", beiAnpassen)
-                zierde.forEach { a ->
+                Warengitter(zierde) { a, m ->
                     Ware(a, schatz, scharf, laeuft, ausbau = false, beiKaufen = {
                         if (scharf != a.id) scharf = a.id else {
                             scharf = null
                             beiKaufen(a.id)
                         }
-                    }, beiWunsch = beiWunsch)
+                    }, beiWunsch = beiWunsch, modifier = m, ton = wachenton, initialen = wacheninitialen)
                 }
             }
         }
@@ -1503,7 +1569,50 @@ fun WachenShopSeite(
     }
 }
 
-/** Eine Ware der Auslage — mit Wirkung, Wünschen und dem einen Knopf, der zu ihr passt. */
+/**
+ * Das Raster der Auslage (`WarenGitter.vue`): so viele Spalten, wie Kacheln von
+ * mindestens 220 Punkten nebeneinander passen. Am schmalen Handy ist das eine —
+ * genau wie im Web, wo `minmax(220px, 1fr)` dort auch nur eine Spalte ergibt.
+ */
+@Composable
+private fun <T> Warengitter(waren: List<T>, kachel: @Composable (T, Modifier) -> Unit) {
+    androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val spalten = ((maxWidth + Abstand.Normal) / (WARE_MINDESTBREITE + Abstand.Normal)).toInt().coerceAtLeast(1)
+        Column(verticalArrangement = Arrangement.spacedBy(Abstand.Normal)) {
+            waren.chunked(spalten).forEach { reihe ->
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(Abstand.Normal),
+                    modifier = Modifier.fillMaxWidth().height(androidx.compose.foundation.layout.IntrinsicSize.Max),
+                ) {
+                    reihe.forEach { kachel(it, Modifier.weight(1f).fillMaxHeight()) }
+                    repeat(spalten - reihe.size) { Box(Modifier.weight(1f)) }
+                }
+            }
+        }
+    }
+}
+
+private val WARE_MINDESTBREITE = 220.dp
+
+/**
+ * Der Ton einer Gattung (`GATTUNGSTON` in `utils/wachenschmuck.ts`): Jede Gattung
+ * tönt ihre Bühne, damit man schon aus dem Augenwinkel sieht, was da steht.
+ */
+private fun gattungston(art: String): Color = when (art) {
+    "Kopfmuster" -> Color(0xFF46C8A0)
+    "Emblemrahmen" -> Color(0xFF5F8CFF)
+    "Emblemzeichen" -> Color(0xFFD98CF0)
+    "Beiname" -> Color(0xFFF0A35F)
+    "Wachenfarbe" -> Color(0xFF7FD0E8)
+    else -> Farben.Amber
+}
+
+/**
+ * Eine Ware der Auslage als Kachel (`WareKachel.vue`): Gattung oben links in
+ * ihrem Ton, der Besitz in der Ecke, das Stück auf einer getönten Bühne, der Name
+ * darunter, dann Wirkung und Wünsche — und am Fuß der eine Knopf, der zur Ware passt.
+ * Der Fuß sitzt unten, damit die Knöpfe einer Reihe auf einer Linie liegen.
+ */
 @Composable
 private fun Ware(
     a: Wachenartikel,
@@ -1513,60 +1622,170 @@ private fun Ware(
     ausbau: Boolean,
     beiKaufen: () -> Unit,
     beiWunsch: (String, Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+    /** Der Ton der Wache — eine Probe auf fremdem Blau probiert das falsche Stück. */
+    ton: Color = Farben.Amber,
+    initialen: String = "W",
 ) {
     val fehlt = maxOf(0, a.preis - schatz.coins)
+    val akzent = gattungston(a.art)
+    val besitz = when {
+        ausbau && a.gekauft > 0 -> "${a.gekauft} ×"
+        !ausbau && a.gekauft > 0 -> "✓ Im Besitz"
+        else -> null
+    }
 
-    Kasten(abstandInnen = Abstand.Winzig) {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
-            verticalAlignment = Alignment.CenterVertically,
+    Box(modifier = modifier.flaeche().padding(Abstand.Normal)) {
+        Column(
+            verticalArrangement = Arrangement.spacedBy(Abstand.Klein),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.fillMaxSize(),
         ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Etikett(if (ausbau) "Ausbau" else platzname(a.art))
-                Text(a.name, style = Schrift.Normal, color = Farben.Text)
-            }
-            when {
-                ausbau && a.gekauft > 0 -> Marke("${a.gekauft} ×")
-                !ausbau && a.gekauft > 0 -> Marke("✓ Im Besitz", farbe = Farben.GruenHell)
-            }
-        }
-        if (a.angebot) {
             Text(
-                "−${schatz.angebotRabattProzent} % · statt ${a.listenpreis}",
-                style = Schrift.MonoKlein,
-                color = Farben.AmberHell,
+                (if (ausbau) "Ausbau" else platzname(a.art)).uppercase(),
+                style = Schrift.Winzig.copy(fontWeight = FontWeight.Bold, letterSpacing = 0.08.em),
+                color = akzent,
+                maxLines = 1,
+                modifier = Modifier.align(Alignment.Start).padding(end = if (besitz != null) 72.dp else 0.dp),
             )
-        }
-        SehrLeise(wirkung(a.art))
-        if (a.wuensche > 0 && (ausbau || a.gekauft == 0)) {
+            // Die Bühne: das Stück selbst unter einem leisen Strahler, kein Sinnbild.
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 92.dp)
+                    .background(Farben.BgTief, Rundung.Klein)
+                    .background(
+                        Brush.radialGradient(listOf(akzent.copy(alpha = 0.18f), Color.Transparent)),
+                        Rundung.Klein,
+                    ),
+            ) {
+                Wachenprobe(a, ton = ton, initialen = initialen, akzent = akzent)
+            }
             Text(
-                "${a.wuensche} ${if (a.wuensche == 1) "Wunsch" else "Wünsche"} aus der Mannschaft",
-                style = Schrift.Klein,
-                color = Farben.BlauHell,
+                a.name,
+                style = Schrift.Normal.copy(fontWeight = FontWeight.Bold),
+                color = Farben.Text,
+                textAlign = TextAlign.Center,
             )
-        }
-        when {
-            ausbau && a.ausverkauft -> SehrLeise("Ausgebaut")
-            !ausbau && a.gekauft > 0 -> SehrLeise("Im Besitz")
-            schatz.darfKaufen -> Knopf(
+            // Das Stück der Woche trägt seinen alten Preis durchgestrichen daneben.
+            if (a.angebot) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("−${schatz.angebotRabattProzent} %", style = Schrift.MonoKlein, color = Farben.AmberHell)
+                    Text(
+                        "${a.listenpreis}",
+                        style = Schrift.MonoKlein.copy(textDecoration = TextDecoration.LineThrough),
+                        color = Farben.TextSehrLeise,
+                    )
+                }
+            }
+            Text(wirkung(a.art), style = Schrift.Klein, color = Farben.TextSehrLeise, textAlign = TextAlign.Center)
+            if (a.wuensche > 0 && (ausbau || a.gekauft == 0)) {
+                Text(
+                    "${a.wuensche} ${if (a.wuensche == 1) "Wunsch" else "Wünsche"} aus der Mannschaft",
+                    style = Schrift.Klein,
+                    color = Farben.BlauHell,
+                    textAlign = TextAlign.Center,
+                )
+            }
+            Box(Modifier.weight(1f, fill = false))
+            Column(modifier = Modifier.fillMaxWidth()) {
                 when {
-                    fehlt > 0 -> "Es fehlen $fehlt Coins"
-                    scharf == a.id -> "Wirklich für ${a.preis} Coins kaufen?"
-                    else -> "${a.preis} Coins"
-                },
-                beiKaufen,
-                art = if (scharf == a.id) Knopfart.Haupt else Knopfart.Normal,
-                aktiv = !laeuft && fehlt == 0,
-                kompakt = true,
-            )
-            else -> Knopf(
-                if (a.vonMirGewuenscht) "Gewünscht ✓" else "Wünschen",
-                { beiWunsch(a.id, !a.vonMirGewuenscht) },
-                art = Knopfart.Leise,
-                aktiv = !laeuft,
-                kompakt = true,
+                    ausbau && a.ausverkauft -> SehrLeise("Ausgebaut", Modifier.align(Alignment.CenterHorizontally))
+                    !ausbau && a.gekauft > 0 -> SehrLeise("Im Besitz", Modifier.align(Alignment.CenterHorizontally))
+                    schatz.darfKaufen -> Knopf(
+                        when {
+                            fehlt > 0 -> "Es fehlen $fehlt Coins"
+                            scharf == a.id -> "Wirklich für ${a.preis} Coins kaufen?"
+                            else -> "${a.preis} Coins"
+                        },
+                        beiKaufen,
+                        art = if (scharf == a.id) Knopfart.Haupt else Knopfart.Normal,
+                        aktiv = !laeuft && fehlt == 0,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    else -> Knopf(
+                        if (a.vonMirGewuenscht) "Gewünscht ✓" else "Wünschen",
+                        { beiWunsch(a.id, !a.vonMirGewuenscht) },
+                        art = Knopfart.Leise,
+                        aktiv = !laeuft,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
+        }
+        if (besitz != null) {
+            Text(
+                besitz,
+                style = Schrift.MonoKlein.copy(fontSize = Schrift.WINZIG, fontWeight = FontWeight.Bold),
+                color = akzent,
+                maxLines = 1,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .background(akzent.copy(alpha = 0.2f).compositeOver(Farben.BgTief), CircleShape)
+                    .padding(horizontal = Abstand.Klein, vertical = Abstand.Haar),
             )
         }
+    }
+}
+
+/**
+ * Wie ein Zierstück an der Wache aussehen wird (`WachenProbe.vue`): das Band des
+ * Musters, das Schild mit Rahmen, Zeichen oder Farbe, der Beiname als Zeile — und
+ * beim Ausbau, der kein Stück hat, die Zahl, die er bringt.
+ */
+@Composable
+private fun Wachenprobe(a: Wachenartikel, ton: Color, initialen: String, akzent: Color) {
+    val schild = RoundedCornerShape(10.dp)
+    when (a.art) {
+        "Kopfmuster" -> Box(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = Abstand.Normal)
+                .height(44.dp)
+                .background(ton.copy(alpha = 0.4f), RoundedCornerShape(6.dp))
+                .kopfband(a.stueckId.orEmpty(), ton),
+        )
+        "Emblemrahmen", "Emblemzeichen", "Wachenfarbe" -> {
+            val grund = if (a.art == "Wachenfarbe") Wappen.ton("", a.stueckId?.toIntOrNull() ?: 0) else ton
+            val rahmen = if (a.art == "Emblemrahmen") rahmenton(a.stueckId) else null
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .then(if (rahmen != null) Modifier.border(3.dp, rahmen, schild).padding(4.dp) else Modifier)
+                    .size(46.dp)
+                    .background(grund, schild),
+            ) {
+                if (a.art == "Emblemzeichen" && de.pagerspass.pagerspass.ui.schmuck.Wachenzeichen.hat(a.stueckId)) {
+                    de.pagerspass.pagerspass.ui.schmuck.WachenzeichenBild(
+                        name = a.stueckId.orEmpty(),
+                        farbe = Wappen.schrift(grund),
+                        modifier = Modifier.fillMaxSize(0.62f),
+                    )
+                } else {
+                    Text(
+                        initialen,
+                        style = Schrift.Gross.copy(fontWeight = FontWeight.ExtraBold),
+                        color = Wappen.schrift(grund),
+                    )
+                }
+            }
+        }
+        "Beiname" -> Text(
+            a.name.uppercase(),
+            style = Schrift.Klein.copy(fontWeight = FontWeight.Bold, letterSpacing = 0.08.em),
+            color = akzent,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(horizontal = Abstand.Klein),
+        )
+        else -> Text(
+            if (a.art == "Mitgliederplaetze") "+2" else "+1",
+            style = Schrift.Schlagzeile.copy(fontWeight = FontWeight.ExtraBold),
+            color = akzent,
+        )
     }
 }
 

@@ -227,6 +227,7 @@ private fun Uebersicht(
                     zahl(schichten.size),
                     schichten.firstOrNull()?.beendetUm?.let { "zuletzt ${tagKurz(it)}" } ?: "noch keine",
                     m,
+                    zeichen = Tafelzeichen.KALENDER,
                 )
             },
             { m ->
@@ -236,6 +237,7 @@ private fun Uebersicht(
                     if (schichten.isEmpty()) "—" else "${kommazahl(einsaetze.toDouble() / schichten.size)} je Schicht",
                     m,
                     farbe = Farben.Blau,
+                    zeichen = Tafelzeichen.WARNUNG,
                 )
             },
             { m ->
@@ -245,6 +247,7 @@ private fun Uebersicht(
                     "über alle Schichten",
                     m,
                     farbe = Farben.Gruen,
+                    zeichen = Tafelzeichen.STOPPUHR,
                 )
             },
             { m ->
@@ -253,6 +256,7 @@ private fun Uebersicht(
                     zahl(punkte),
                     beste?.let { "beste Schicht +${zahl(it)}" } ?: "—",
                     m,
+                    zeichen = Tafelzeichen.STERN,
                 )
             },
         ),
@@ -297,7 +301,7 @@ private fun Uebersicht(
             }
         }
         if (rekorde.isNotEmpty()) {
-            Buchkarte("Persönliche Rekorde") {
+            Buchkarte("Persönliche Rekorde", geraeumig = true) {
                 rekorde.forEach { (name, zusatz, wert) ->
                     Wertzeile(listOfNotNull(name, zusatz).joinToString(" · "), wert)
                 }
@@ -335,7 +339,7 @@ private fun Uebersicht(
     val orgs = daten.garage?.proOrganisation.orEmpty()
     if (orgs.isNotEmpty()) {
         val spitze = orgs.maxOf { it.erfahrung }.coerceAtLeast(1)
-        Buchkarte("Erfahrung je Organisation") {
+        Buchkarte("Erfahrung je Organisation", geraeumig = true) {
             Column(verticalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
                 orgs.forEach { p ->
                     Balkenzeile(
@@ -413,7 +417,7 @@ private fun Hilfsfristverlauf(
     val serien = (if (eigene.punkte.isNotEmpty()) listOf(eigene) else emptyList()) + freunde
     val alle = serien.flatMap { it.punkte }
 
-    Buchkarte("Ø Hilfsfrist · letzte Schichten") {
+    Buchkarte("Ø Hilfsfrist · letzte Schichten", geraeumig = true) {
         if (alle.size < 2) {
             Leerhinweis("Nach zwei Schichten mit Einsätzen steht hier, wie sich deine Hilfsfrist entwickelt.")
             return@Buchkarte
@@ -1116,7 +1120,7 @@ private fun Abzeichenwand(
 
     val zuletzt = abzeichen.filter { it.erreicht && it.erreichtAm != null }.sortedByDescending { it.erreichtAm }.take(8)
     if (zuletzt.isNotEmpty()) {
-        Buchkarte("Zuletzt erreicht") {
+        Buchkarte("Zuletzt erreicht", geraeumig = true) {
             zuletzt.forEach { Abzeichenzeile(it, it.id in vitrine, beiVitrine) }
         }
     }
@@ -1256,14 +1260,14 @@ private fun Auswertung(stand: Werkstand, beiPremium: () -> Unit, beiLaden: () ->
             }
 
             if (w.verlauf.isNotEmpty()) {
-                Buchkarte("Die letzten Wochen") {
+                Buchkarte("Die letzten Wochen", geraeumig = true) {
                     Wochenbild(w.verlauf)
                 }
             }
 
             if (w.fahrzeuge.isNotEmpty()) {
                 val spitze = w.fahrzeuge.maxOf { it.schichten }.coerceAtLeast(1)
-                Buchkarte("Womit du fährst") {
+                Buchkarte("Womit du fährst", geraeumig = true) {
                     Column(verticalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
                         w.fahrzeuge.forEach { f ->
                             Balkenzeile(

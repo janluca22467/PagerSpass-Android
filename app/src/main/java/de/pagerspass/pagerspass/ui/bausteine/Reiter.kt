@@ -80,11 +80,74 @@ fun RowScope.Reiter(
     modifier: Modifier = Modifier,
     zeichen: ImageVector? = null,
     marke: Int = 0,
+    /**
+     * Zeichen über dem Wort statt daneben — die Handbreit unter Freunden
+     * (`FreundeSeite.vue` bei 420 Punkten): Neben Zeichen und Marke ist dort kein
+     * Platz für „Nachrichten". Das Wort rückt eine Stufe kleiner, die Marke an
+     * den oberen Rand neben das Zeichen. Ohne `zeichen` bleibt alles beim Alten.
+     */
+    senkrecht: Boolean = false,
 ) {
     // Tabletlook (30.09.2026): Der offene Reiter ist eine helle Fläche mit
     // weißer, fetter Schrift und dem Amberstrich an der Unterkante — kein
     // goldener Schriftzug mehr. Amber bleibt dem, was man entscheidet.
     val farbe = if (offen) Farben.Text else Farben.TextLeise
+
+    if (senkrecht && zeichen != null) {
+        Box(
+            modifier = modifier
+                .weight(1f)
+                .defaultMinSize(minHeight = Ziel.Normal)
+                .clickable(
+                    onClick = beiDruck,
+                    role = Role.Tab,
+                    indication = null,
+                    interactionSource = null,
+                )
+                .drawBehind {
+                    if (!offen) return@drawBehind
+                    drawRect(Farben.FlaecheAktiv)
+                    val balken = 2.dp.toPx()
+                    drawLine(
+                        color = Farben.Amber,
+                        start = Offset(0f, size.height - balken / 2f),
+                        end = Offset(size.width, size.height - balken / 2f),
+                        strokeWidth = balken,
+                    )
+                },
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(Abstand.Haar, Alignment.CenterVertically),
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .padding(vertical = Abstand.Klein),
+            ) {
+                Icon(
+                    imageVector = zeichen,
+                    contentDescription = null,
+                    tint = farbe,
+                    modifier = Modifier.size(19.dp),
+                )
+                Text(
+                    text = aufschrift,
+                    style = Schrift.Winzig.copy(fontWeight = if (offen) FontWeight.Bold else FontWeight.Normal),
+                    color = farbe,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            // Am oberen Rand, eine Fuge rechts der Mitte — neben dem Zeichen.
+            if (marke > 0) {
+                Box(
+                    Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(start = Abstand.Klein * 2 + 19.dp, top = Abstand.Winzig),
+                ) { Markenzahl(marke) }
+            }
+        }
+        return
+    }
 
     Row(
         horizontalArrangement = Arrangement.spacedBy(Abstand.Klein, Alignment.CenterHorizontally),

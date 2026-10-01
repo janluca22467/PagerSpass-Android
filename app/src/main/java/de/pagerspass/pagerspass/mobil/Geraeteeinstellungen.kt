@@ -103,6 +103,19 @@ object Geraeteeinstellungen {
         }
     }
 
+    /**
+     * Kacheln oder Liste in der Garage — `pagerspass.garage.ansicht` im Web.
+     * Vorgabe sind die Kacheln; alles Unbekannte fällt darauf zurück.
+     */
+    fun garagenansicht(zusammenhang: Context): String = runCatching {
+        zusammenhang.applicationContext.getSharedPreferences(DATEI, Context.MODE_PRIVATE)
+            .getString("garage.ansicht", null)
+    }.getOrNull()?.takeIf { it == "liste" } ?: "kacheln"
+
+    fun garagenansichtSetzen(zusammenhang: Context, ansicht: String) {
+        schreiben(zusammenhang, "garage.ansicht", if (ansicht == "liste") "liste" else "kacheln")
+    }
+
     fun funkVorlesenSetzen(zusammenhang: Context, an: Boolean) {
         _funkVorlesen.value = an
         schreiben(zusammenhang, FUNK_VORLESEN, if (an) "ja" else "nein")
