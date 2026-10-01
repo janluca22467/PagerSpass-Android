@@ -148,15 +148,30 @@ fun StartSeite(
             },
         )
 
-        // Betreibermitteilungen als Karten — wie auf dem Startbildschirm des
-        // Web. „Gelesen" ist rein lokal; einen Server-Zustand gibt es nicht.
-        mitteilungen.filter { it.id !in gelesen }.forEach { m ->
-            Karte(titel = m.titel, zeichen = Zeichen.Forum, text = m.text, knoepfe = {
-                if (m.link != null) {
-                    Knopf(m.linkText ?: "Öffnen", { beiLink(m.link) }, kompakt = true)
-                }
-                Knopf("Gelesen", { beiGelesen(m.id) }, art = Knopfart.Leise, kompakt = true)
-            }) {}
+        // Die Reihenfolge des Web: Einweisung (Pflicht oder Hinweis), Einladungen,
+        // Mitteilungen, Umfrage — was sofort in eine Schicht führt, zuerst.
+        val einweisung = konto?.einweisungOffen == true
+        val zusammenhang = androidx.compose.ui.platform.LocalContext.current
+        var hinweisWeg by remember(konto?.kennung) {
+            mutableStateOf(
+                konto == null ||
+                    de.pagerspass.pagerspass.mobil.Geraeteeinstellungen.ausbildungHinweisWeg(zusammenhang, konto.kennung),
+            )
+        }
+        val ausbildungHinweis = !einweisung && konto != null && konto.erfahrung == 0 && !hinweisWeg
+        if (einweisung || ausbildungHinweis) {
+            Einweisung(
+                beiStart = beiAusbildung,
+                laeuft = laeuft,
+                pflicht = einweisung,
+                beiLehrgang = { beiStartweg(Startweg.Lehrgang) },
+                beiWeg = {
+                    konto?.let {
+                        de.pagerspass.pagerspass.mobil.Geraeteeinstellungen.ausbildungHinweisWegnehmen(zusammenhang, it.kennung)
+                    }
+                    hinweisWeg = true
+                },
+            )
         }
 
         // Rundeneinladungen — dieselbe Bauform. Annehmen tritt sofort bei.
@@ -180,10 +195,19 @@ fun StartSeite(
             ) {}
         }
 
+        // Betreibermitteilungen als Karten — wie auf dem Startbildschirm des
+        // Web. „Gelesen" ist rein lokal; einen Server-Zustand gibt es nicht.
+        mitteilungen.filter { it.id !in gelesen }.forEach { m ->
+            Karte(titel = m.titel, zeichen = Zeichen.Forum, text = m.text, knoepfe = {
+                if (m.link != null) {
+                    Knopf(m.linkText ?: "Öffnen", { beiLink(m.link) }, kompakt = true)
+                }
+                Knopf("Gelesen", { beiGelesen(m.id) }, art = Knopfart.Leise, kompakt = true)
+            }) {}
+        }
+
         zusatz()
 
-        val einweisung = konto?.einweisungOffen == true
-        if (einweisung) Einweisung(beiStart = beiAusbildung, laeuft = laeuft)
 
         if (!einweisung) {
             Ueberschrift("Schicht starten")
@@ -421,7 +445,14 @@ private fun Dienstausweis(
  * ließe, wäre keine Pflicht, und der Server wiese jede andere Runde ohnehin ab.
  */
 @Composable
-private fun Einweisung(beiStart: () -> Unit, laeuft: Boolean, modifier: Modifier = Modifier) {
+private fun Einweisung(
+    beiStart: () -> Unit,
+    laeuft: Boolean,
+    modifier: Modifier = Modifier,
+    pflicht: Boolean = true,
+    beiLehrgang: (() -> Unit)? = null,
+    beiWeg: (() -> Unit)? = null,
+) {
     Column(
         verticalArrangement = Arrangement.spacedBy(Abstand.Normal),
         modifier = modifier
@@ -430,19 +461,33 @@ private fun Einweisung(beiStart: () -> Unit, laeuft: Boolean, modifier: Modifier
             .flaechenmarke(wartet = true)
             .padding(horizontal = Abstand.Gross, vertical = Abstand.Normal),
     ) {
-        Text(text = "Zuerst die Ausbildungsschicht", style = Schrift.Gross, color = Farben.Text)
+        Text(
+            text = if (pflicht) "Zuerst die Ausbildungsschicht" else "Zum ersten Mal in einer Leitstelle?",
+            style = Schrift.Gross,
+            color = Farben.Text,
+        )
         Text(
             text = "Die Ausbildungsschicht erklärt dir Melder, FMS, Notruf und Funk in rund " +
-                "zwanzig Minuten — allein, mit Bot-Besatzungen, ohne Wertung. Sie gehört für " +
-                "jedes neue Konto an den Anfang; danach stehen alle Runden offen.",
+                "zwanzig Minuten — allein, mit Bot-Besatzungen, ohne Wertung." +
+                if (pflicht) {
+                    " Sie gehört für jedes neue Konto an den Anfang; danach stehen alle Runden offen. " +
+                        "Wer lieber liest, besteht stattdessen einen Grundlagen-Lehrgang — Leitstelle " +
+                        "oder Fahrzeug — und ist damit ebenso durch."
+                } else {
+                    ""
+                },
             style = Schrift.Klein,
             color = Farben.TextSehrLeise,
         )
+        if (pflicht && beiLehrgang != null) Textweg("Zu den Lehrgängen", beiLehrgang)
         Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
             // Nicht „Ausbildungsschicht starten": Der Menüweg darunter heißt so,
             // und zwei Knöpfe mit demselben Wort auf einem Bildschirm sind für
             // jede Suche zwei Treffer, von denen einer der falsche ist.
             Knopf("Ausbildung starten", beiStart, art = Knopfart.Haupt, aktiv = !laeuft)
+            if (!pflicht && beiWeg != null) {
+                Knopf("Nicht mehr anzeigen", beiWeg, art = Knopfart.Leise)
+            }
         }
     }
 }

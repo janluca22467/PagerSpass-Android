@@ -86,6 +86,23 @@ object Geraeteeinstellungen {
         schreiben(zusammenhang, KATALOGSTAAT, staat)
     }
 
+    /**
+     * Ob der Hinweis auf die Ausbildungsschicht für dieses Konto weggeklickt ist —
+     * `pagerspass.ausbildungHinweisWeg.<kennung>` im Web. „Nicht mehr anzeigen"
+     * heißt endgültig; der Weg bleibt als Menüeintrag trotzdem offen.
+     */
+    fun ausbildungHinweisWeg(zusammenhang: Context, kennung: String): Boolean = runCatching {
+        zusammenhang.applicationContext.getSharedPreferences(DATEI, Context.MODE_PRIVATE)
+            .getBoolean("ausbildungHinweisWeg.$kennung", false)
+    }.getOrDefault(false)
+
+    fun ausbildungHinweisWegnehmen(zusammenhang: Context, kennung: String) {
+        runCatching {
+            zusammenhang.applicationContext.getSharedPreferences(DATEI, Context.MODE_PRIVATE)
+                .edit().putBoolean("ausbildungHinweisWeg.$kennung", true).apply()
+        }
+    }
+
     fun funkVorlesenSetzen(zusammenhang: Context, an: Boolean) {
         _funkVorlesen.value = an
         schreiben(zusammenhang, FUNK_VORLESEN, if (an) "ja" else "nein")
