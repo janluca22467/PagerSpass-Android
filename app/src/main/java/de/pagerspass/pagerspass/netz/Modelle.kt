@@ -71,6 +71,12 @@ data class Konto(
      * `Rechtsstand.AKTUELL` ab, ist die neue Fassung vorzulegen.
      */
     val rechtsstandVersion: String? = null,
+    /**
+     * Wo das Konto bei der Altersfrage steht (v6): `Offen`, `WartetAufEltern`
+     * oder `Freigegeben`. Ein älterer Server schickt das Feld nicht — dann gibt
+     * es nichts zu fragen.
+     */
+    val altersstand: String? = null,
     /** Nur bei Anmeldung und Kontoanlage. Danach steht es in der Ablage. */
     val merkmal: String? = null,
     /** Nur bei der Kontoanlage — und nur dieses eine Mal. */

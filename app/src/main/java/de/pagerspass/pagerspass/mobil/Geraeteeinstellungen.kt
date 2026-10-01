@@ -28,6 +28,7 @@ object Geraeteeinstellungen {
     private const val DATEI = "pagerspass_geraet"
     private const val EINGABEWEG = "notruf.eingabeweg"
     private const val KENNUNGSFORM = "kennung.form"
+    private const val FUNK_VORLESEN = "funk.vorlesen"
 
     /** `fragen`, `tippen` oder `sprechen` — dieselben Wörter wie im Web. */
     val EINGABEWEGE = listOf("fragen", "tippen", "sprechen")
@@ -41,6 +42,14 @@ object Geraeteeinstellungen {
     private val _kennungsform = MutableStateFlow("kennzahl")
     val kennungsform: StateFlow<String> = _kennungsform.asStateFlow()
 
+    /**
+     * Ob getippter Funk vorgelesen werden soll — die Vorgabe für die nächste
+     * Schicht (`funkVorlesenVorgabe` im Web). `null`: nie gewählt, dann gilt in der
+     * Runde, was dort steht. Gesetzt vom Einrichtungsbogen; der Beitritt meldet sie an.
+     */
+    private val _funkVorlesen = MutableStateFlow<Boolean?>(null)
+    val funkVorlesen: StateFlow<Boolean?> = _funkVorlesen.asStateFlow()
+
     @Volatile private var geladen = false
 
     /** Einmal je Prozess aus der Gerätedatei lesen — Unbekanntes fällt auf die Vorgabe. */
@@ -52,6 +61,16 @@ object Geraeteeinstellungen {
         }.getOrNull() ?: return
         _eingabeweg.value = datei.getString(EINGABEWEG, null)?.takeIf { it in EINGABEWEGE } ?: "fragen"
         _kennungsform.value = datei.getString(KENNUNGSFORM, null)?.takeIf { it in KENNUNGSFORMEN } ?: "kennzahl"
+        _funkVorlesen.value = when (datei.getString(FUNK_VORLESEN, null)) {
+            "ja" -> true
+            "nein" -> false
+            else -> null
+        }
+    }
+
+    fun funkVorlesenSetzen(zusammenhang: Context, an: Boolean) {
+        _funkVorlesen.value = an
+        schreiben(zusammenhang, FUNK_VORLESEN, if (an) "ja" else "nein")
     }
 
     fun eingabewegSetzen(zusammenhang: Context, weg: String) {
@@ -70,6 +89,7 @@ object Geraeteeinstellungen {
     fun vergessen() {
         _eingabeweg.value = "fragen"
         _kennungsform.value = "kennzahl"
+        _funkVorlesen.value = null
     }
 
     private fun schreiben(zusammenhang: Context, schluessel: String, wert: String) {

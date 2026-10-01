@@ -95,6 +95,11 @@ fun Blende(
     kopfknoepfe: @Composable (() -> Unit)? = null,
     fuss: @Composable (() -> Unit)? = null,
     fussAlsSpalte: Boolean = false,
+    /**
+     * Das Etikett über dem Titel — „Eine Frage", „Einrichtung · Frage 2 von
+     * höchstens 7". Im Web `<p class="etikett">` im `dialog__kopf`.
+     */
+    augenbraue: String? = null,
     inhalt: @Composable ColumnScope.() -> Unit,
 ) {
     val aussparung = WindowInsets.safeDrawing.asPaddingValues()
@@ -151,7 +156,7 @@ fun Blende(
                         interactionSource = null,
                     ),
             ) {
-                Dialogkopf(titel, kopfknoepfe)
+                Dialogkopf(titel, kopfknoepfe, augenbraue)
 
                 Column(
                     verticalArrangement = Arrangement.spacedBy(Abstand.Normal),
@@ -177,7 +182,7 @@ fun Blende(
  * ein `weight` bekommt und Kopf und Fuß keines.
  */
 @Composable
-private fun Dialogkopf(titel: String, knoepfe: @Composable (() -> Unit)?) {
+private fun Dialogkopf(titel: String, knoepfe: @Composable (() -> Unit)?, augenbraue: String? = null) {
     Row(
         horizontalArrangement = Arrangement.spacedBy(Abstand.Normal),
         verticalAlignment = Alignment.Top,
@@ -189,7 +194,10 @@ private fun Dialogkopf(titel: String, knoepfe: @Composable (() -> Unit)?) {
             .kante(unten = true)
             .padding(Abstand.Gross),
     ) {
-        Text(text = titel, style = Schrift.Titel, color = Farben.Text, modifier = Modifier.weight(1f))
+        Column(verticalArrangement = Arrangement.spacedBy(Abstand.Winzig), modifier = Modifier.weight(1f)) {
+            if (augenbraue != null) Etikett(augenbraue)
+            Text(text = titel, style = Schrift.Titel, color = Farben.Text)
+        }
         // Schrumpfen erlaubt, umbrechen statt hinauslaufen: Das Notruftelefon
         // trägt drei Knöpfe, und auf einer Handbreit lief „Auflegen" rechts aus
         // dem Bild — ausgerechnet der Knopf, der das Gespräch beendet.

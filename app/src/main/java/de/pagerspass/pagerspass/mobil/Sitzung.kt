@@ -65,6 +65,23 @@ class Sitzung(anwendung: Application) : AndroidViewModel(anwendung) {
         freundeNeu = { freundeLaden(neu = true) },
     )
 
+    /**
+     * Altersfrage, Einrichtungsbogen, Maßnahmenübersicht — siehe `Einrichtungsdienst`.
+     * Neben dem Kontodienst und nicht in ihm: Hier lässt jeder Fehlschlag die Frage zu.
+     */
+    val einrichtungsdienst = Einrichtungsdienst(
+        wege = de.pagerspass.pagerspass.netz.Einrichtungswege(netz),
+        bereich = viewModelScope,
+        kennung = { _stand.value.konto?.kennung },
+        kontoNeu = {
+            val k = _stand.value.konto?.kennung
+            if (k != null) {
+                val neu = de.pagerspass.pagerspass.netz.Kontowege(netz).konto(k)
+                _stand.update { it.copy(konto = neu) }
+            }
+        },
+    )
+
     init {
         // Die beiden Ereignisse, die nicht Antwort auf eine Anfrage sind. Sie
         // gehören dem Rahmen, nicht der Stelle, die zufällig gerade lud.
@@ -155,6 +172,7 @@ class Sitzung(anwendung: Application) : AndroidViewModel(anwendung) {
         // bis die neue geladen ist.
         _daten.value = Seitenstand()
         kontodienst.vergessen()
+        einrichtungsdienst.vergessen()
     }
 
     fun rechtsstandZustimmen() = arbeiten {
@@ -173,6 +191,7 @@ class Sitzung(anwendung: Application) : AndroidViewModel(anwendung) {
         _stand.value = Sitzungsstand(server = ablage.server(), geprueft = true)
         _daten.value = Seitenstand()
         kontodienst.vergessen()
+        einrichtungsdienst.vergessen()
     }
 
     // ------------------------------------------------------------ Die Seiten
