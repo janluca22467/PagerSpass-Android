@@ -185,6 +185,7 @@ fun WachenSeite(
                     landkreise = landkreise,
                     beiAntraege = beiAntraege,
                     griffe = griffe,
+                    level = konto?.level ?: 1,
                 )
             }
         }
@@ -1042,6 +1043,7 @@ private fun ColumnScope.WachenSuche(
     landkreise: List<Landkreis>,
     beiAntraege: () -> Unit,
     griffe: WachenGriffe,
+    level: Int = 1,
 ) {
     LaunchedEffect(Unit) {
         beiAntraege()
@@ -1049,39 +1051,43 @@ private fun ColumnScope.WachenSuche(
     }
     var code by remember { mutableStateOf("") }
     var gruendenOffen by remember { mutableStateOf(false) }
-    var bewerbungFuer by remember { mutableStateOf<Gemeinschaft?>(null) }
+    var bewerbungFuer by remember { mutableStateOf<String?>(null) }
     var kreiswahl by remember { mutableStateOf(false) }
     var suche by rememberSaveable { mutableStateOf(kreis.filter.suche) }
     val filter = kreis.filter
 
     Seitenkopf(titel = "Eine Wache finden", unterzeile = "Wachengemeinschaften")
+    // Ein Satz, nicht drei: Was vorab gebraucht wird, ist „eine feste Mannschaft,
+    // und man ist in höchstens einer". Der Rest erklärt sich, sobald man drin ist.
     SehrLeise("Eine feste Mannschaft mit eigenem Chat — jedes Konto gehört höchstens einer an.")
     Textweg("Rangliste der Wachen", griffe.rangliste)
 
     Meldungszeile(kreis.meldung, kreis.hinweis, griffe.meldungWeg)
 
-    // Offene Einladungen zuerst — die kürzeste Tür.
+    // Offene Einladungen zuerst — die kürzeste Tür, mit amberner Kante.
     val einladungen = antraege.filter { it.richtung == "Einladung" && it.stand == "Offen" }
     if (einladungen.isNotEmpty()) {
-        Ueberschrift("Du bist eingeladen")
-        einladungen.forEach { einladung ->
-            Kasten(marke = true, abstandInnen = Abstand.Klein) {
-                Text(einladung.gemeinschaftName, style = Schrift.Normal, color = Farben.Text)
-                einladung.vonName?.let { SehrLeise("von $it") }
-                Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
+        Buchkarte("Du bist eingeladen", zahl = einladungen.size.toString(), akzent = true, dicht = true, abstandInnen = 0.dp) {
+            einladungen.forEachIndexed { i, einladung ->
+                Antragszeile(
+                    gemeinschaftId = einladung.gemeinschaftId,
+                    name = einladung.gemeinschaftName,
+                    unter = einladung.vonName?.let { "von $it" },
+                    letzte = i == einladungen.lastIndex,
+                ) {
                     Knopf("Beitreten", {
                         griffe.einladungAnnehmen(einladung.nr)
-                    }, art = Knopfart.Haupt, kompakt = true)
+                    }, art = Knopfart.Haupt, aktiv = !kreis.laeuft, kompakt = true)
                     Knopf("Ablehnen", {
                         griffe.bewerbungZurueckziehen(einladung.nr)
-                    }, art = Knopfart.Leise, kompakt = true)
+                    }, art = Knopfart.Leise, aktiv = !kreis.laeuft, kompakt = true)
                 }
             }
         }
     }
 
-    Kasten(abstandInnen = Abstand.Klein) {
-        Ueberschrift("Mit Beitrittscode")
+    // Zwei Wege hinein — mit Code oder selbst gegründet.
+    Buchkarte("Mit Beitrittscode") {
         SehrLeise("Sechs Zeichen, wie ein Raumcode — vom Zugführer oder von der Leitung.")
         Row(
             horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
@@ -1091,30 +1097,42 @@ private fun ColumnScope.WachenSuche(
                 wert = code,
                 beiAenderung = { code = it.take(6).uppercase() },
                 platzhalter = "ABC123",
-                modifier = Modifier.weight(1f),
+                stil = Schrift.MonoNormal,
+                modifier = Modifier.width(132.dp),
             )
+            // Neben dem Codefeld nimmt der Knopf den Rest der Zeile (`mobil.css`, 2).
             Knopf(
                 "Beitreten",
                 { griffe.beitreten(code) },
                 art = Knopfart.Haupt,
-                aktiv = code.length == 6,
-                kompakt = true,
+                aktiv = !kreis.laeuft && code.length == 6,
+                modifier = Modifier.weight(1f),
             )
         }
     }
 
-    Kasten(abstandInnen = Abstand.Klein) {
-        Ueberschrift("Selbst gründen")
-        SehrLeise("Ab Level 3. Du wirst die Leitung und bestimmst, wer dazukommt und wie.")
+    // Wie weit es noch ist, steht an der Karte und nicht erst in der Fehlermeldung
+    // nach dem Absenden.
+    val darfGruenden = level >= GRUENDEN_AB_LEVEL
+    Buchkarte("Selbst gründen") {
+        SehrLeise("Du wirst die Leitung und bestimmst, wer dazukommt und wie.")
+        Text(
+            if (darfGruenden) {
+                "✓ Ab Level $GRUENDEN_AB_LEVEL — du bist Level $level"
+            } else {
+                "Ab Level $GRUENDEN_AB_LEVEL — dir fehlen noch ${GRUENDEN_AB_LEVEL - level}"
+            },
+            style = Schrift.Klein,
+            color = if (darfGruenden) Farben.GruenHell else Farben.TextLeise,
+        )
         Knopf("Gemeinschaft gründen", {
             griffe.landkreisvorschlag()
             gruendenOffen = true
-        }, kompakt = true)
+        }, aktiv = darfGruenden, breit = true)
     }
 
     // Die Filter stehen offen da: Die Vorauswahl „Nur, wo ich aufgenommen werde"
     // verändert die Liste — wer das nicht sieht, hält die kurze Liste für alles.
-    Ueberschrift("Öffentliche Gemeinschaften")
     Row(
         horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
         verticalAlignment = Alignment.Bottom,
@@ -1122,7 +1140,7 @@ private fun ColumnScope.WachenSuche(
         Feld(
             wert = suche,
             beiAenderung = { suche = it.take(40) },
-            platzhalter = "Name oder Stichwort",
+            platzhalter = "⌕  Name oder Stichwort",
             modifier = Modifier.weight(1f),
         )
         Knopf("Suchen", { griffe.suchen(filter.copy(suche = suche)) }, aktiv = !kreis.oeffentliche.laedt, kompakt = true)
@@ -1154,62 +1172,61 @@ private fun ColumnScope.WachenSuche(
         beiWechsel = { griffe.suchen(filter.copy(nurFreie = it, suche = suche)) },
     )
     if (filter.eingegrenzt) {
-        Textweg("Filter zurücksetzen", {
+        Knopf("Filter zurücksetzen", {
             suche = ""
             griffe.suchen(Wachenfilter())
-        })
+        }, art = Knopfart.Leise, aktiv = !kreis.laeuft, kompakt = true)
     }
 
     val liste = kreis.oeffentliche.inhalt ?: offene
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Ueberschrift("Öffentliche Gemeinschaften")
+        if (!kreis.oeffentliche.laedt) SehrLeise(liste.size.toString(), mono = true)
+    }
     if (liste.isEmpty() && !kreis.oeffentliche.laedt) {
-        Leerhinweis(
-            if (filter.eingegrenzt) {
-                "Zu dieser Auswahl passt gerade keine Wache. Nimm einen Filter heraus — oder gründe selbst eine."
-            } else {
-                "Gerade ist keine öffentlich gelistet. Der Beitrittscode führt trotzdem überall hinein."
-            },
-        )
+        if (filter.eingegrenzt) {
+            Leerhinweis(
+                "Zu dieser Auswahl passt gerade keine Wache. Nimm einen Filter heraus — oder gründe selbst eine.",
+            ) {
+                Knopf("Filter zurücksetzen", {
+                    suche = ""
+                    griffe.suchen(Wachenfilter())
+                }, aktiv = !kreis.laeuft)
+            }
+        } else {
+            Leerhinweis("Gerade ist keine öffentlich gelistet. Der Beitrittscode führt trotzdem überall hinein.")
+        }
     } else {
         liste.forEach { g ->
-            Kasten(abstandInnen = Abstand.Klein) {
-                Text(g.name, style = Schrift.Normal, color = Farben.Text)
-                SehrLeise(
-                    listOfNotNull(
-                        "${g.mitglieder} von ${g.maxMitglieder}",
-                        g.landkreis?.ifBlank { null },
-                        modustext(g.beitrittModus),
-                        "ab Level ${g.mindestLevel}".takeIf { g.mindestLevel > 1 },
-                    ).joinToString(" · "),
-                )
-                g.beschreibung?.takeIf { it.isNotBlank() }?.let {
-                    Text(it, style = Schrift.Klein, color = Farben.TextLeise)
-                }
-                when (g.beitrittModus) {
-                    "Offen" -> Knopf("Beitreten", { griffe.bewerben(g.id, null) }, kompakt = true)
-                    "Antrag" -> Knopf("Bewerben", { bewerbungFuer = g }, kompakt = true)
-                    // Bei `Einladung` gibt es bewusst keinen Knopf.
-                }
-            }
+            Wachenkarte(
+                g = g,
+                level = level,
+                laeuft = kreis.laeuft,
+                bewerbungOffen = bewerbungFuer == g.id,
+                beiBewerbungOeffnen = { bewerbungFuer = if (it) g.id else null },
+                griffe = griffe,
+            )
         }
     }
 
     // Eigene offene Bewerbungen — mit dem Rückzieher.
     val bewerbungen = antraege.filter { it.richtung == "Bewerbung" && it.stand == "Offen" }
     if (bewerbungen.isNotEmpty()) {
-        Ueberschrift("Deine offenen Bewerbungen")
-        bewerbungen.forEach { b ->
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(Abstand.Normal),
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(b.gemeinschaftName, style = Schrift.Normal, color = Farben.Text)
-                    SehrLeise("Wartet auf eine Antwort.")
+        Buchkarte("Deine offenen Bewerbungen", zahl = bewerbungen.size.toString(), dicht = true, abstandInnen = 0.dp) {
+            bewerbungen.forEachIndexed { i, b ->
+                Antragszeile(
+                    gemeinschaftId = b.gemeinschaftId,
+                    name = b.gemeinschaftName,
+                    unter = "Wartet auf eine Antwort.",
+                    letzte = i == bewerbungen.lastIndex,
+                ) {
+                    Knopf("Zurückziehen", {
+                        griffe.bewerbungZurueckziehen(b.nr)
+                    }, art = Knopfart.Leise, aktiv = !kreis.laeuft, kompakt = true)
                 }
-                Knopf("Zurückziehen", {
-                    griffe.bewerbungZurueckziehen(b.nr)
-                }, art = Knopfart.Leise, kompakt = true)
             }
         }
     }
@@ -1239,26 +1256,6 @@ private fun ColumnScope.WachenSuche(
             },
             beiSchliessen = { gruendenOffen = false },
         )
-    }
-
-    bewerbungFuer?.let { g ->
-        var nachricht by remember { mutableStateOf("") }
-        Blende(
-            titel = "Bewerben bei ${g.name}",
-            beiSchliessen = { bewerbungFuer = null },
-            fuss = {
-                Knopf("Bewerben", {
-                    griffe.bewerben(g.id, nachricht.trim().ifBlank { null })
-                    bewerbungFuer = null
-                }, art = Knopfart.Haupt, kompakt = true)
-            },
-        ) {
-            Feld(
-                wert = nachricht,
-                beiAenderung = { nachricht = it.take(300) },
-                platzhalter = "Kurz zu dir (freiwillig)",
-            )
-        }
     }
 }
 

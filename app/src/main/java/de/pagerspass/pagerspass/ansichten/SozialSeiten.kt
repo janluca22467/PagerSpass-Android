@@ -461,6 +461,21 @@ fun EintragSeite(
                 griffe = griffe,
             )
 
+            // Kommentare als Karte mit Zeilen, wie die Listen im Dienstbuch: Kopf mit
+            // Zahl, eine Zeile je Kommentar, am Fuß das Feld. Vorher war jeder
+            // Kommentar ein eigener Kasten — zehn Antworten waren zehn Kästen.
+            Buchkarte(
+                "Kommentare",
+                zahl = kommentare.size.takeIf { it > 0 }?.toString(),
+                dicht = true,
+                abstandInnen = 0.dp,
+            ) {
+            if (kommentare.isEmpty()) {
+                Leerhinweis(
+                    "Noch nichts gesagt. Der erste Satz gehört dir.",
+                    modifier = Modifier.padding(Abstand.Klein),
+                )
+            }
             kommentare.forEach { kommentar ->
                 val k = kommentar.verfasser
                 Row(
@@ -468,8 +483,8 @@ fun EintragSeite(
                     verticalAlignment = Alignment.Top,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .flaeche(ecke = 9.dp)
-                        .padding(Abstand.Normal),
+                        .zeilenstrich(letzte = false)
+                        .padding(horizontal = Abstand.Normal, vertical = Abstand.Klein),
                 ) {
                     Kontobild(
                         kennung = k.kennung,
@@ -519,7 +534,7 @@ fun EintragSeite(
             Row(
                 horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
                 verticalAlignment = Alignment.Bottom,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().padding(Abstand.Klein),
             ) {
                 Feld(
                     wert = text,
@@ -536,6 +551,7 @@ fun EintragSeite(
                     aktiv = text.isNotBlank(),
                     kompakt = true,
                 )
+            }
             }
         }
     }

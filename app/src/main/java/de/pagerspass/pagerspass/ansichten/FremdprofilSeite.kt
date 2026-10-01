@@ -1,6 +1,7 @@
 package de.pagerspass.pagerspass.ansichten
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
@@ -127,15 +128,9 @@ fun FremdprofilSeite(
                     p.gemeinschaft?.let { "🏠 $it" },
                     if (p.anwesenheit != null) "Im Dienst" else null,
                 ),
-                werte = if (p.schichten != null) {
-                    listOf(
-                        "Schichten" to zahl(p.schichten),
-                        "Einsätze" to zahl(p.einsaetze ?: 0),
-                        "Dabei seit" to tag(p.dabeiSeit),
-                    )
-                } else {
-                    emptyList()
-                },
+                // Die Zahlen stehen nicht mehr im Kopf, sondern als Tafel darunter —
+                // wie im Dienstbuch (Web 5.0.0.26).
+                werte = emptyList(),
                 knoepfe = if (p.ich) {
                     { Knopf("Profil gestalten", griffe.eigenesProfil, art = Knopfart.Haupt, kompakt = true) }
                 } else {
@@ -189,13 +184,18 @@ fun FremdprofilSeite(
                     }
                 }
 
-                Textweg(
-                    (if (verwaltenOffen) "▾ " else "▸ ") + "Diesen Kontakt verwalten",
-                    { verwaltenOffen = !verwaltenOffen },
-                    farbe = Farben.TextLeise,
-                )
+                // Eine Karte, deren Kopf die Zusammenfassung ist — wie „Eigene Anfragen
+                // und Blockiertes" unter Kontakte. Direkt unter den Knöpfen: Wer
+                // jemanden blockieren will, soll nicht erst am ganzen Brett vorbei.
+                Buchkarte(
+                    "Diesen Kontakt verwalten",
+                    modifier = Modifier.clickable(role = androidx.compose.ui.semantics.Role.Button) {
+                        verwaltenOffen = !verwaltenOffen
+                    },
+                    kopfweg = { Text(if (verwaltenOffen) "⌄" else "›", style = Schrift.Gross, color = Farben.TextLeise) },
+                ) {
                 if (verwaltenOffen) {
-                    Kasten(abstandInnen = Abstand.Klein) {
+                    Column(verticalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
                         FlowRow(
                             horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
                             verticalArrangement = Arrangement.spacedBy(Abstand.Klein),
@@ -258,24 +258,30 @@ fun FremdprofilSeite(
                         }
                     }
                 }
+                }
             }
 
             Meldungszeile(kreis.meldung, kreis.hinweis, griffe.meldungWeg)
 
+            // Die Zahlen als Tafel wie im Dienstbuch. Lässt der Server sie weg, weil
+            // das Konto sie nicht zeigt, fehlt die ganze Tafel und nicht drei Striche.
+            if (p.schichten != null) {
+                Profiltafel(p.schichten, p.einsaetze, p.dabeiSeit)
+            }
+
             p.vorstellung?.takeIf { it.isNotBlank() }?.let {
-                Kasten { Text(it, style = Schrift.Normal, color = Farben.Text) }
+                Buchkarte("Vorstellung") { Text(it, style = Schrift.Normal, color = Farben.Text) }
             }
 
             if (p.vitrine.isNotEmpty()) {
-                Abschnitt("Vitrine") {
+                Buchkarte("Vitrine", zahl = p.vitrine.size.toString()) {
                     p.vitrine.forEach { a ->
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(Abstand.Normal),
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .flaeche(ecke = 9.dp)
-                                .padding(horizontal = Abstand.Normal, vertical = Abstand.Klein),
+                                .padding(horizontal = Abstand.Winzig, vertical = Abstand.Winzig),
                         ) {
                             Text("🏅", style = Schrift.Gross)
                             Column(modifier = Modifier.weight(1f)) {
@@ -287,7 +293,7 @@ fun FremdprofilSeite(
                 }
             }
 
-            Abschnitt("Am Brett") {
+            Buchkarte("Am Brett", zahl = kreis.profilBrett.size.takeIf { it > 0 }?.toString()) {
                 if (kreis.profilBrett.isEmpty()) {
                     Leerhinweis(
                         if (p.ich) "Du hast noch nichts angeschlagen." else "Hier steht noch nichts für dich.",
@@ -305,4 +311,43 @@ fun FremdprofilSeite(
             }
         }
     }
+}
+
+/**
+ * Schichten, Einsätze, Tage dabei — die Zahlen eines Profils als Tafel wie im
+ * Dienstbuch. Sie standen vorher als dreiteiliger Streifen im Kopf, die kleinste
+ * Schrift neben dem größten Namen.
+ */
+@Composable
+private fun Profiltafel(schichten: Int, einsaetze: Int?, dabeiSeit: String) {
+    val tage = runCatching {
+        java.time.Duration.between(
+            java.time.OffsetDateTime.parse(dabeiSeit).toInstant(),
+            java.time.Instant.now(),
+        ).toDays().toInt()
+    }.getOrNull()
+    val jeSchicht = if (schichten > 0 && einsaetze != null) kommazahl(einsaetze.toDouble() / schichten) else null
+    Kennzahltafel(
+        listOf(
+            { m -> Kennzahlkachel("Schichten", zahl(schichten), "gefahren", m) },
+            { m ->
+                Kennzahlkachel(
+                    "Einsätze",
+                    einsaetze?.let { zahl(it) } ?: "—",
+                    jeSchicht?.let { "$it je Schicht" } ?: "—",
+                    m,
+                    farbe = Farben.BlauHell,
+                )
+            },
+            { m ->
+                Kennzahlkachel(
+                    "Dabei",
+                    tage?.let { "$it ${if (it == 1) "Tag" else "Tage"}" } ?: "—",
+                    "seit ${tag(dabeiSeit)}",
+                    m,
+                    farbe = Farben.ViolettHell,
+                )
+            },
+        ),
+    )
 }
