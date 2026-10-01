@@ -216,6 +216,8 @@ fun Buchwink(
     zeichen: List<String>,
     modifier: Modifier = Modifier,
     wartet: Boolean = false,
+    /** Statt eines Zeichens ein kurzer Text im Feld — der eigene Platz einer Rangliste. */
+    marke: String? = null,
     inhalt: @Composable ColumnScope.() -> Unit,
 ) {
     val form = RoundedCornerShape(KARTENECKE)
@@ -253,6 +255,9 @@ fun Buchwink(
             ) {
                 zeichen.mapNotNull { pfadzeichen(it, gefuellt = false) }.forEach { bild ->
                     Icon(bild, contentDescription = null, tint = Farben.Amber, modifier = Modifier.size(20.dp))
+                }
+                marke?.let {
+                    Text(it, style = Schrift.MonoNormal.copy(fontWeight = FontWeight.ExtraBold), color = Farben.Amber, maxLines = 1)
                 }
             }
             Column(
