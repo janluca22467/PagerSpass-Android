@@ -98,8 +98,16 @@ fun FahrzeugSeite(
     manv: ManvGriffe = ManvGriffe(),
     befehle: Raumbefehle = Raumbefehle.Leer,
     neben: Raumneben = Raumneben(),
+    /** Den Alarm am Funkgerät quittieren (Bauart „Im Funk"). */
+    beiAlarmQuittieren: () -> Unit = {},
 ) {
     var reiter by remember { mutableStateOf(Fahrzeugteil.Einsatz) }
+
+    // „Im Funk" steht der Alarm auf dem Funkgerät — dorthin, wenn er kommt.
+    val imFunk = alarmImFunk()
+    androidx.compose.runtime.LaunchedEffect(stand.alarm?.incidentId, imFunk) {
+        if (imFunk && stand.alarm != null) reiter = Fahrzeugteil.Funk
+    }
 
     val raum = stand.raum
     val meins = raum?.vehicles?.firstOrNull { it.playerId == eigeneKennung }
@@ -178,6 +186,7 @@ fun FahrzeugSeite(
                         }
 
                         Fahrzeugteil.Status -> {
+                            Dienstmelder(raum, meins, stand.alarm)
                             TeilStatus(
                                 meins = meins,
                                 tasten = katalog?.fmsStatus.orEmpty(),
@@ -188,6 +197,17 @@ fun FahrzeugSeite(
                         }
 
                         Fahrzeugteil.Funk -> {
+                            if (imFunk) {
+                                Funkdisplay(
+                                    alarm = stand.alarm,
+                                    rufname = meins.funkrufname,
+                                    gruppe = raum.settings.funkgruppen.firstOrNull { it.id == meins.funkgruppe }
+                                        ?.let { it.bezeichnung.ifBlank { it.name } },
+                                    sprecher = stand.sprecher.values.firstOrNull(),
+                                    beiQuittieren = beiAlarmQuittieren,
+                                    modifier = Modifier.align(Alignment.CenterHorizontally),
+                                )
+                            }
                             // Der Einsatzstellenfunk schaltet mit Status 4 an
                             // der Lage frei — vorher steht der Reiter gesperrt
                             // da und sagt warum (dieselbe Regel wie im Web).
@@ -257,7 +277,14 @@ fun FahrzeugSeite(
             offen = reiter.name,
             // Ein offener Alarm ruft nach dem Einsatz-Teil — dort steht, wohin
             // es geht.
-            ruft = if (meins?.alarmOffen == true) setOf(Fahrzeugteil.Einsatz.name) else emptySet(),
+            ruft = if (meins?.alarmOffen == true) {
+                setOfNotNull(
+                    Fahrzeugteil.Einsatz.name,
+                    Fahrzeugteil.Funk.name.takeIf { imFunk && stand.alarm != null },
+                )
+            } else {
+                emptySet()
+            },
             beiWahl = { id -> reiter = Fahrzeugteil.valueOf(id) },
         )
     }

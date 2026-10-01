@@ -418,6 +418,7 @@ private fun Rundenrahmen(
             beiUeberspringen = { runde.ausbildungUeberspringen() },
             beiDienstende = { runde.dienstBeenden() },
             beiVerlassen = { runde.verlassen() },
+            beiAlarmQuittieren = { runde.alarmQuittieren() },
             manv = de.pagerspass.pagerspass.ansichten.ManvGriffe(
                 uebernehmen = { e, z -> runde.einsatzleitungUebernehmen(e, z) },
                 abgeben = { e, z -> runde.einsatzleitungAbgeben(e, z) },
@@ -469,6 +470,9 @@ private fun Rundenrahmen(
             alarm = alarm,
             beiQuittieren = { runde.alarmQuittieren() },
             beiWegtippen = { runde.alarmWegtippen() },
+            raum = stand.raum,
+            eigeneKennung = sitzungsstand.konto?.kennung.orEmpty(),
+            beiAusruecken = { runde.alarmQuittieren(); runde.fmsSetzen(3, null, null) },
         )
     }
 }

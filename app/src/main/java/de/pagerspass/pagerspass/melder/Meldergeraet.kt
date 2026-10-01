@@ -360,6 +360,40 @@ object Meldergeraet {
         }
     }
 
+    /**
+     * Ob das Konto ein laufendes Abo hat — daran hängt das Gerätemenü
+     * (`darfMenue` in `composables/meldermenue.ts`). Ohne bekanntes Konto:
+     * nein; ein Menü, das eine Zehntelsekunde nach dem Laden wieder
+     * verschwindet, wäre schlimmer als eines, das eine Zehntelsekunde später
+     * erscheint.
+     */
+    val abo: Boolean get() = kontoBekannt && premium
+
+    /**
+     * Die Töne, die dieses Konto hören darf — in der Reihenfolge der Tonwahl:
+     * erst die selbst gebauten, dann die Klänge, dann der Katalog.
+     *
+     * Für die Ton-Seite des Gerätemenüs. Ein gesperrter Ton steht dort gar
+     * nicht erst; die Kontoseite zeigt ihn mit Sperrgrund, das Gerät nicht —
+     * dasselbe wie im Web.
+     */
+    fun hoerbareToene(): List<Pair<String, String>> {
+        val eigene = if (premium) {
+            eigeneToene.map { "eigen:${it.id}" to "★ ${it.name}" } +
+                eigeneKlaenge.map { "klang:${it.id}" to "♪ ${it.name}" }
+        } else {
+            emptyList()
+        }
+        return eigene + Melderkatalog.TOENE
+            .filter { it.id == ton || it.frei(stufe, premium, gekauft) }
+            .map { it.id to it.name }
+    }
+
+    /** Der Name des eingestellten Tons — für die Wertspalte im Menü. */
+    fun tonName(): String = hoerbareToene().firstOrNull { it.first == ton }?.second
+        ?: Melderkatalog.TOENE.firstOrNull { it.id == ton }?.name
+        ?: "Eigener Ton"
+
     /** Die Bauform, die gerade gilt — die Wahl, wenn sie offensteht. */
     fun wirksameBauform(): String {
         if (!kontoBekannt) return bauform
