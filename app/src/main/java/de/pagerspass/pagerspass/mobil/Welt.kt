@@ -148,12 +148,35 @@ class Welt(anwendung: Application) : AndroidViewModel(anwendung) {
             val satz = argumente.firstOrNull()?.let { text(it) } ?: "Das ging nicht."
             _stand.update { it.copy(chatfehler = satz) }
         }
-        // Ein Ping gilt einem Menschen und nicht dem Kanal: gemerkt, nicht
-        // angezeigt — der Chat-Eintrag unter „Mehr“ trägt die Marke.
+        // Ein Ping gilt einem Menschen und nicht dem Kanal: Er bleibt als Marke
+        // am Chat stehen und kommt als Benachrichtigung oben an (`ChatHinweis.vue`).
         draht.auf("ChatPing") { argumente ->
             val von = argumente.getOrNull(0)?.let { text(it) }
             val satz = argumente.getOrNull(1)?.let { text(it) }.orEmpty()
-            _stand.update { it.copy(angepingt = Anpingen(von, satz)) }
+            val vonId = argumente.getOrNull(2)?.let { text(it) }
+            _stand.update {
+                // Wer stummgeschaltet ist, soll auch über den Umweg des Pings nicht blinken.
+                if (it.chatOffen || (vonId != null && vonId in it.stumm)) return@update it
+                val jetzt = System.currentTimeMillis()
+                it.copy(angepingt = Anpingen(von, satz), chatHinweis = Chathinweis("ping", von, satz, jetzt))
+            }
+        }
+        // Eine Zeile wurde zurückgenommen — vom Absender, in seiner Frist. War
+        // sie ungelesene Post, zählt die Marke zurück; steht sie gerade als
+        // Benachrichtigung da, geht sie auch dort.
+        draht.auf("ChatEntfernt") { argumente ->
+            val id = argumente.firstOrNull()?.let { runCatching { it.jsonPrimitive.content.toLong() }.getOrNull() }
+                ?: return@auf
+            _stand.update { alt ->
+                val weg = alt.chat.firstOrNull { it.id == id } ?: return@update alt
+                val zaehlt = !weg.eigen && !alt.chatOffen && weg.kanal == "Direkt" && !weg.gelesen
+                alt.copy(
+                    chat = alt.chat - weg,
+                    ungelesen = if (zaehlt) (alt.ungelesen - 1).coerceAtLeast(0) else alt.ungelesen,
+                    chatHinweis = alt.chatHinweis?.takeIf { it.text != weg.text },
+                    angepingt = alt.angepingt?.takeIf { it.text != weg.text },
+                )
+            }
         }
 
         draht.auf("FunkStart") { argumente ->
@@ -186,7 +209,7 @@ class Welt(anwendung: Application) : AndroidViewModel(anwendung) {
      */
     fun oeffnen(kennung: String) {
         if (_stand.value.kennung == kennung) return
-        _stand.value = Weltzustand(offen = true, kennung = kennung)
+        _stand.value = Weltzustand(offen = true, kennung = kennung, stumm = stummLesen())
         viewModelScope.launch { betreten() }
     }
 
@@ -201,7 +224,7 @@ class Welt(anwendung: Application) : AndroidViewModel(anwendung) {
     /** Die Welt verlassen — erst Mikrofon, dann Lautsprecher, dann die Leitung. */
     fun schliessen() {
         taktBeenden()
-        _stand.value = Weltzustand()
+        _stand.value = Weltzustand(stumm = stummLesen())
         funkgeraetGesetzt = false
     }
 
@@ -215,7 +238,7 @@ class Welt(anwendung: Application) : AndroidViewModel(anwendung) {
     fun erneutBetreten() {
         taktBeenden()
         funkgeraetGesetzt = false
-        _stand.update { Weltzustand(offen = true, kennung = it.kennung, vorlagen = it.vorlagen) }
+        _stand.update { Weltzustand(offen = true, kennung = it.kennung, vorlagen = it.vorlagen, stumm = it.stumm) }
         viewModelScope.launch { betreten() }
     }
 
@@ -570,20 +593,48 @@ class Welt(anwendung: Application) : AndroidViewModel(anwendung) {
 
     // ================================================================= Chat
 
+    /**
+     * Eine Zeile über den Hub — mit Dublettenschutz, denn der Absender bekommt
+     * seine eigene über die Kontogruppe <em>und</em> als Aufrufer.
+     *
+     * Fremde Post, während der Chat zu ist, meldet sich oben als
+     * Benachrichtigung (`ChatHinweis.vue`): Direktpost zählt die Marke hoch,
+     * eine Zeile im offenen Kanal nur den Hinweis. Von Stummgeschalteten zählt
+     * und meldet sich nichts.
+     */
     private fun chatAnhaengen(n: WeltChatzeile) {
         _stand.update { alt ->
             if (alt.chat.any { it.id == n.id }) return@update alt
             val neu = (alt.chat + n).takeLast(400)
-            // Fremde Direktpost, während der Chat zu ist: die Marke zählt mit.
-            val mehr = if (!n.eigen && n.kanal == "Direkt" && !alt.chatOffen) 1 else 0
-            alt.copy(chat = neu, ungelesen = alt.ungelesen + mehr)
+            if (n.eigen || alt.chatOffen || n.vonId in alt.stumm) return@update alt.copy(chat = neu)
+            val jetzt = System.currentTimeMillis()
+            if (n.kanal == "Direkt") {
+                return@update alt.copy(
+                    chat = neu,
+                    ungelesen = alt.ungelesen + 1,
+                    chatHinweis = Chathinweis("direkt", n.von, n.text, jetzt),
+                )
+            }
+            // Ein Ping kommt als eigenes Ereignis und als Zeile — die Zeile soll
+            // die Erwähnung nicht zur gewöhnlichen Kanalmeldung herabstufen.
+            val h = alt.chatHinweis
+            val ebenPing = h?.art == "ping" && h.text == n.text && jetzt - h.um < 3_000
+            alt.copy(chat = neu, chatHinweis = if (ebenPing) h else Chathinweis("kanal", n.von, n.text, jetzt))
         }
     }
 
     suspend fun chatLaden() {
         val k = kennung ?: return
         val antwort = runCatching { wege.chat(k) }.getOrNull() ?: return
-        _stand.update { it.copy(chat = antwort.nachrichten, ungelesen = antwort.ungelesen, chatMax = antwort.maxLaenge) }
+        _stand.update {
+            it.copy(
+                chat = antwort.nachrichten,
+                ungelesen = antwort.ungelesen,
+                chatMax = antwort.maxLaenge,
+                aeltereVorhanden = antwort.nachrichten.isNotEmpty(),
+                zuruecknahmeMs = antwort.zuruecknahmeSekunden * 1_000L,
+            )
+        }
         // Die Vorgabe des Servers gilt nur beim ersten Laden: Wer das Gerät
         // eingeschaltet hat, soll es nach einem Nachladen nicht wieder aus haben.
         if (!funkgeraetGesetzt) {
@@ -595,9 +646,86 @@ class Welt(anwendung: Application) : AndroidViewModel(anwendung) {
         }
     }
 
+    /**
+     * Holt die Zeilen vor der ältesten geladenen und setzt sie oben an — mit
+     * Dublettenschutz wie beim Anhängen.
+     */
+    fun chatAeltereLaden() {
+        val k = kennung ?: return
+        val alt = _stand.value
+        if (alt.aeltereLaedt || !alt.aeltereVorhanden) return
+        val aelteste = alt.chat.firstOrNull() ?: run {
+            _stand.update { it.copy(aeltereVorhanden = false) }
+            return
+        }
+        _stand.update { it.copy(aeltereLaedt = true) }
+        viewModelScope.launch {
+            runCatching { wege.chat(k, aelteste.id) }
+                .onSuccess { antwort ->
+                    _stand.update { s ->
+                        val schonDa = s.chat.map { it.id }.toSet()
+                        val neu = antwort.nachrichten.filter { it.id !in schonDa }
+                        s.copy(chat = neu + s.chat, aeltereVorhanden = neu.isNotEmpty(), aeltereLaedt = false)
+                    }
+                }
+                .onFailure {
+                    _stand.update { it.copy(chatfehler = "Ältere Nachrichten ließen sich nicht laden.", aeltereLaedt = false) }
+                }
+        }
+    }
+
+    /** Ob diese Zeile noch zurückgenommen werden kann — eigene, in der Frist. */
+    fun zuruecknehmbar(z: WeltChatzeile, jetzt: Long): Boolean {
+        val s = _stand.value
+        if (!z.eigen || s.zuruecknahmeMs <= 0) return false
+        val um = Weltfahrt.zeit(z.um).takeIf { it > 0 } ?: return false
+        return jetzt + s.versatzMs - um < s.zuruecknahmeMs
+    }
+
+    /**
+     * Nimmt eine eigene Zeile zurück. Wie beim Senden ohne eigenes Wegnehmen:
+     * Die Zeile verschwindet, wenn der Server `ChatEntfernt` schickt — bei
+     * allen gleichzeitig und nur, wenn er es auch getan hat.
+     */
+    fun chatZuruecknehmen(id: Long) {
+        _stand.update { it.copy(chatfehler = null) }
+        if (draht.lage != Funkverbindung.Lage.Verbunden) {
+            _stand.update { it.copy(chatfehler = "Keine Verbindung zum Kanal.") }
+            return
+        }
+        draht.rufen("ChatZuruecknehmen", kotlinx.serialization.json.JsonPrimitive(id))
+    }
+
+    /** Jemanden stummschalten oder wieder hören — nur auf diesem Gerät. */
+    fun stummSetzen(vonId: String, an: Boolean) {
+        val ohne = _stand.value.stumm.filter { it != vonId }
+        val neu = if (an) ohne + vonId else ohne
+        _stand.update { it.copy(stumm = neu) }
+        runCatching {
+            getApplication<Application>().getSharedPreferences(STUMM_DATEI, android.content.Context.MODE_PRIVATE)
+                .edit().putString(STUMM_SCHLUESSEL, neu.joinToString(",")).apply()
+        }
+    }
+
+    private fun stummLesen(): List<String> = runCatching {
+        getApplication<Application>().getSharedPreferences(STUMM_DATEI, android.content.Context.MODE_PRIVATE)
+            .getString(STUMM_SCHLUESSEL, null)
+    }.getOrNull()?.split(",")?.filter { it.isNotBlank() }.orEmpty()
+
+    /** Die Benachrichtigung wegnehmen — das Kreuz oder nach acht Sekunden. */
+    fun chatHinweisWeg() {
+        _stand.update { it.copy(chatHinweis = null) }
+    }
+
     /** Der Chat ist offen oder zu — beim Öffnen wird die Post abgehakt. */
     fun chatGeoeffnet(offen: Boolean) {
-        _stand.update { it.copy(chatOffen = offen, angepingt = if (offen) null else it.angepingt) }
+        _stand.update {
+            it.copy(
+                chatOffen = offen,
+                angepingt = if (offen) null else it.angepingt,
+                chatHinweis = if (offen) null else it.chatHinweis,
+            )
+        }
         if (!offen) return
         val k = kennung ?: return
         if (_stand.value.ungelesen == 0) return
@@ -718,6 +846,16 @@ data class Gutschriftzeichen(val betrag: Long, val um: Long)
 
 data class Anpingen(val von: String?, val text: String)
 
+/**
+ * Eine Benachrichtigung aus dem Weltchat — `chatHinweis` in `stores/welt.ts`.
+ * `art` ist `direkt`, `ping` oder `kanal`; eine neue ersetzt die alte.
+ */
+data class Chathinweis(val art: String, val von: String?, val text: String, val um: Long)
+
+/** Wo die stummgeschalteten Kennungen des Weltchats liegen — nur auf diesem Gerät. */
+private const val STUMM_DATEI = "pagerspass_welt"
+private const val STUMM_SCHLUESSEL = "chatStumm"
+
 data class Sprecher(val kennung: String, val name: String?)
 
 /**
@@ -761,6 +899,13 @@ data class Weltzustand(
     val ungelesen: Int = 0,
     val chatOffen: Boolean = false,
     val angepingt: Anpingen? = null,
+    val chatHinweis: Chathinweis? = null,
+    /** Wen man im Chat nicht mehr lesen will — Kennungen, nur auf diesem Gerät. */
+    val stumm: List<String> = emptyList(),
+    /** Wie lange eine eigene Zeile zurückgenommen werden kann; 0 heißt „gar nicht“. */
+    val zuruecknahmeMs: Long = 0,
+    val aeltereVorhanden: Boolean = false,
+    val aeltereLaedt: Boolean = false,
     val funkgeraet: Boolean = false,
     val spricht: Sprecher? = null,
     val sendet: Boolean = false,

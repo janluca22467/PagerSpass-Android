@@ -262,7 +262,12 @@ class Weltwege(private val netz: Netz) {
 
     // -------------------------------------------------------------- Chat
 
-    suspend fun chat(kennung: String): WeltChatstand = netz.hole("/api/welt/chat?${k(kennung)}")
+    /**
+     * Der Verlauf — mit `vor` die Zeilen vor der ältesten, die schon da ist
+     * („Ältere Nachrichten laden“).
+     */
+    suspend fun chat(kennung: String, vor: Long? = null): WeltChatstand =
+        netz.hole("/api/welt/chat?${k(kennung)}" + (vor?.let { "&vor=$it" } ?: ""))
 
     suspend fun chatGelesen(kennung: String) =
         netz.ohneAntwort("/api/welt/chat/gelesen?${k(kennung)}", "POST")

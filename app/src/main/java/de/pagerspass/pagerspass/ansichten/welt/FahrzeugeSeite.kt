@@ -484,10 +484,22 @@ fun FahrzeugkaufSeite(welt: Welt, zustand: Weltzustand, werkbank: Werkbank) {
     )
     val w = aktuelleWache ?: return
     val freiePlaetze = w.stellplaetze - w.belegt
-    Leisesatz(if (freiePlaetze > 0) "$freiePlaetze ${if (freiePlaetze == 1) "Platz" else "Plätze"} frei." else "Diese Wache ist voll.")
+    // Jede Wache kauft aus dem Katalog ihres Staats — der Staat kommt vom
+    // Server und folgt dem Standort. Ohne die Prüfung stünden österreichische
+    // Fahrzeuge in Kassel, und der Kauf scheiterte erst am Server.
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
+        Landesflagge(w.staat, 18.dp)
+        Text(
+            if (freiePlaetze > 0) "Katalog ${staatName(w.staat)} · noch $freiePlaetze ${if (freiePlaetze == 1) "Platz" else "Plätze"} frei."
+            else "Katalog ${staatName(w.staat)} · Diese Wache ist voll.",
+            style = Schrift.Klein,
+            color = Farben.TextLeise,
+        )
+    }
 
     val vorlagen = jeTypEine(zustand.vorlagen.values).filter { v ->
-        passtZurWache(w.art, v) && when (v.organisation) {
+        (v.staaten.firstOrNull() ?: "Deutschland") == w.staat &&
+            passtZurWache(w.art, v) && when (v.organisation) {
             "Feuerwehr" -> true
             "Rettungsdienst" -> "Rettungsdienst" in frei
             "Polizei" -> "Polizei" in frei
