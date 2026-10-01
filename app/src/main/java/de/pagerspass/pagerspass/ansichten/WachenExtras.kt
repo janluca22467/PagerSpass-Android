@@ -841,6 +841,18 @@ fun Landkreiswahl(
 
 // ------------------------------------------------------------------ Aussehen
 
+/** Die Reiter des Anpassen-Dialogs — erst der Farbton, er färbt alles andere. */
+private val BEREICHE = listOf("Wachenfarbe", "Kopfmuster", "Emblemrahmen", "Emblemzeichen", "Beiname")
+
+/** Wie ein Platz am Reiter heißt. */
+private val REITERNAME = mapOf(
+    "Wachenfarbe" to "Farbe",
+    "Kopfmuster" to "Muster",
+    "Emblemrahmen" to "Rahmen",
+    "Emblemzeichen" to "Zeichen",
+    "Beiname" to "Beiname",
+)
+
 /** Wie ein Platz in der Überschrift heißt. */
 private fun platzname(art: String): String = when (art) {
     "Kopfmuster" -> "Kopfmuster"
@@ -880,6 +892,9 @@ fun AussehenBlende(
     val darf = schatz.darfKaufen
     val ton = Wappen.ton(gemeinschaft.id, gemeinschaft.wappenfarbe)
     val beiname = schatz.schmuck.firstOrNull { it.art == "Beiname" && it.stueckId == gemeinschaft.beiname }?.name
+    // Ein Platz zur Zeit, als Reiter — vorher standen alle fünf untereinander, und
+    // wer ein Muster suchte, rollte an allen Farben und Rahmen vorbei.
+    var bereich by remember { mutableStateOf("Wachenfarbe") }
 
     Blende(titel = "Wache anpassen", beiSchliessen = beiSchliessen) {
         Row(
@@ -899,10 +914,42 @@ fun AussehenBlende(
             }
         }
 
+        // Was die Wache gerade trägt, auf einen Blick — und jede Zeile führt zu
+        // ihrem Reiter. Die Vorschau zeigt es, diese Liste sagt es.
+        val farbname = when {
+            gemeinschaft.wappenfarbe == 0 -> "Automatisch"
+            gemeinschaft.wappenfarbe < 8 -> "Farbton ${gemeinschaft.wappenfarbe}"
+            else -> schatz.schmuck.firstOrNull { it.art == "Wachenfarbe" && it.stueckId.toIntOrNull() == gemeinschaft.wappenfarbe }
+                ?.name ?: "Farbton ${gemeinschaft.wappenfarbe}"
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(Abstand.Haar)) {
+            BEREICHE.forEach { art ->
+                val wert = if (art == "Wachenfarbe") {
+                    farbname
+                } else {
+                    schatz.schmuck.firstOrNull { it.art == art && it.stueckId == getragen(gemeinschaft, art) }?.name ?: "Keines"
+                }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth().clickable(role = Role.Tab) { bereich = art },
+                ) {
+                    SehrLeise(REITERNAME[art] ?: art, modifier = Modifier.width(88.dp))
+                    Text(wert, style = Schrift.Klein, color = Farben.BlauHell, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+        }
+
         if (!darf) {
             SehrLeise("Das Aussehen der Wache wählen Leitung und Zugführer. Ansehen darf es jeder.")
         }
 
+        Rollreiter(
+            reiter = BEREICHE.map { REITERNAME[it] ?: it },
+            offen = BEREICHE.indexOf(bereich).coerceAtLeast(0),
+            beiWahl = { bereich = BEREICHE[it] },
+        )
+
+        if (bereich == "Wachenfarbe") {
         Ueberschrift("Farbton")
         SehrLeise("Die ersten acht gehören jeder Wache. Was danach kommt, steht im Laden.")
         FlowRow(
@@ -930,9 +977,14 @@ fun AussehenBlende(
             }
         }
 
-        listOf("Kopfmuster", "Emblemrahmen", "Emblemzeichen", "Beiname").forEach { art ->
+        }
+
+        listOf("Kopfmuster", "Emblemrahmen", "Emblemzeichen", "Beiname").filter { it == bereich }.forEach { art ->
             val alle = schatz.schmuck.filter { it.art == art }
-            if (alle.isEmpty()) return@forEach
+            if (alle.isEmpty()) {
+                SehrLeise("Für diesen Platz gibt es noch nichts.")
+                return@forEach
+            }
             Row(
                 horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
                 verticalAlignment = Alignment.CenterVertically,

@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -1285,21 +1287,61 @@ private fun GruendenBlende(
         titel = "Gemeinschaft gründen",
         beiSchliessen = beiSchliessen,
         fuss = {
+            Knopf("Abbrechen", beiSchliessen, art = Knopfart.Leise, kompakt = true)
             Knopf("Gemeinschaft gründen", {
                 beiGruenden(name.trim(), beschreibung.trim().ifBlank { null }, gewaehlt)
             }, art = Knopfart.Haupt, aktiv = !laeuft && name.isNotBlank(), kompakt = true)
         },
     ) {
+        // Die Vorschau steht oben und ändert sich beim Tippen mit — ein Name ist
+        // leichter gewählt, wenn man ihn dort sieht, wo ihn später alle sehen.
+        val vorschauName = name.trim().ifBlank { "Deine Wache" }
+        val ton = de.pagerspass.pagerspass.ui.schmuck.Wappen.ton(vorschauName)
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(Abstand.Normal),
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .flaeche(ecke = 12.dp)
+                .background(
+                    androidx.compose.ui.graphics.Brush.verticalGradient(
+                        0f to ton.copy(alpha = 0.18f),
+                        1f to androidx.compose.ui.graphics.Color.Transparent,
+                    ),
+                )
+                .padding(Abstand.Normal),
+        ) {
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier.size(44.dp).background(ton, RoundedCornerShape(11.dp)),
+            ) {
+                Text(
+                    de.pagerspass.pagerspass.ui.schmuck.Wappen.initialen(vorschauName, "W"),
+                    style = Schrift.Gross,
+                    color = de.pagerspass.pagerspass.ui.schmuck.Wappen.schrift(ton),
+                )
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(vorschauName, style = Schrift.Gross, color = Farben.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                SehrLeise(
+                    (landkreise.firstOrNull { it.id == gewaehlt }?.name ?: "Ohne festen Landkreis") + " · 1 Mitglied",
+                )
+                beschreibung.trim().ifBlank { null }?.let {
+                    Text(it, style = Schrift.Klein, color = Farben.TextLeise, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
+            }
+        }
         Feld(
             wert = name,
             beiAenderung = { name = it.take(40) },
-            etikett = "Name",
+            etikett = "Name · ${name.length} / 40",
             platzhalter = "z. B. Wache Nord",
         )
         Feld(
             wert = beschreibung,
             beiAenderung = { beschreibung = it.take(300) },
-            etikett = "Beschreibung (freiwillig)",
+            etikett = "Beschreibung · freiwillig · ${beschreibung.length} / 300",
             platzhalter = "Wann fahrt ihr, wen sucht ihr?",
             einzeilig = false,
         )
@@ -1310,6 +1352,27 @@ private fun GruendenBlende(
             beiDruck = { kreiswahl = true },
         )
         SehrLeise("Hier laufen später eure Clanrunden. Änderbar bleibt er jederzeit.")
+
+        // Was danach kommt, in drei Schritten — die Antwort auf „und wie kommen die
+        // anderen rein?" steht hier und nicht erst in einem leeren Wachenchat.
+        listOf(
+            "Du wirst die Leitung der neuen Wache.",
+            "Unter Einstellungen legst du fest, ob sie öffentlich ist und wen sie aufnimmt.",
+            "Einladen oder den Beitrittscode weitergeben — und die erste Clanrunde starten.",
+        ).forEachIndexed { i, satz ->
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier.size(22.dp).background(Farben.HauchAmber, androidx.compose.foundation.shape.CircleShape),
+                ) {
+                    Text("${i + 1}", style = Schrift.MonoKlein, color = Farben.Amber)
+                }
+                Text(satz, style = Schrift.Klein, color = Farben.TextLeise, modifier = Modifier.weight(1f))
+            }
+        }
     }
 
     if (kreiswahl) {
