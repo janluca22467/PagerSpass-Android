@@ -255,7 +255,7 @@ fun StartSeite(
                 )
             }
 
-            Ueberschrift("Menü")
+            Ueberschrift("Mehr im Spiel")
         }
 
         Startweg.menue(einweisung, konto?.premiumAktiv == true).forEach { eintrag ->
@@ -622,13 +622,13 @@ enum class Startweg {
                 Eintrag(
                     weg = Lehrgang,
                     titel = "Lehrgang",
-                    unterzeile = "Lesen, üben, prüfen",
+                    unterzeile = "Lesen, üben, prüfen — mit Zeugnis am Ende",
                     zeichen = Zeichen.Wiki,
                 ),
                 Eintrag(
                     weg = Welt,
-                    titel = "World",
-                    unterzeile = "Eine Karte, alle Leitstellen",
+                    titel = "PagerSpass - World",
+                    unterzeile = "Eine Karte, alle Leitstellen, jede Woche ein Großeinsatz",
                     zeichen = Zeichen.Welt,
                     schild = if (premium) null else "Premium",
                 ),
@@ -641,7 +641,7 @@ enum class Startweg {
                 Eintrag(
                     weg = Leitstellenbau,
                     titel = "Leitstellenbau",
-                    unterzeile = "Eigene Wachen, Plätze und Rufnamen",
+                    unterzeile = "Eigene Wachen, Plätze und Rufnamen — ohne Wertung",
                     zeichen = Zeichen.Karte,
                 ),
             )
