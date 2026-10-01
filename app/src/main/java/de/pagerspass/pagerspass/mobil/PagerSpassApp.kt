@@ -150,6 +150,8 @@ fun PagerSpassApp(
     // App — und genau so ist er gemeint.
     var zweiFaktor by rememberSaveable { mutableStateOf<Pair<String, String>?>(null) }
 
+    androidx.compose.runtime.SideEffect { de.pagerspass.pagerspass.ansichten.Markenzusatz.server = stand.server }
+
     Box(modifier = Modifier.fillMaxSize().background(Farben.Bg)) {
         when {
             // Noch nichts wissen ist ein eigener Zustand — siehe oben.

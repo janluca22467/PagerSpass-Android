@@ -14,6 +14,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
@@ -60,6 +62,7 @@ fun Schriftzug(modifier: Modifier = Modifier) {
         text = buildAnnotatedString {
             append("Pager")
             withStyle(SpanStyle(color = Farben.Amber)) { append("Spass") }
+            append(Markenzusatz.zusatz)
         },
         style = Schrift.Schlagzeile.copy(letterSpacing = (-0.04).em),
         color = Farben.Text,
@@ -111,4 +114,17 @@ fun Sendezeichen(modifier: Modifier = Modifier) {
             )
         }
     }
+}
+
+/**
+ * Der Zusatz hinter dem Namen — „ 6“ auf dem Zweigstand v6.pagerspass.de, sonst nichts
+ * (`marke.ts` im Web). Wer gegen den Zweigstand spielt, soll das am Schriftzug sehen
+ * und nicht erst am Fehler, den es dort noch gibt. Gesetzt vom Rahmen, sobald der
+ * eingestellte Server feststeht.
+ */
+object Markenzusatz {
+    var server by mutableStateOf("")
+
+    val zusatz: String
+        get() = if (server.trimEnd('/') == de.pagerspass.pagerspass.netz.Server.V6) " 6" else ""
 }
