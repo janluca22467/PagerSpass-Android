@@ -764,6 +764,11 @@ data class Anruf(
     val vorschlag: Notrufvorschlag? = null,
     /** Die Ortung des Anschlusses — `null`, solange niemand geortet hat. */
     val ortung: Ortung? = null,
+    /**
+     * Bis wann der Anrufer in der Leitung wartet — die Uhr der Telefonanlage.
+     * Ein älterer Server schickt sie nicht; dann steht die Anlage ohne Uhr da.
+     */
+    val klingeltBis: String? = null,
 ) {
     val klingelt: Boolean get() = zustand == "Klingelt"
     val imGespraech: Boolean get() = zustand == "ImGespraech"
