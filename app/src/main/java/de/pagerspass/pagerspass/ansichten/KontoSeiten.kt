@@ -1741,7 +1741,7 @@ internal object KontoZeichen {
     val Geschenk = strich("geschenk", "M4 10h16v4H4z", "M5.5 14h13v7h-13z", "M12 10v11", "M12 10c-2.5 0-4.5-1-4.5-3a2 2 0 0 1 4.5 0c0-2 2-2 2-2a2 2 0 0 1 2.5 2c0 2-2 3-4.5 3")
 }
 
-private fun strich(name: String, vararg pfade: String): ImageVector =
+internal fun strich(name: String, vararg pfade: String): ImageVector =
     ImageVector.Builder(
         name = name,
         defaultWidth = 24.dp,

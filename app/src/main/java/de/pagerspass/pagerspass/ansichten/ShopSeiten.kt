@@ -1,11 +1,14 @@
 package de.pagerspass.pagerspass.ansichten
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -16,6 +19,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextDecoration
@@ -45,6 +49,8 @@ import de.pagerspass.pagerspass.ui.bausteine.Leise
 import de.pagerspass.pagerspass.ui.bausteine.Marke
 import de.pagerspass.pagerspass.ui.bausteine.Pille
 import de.pagerspass.pagerspass.ui.bausteine.Pillenreihe
+import de.pagerspass.pagerspass.ui.bausteine.Reiterreihe
+import de.pagerspass.pagerspass.ui.bausteine.SenkrechterReiter
 import de.pagerspass.pagerspass.ui.bausteine.SehrLeise
 import de.pagerspass.pagerspass.ui.bausteine.Seite
 import de.pagerspass.pagerspass.ui.bausteine.Seitenkopf
@@ -126,36 +132,43 @@ fun ShopSeite(
     val premium = stand.premium.inhalt
 
     Seite(modifier = modifier, unterrand = unterrand) {
-        Seitenkopf(
+        Ladenportal(
+            etikett = "Ausrüstung",
             titel = "Shop",
-            unterzeile = "Alles Zierde, kein Vorteil im Einsatz — und was die Laufbahn verleiht, " +
+            satz = "Alles Zierde, kein Vorteil im Einsatz — und was die Laufbahn verleiht, " +
                 "bleibt unverkäuflich.",
-            knoepfe = { Marke("${zahl(credits)} Credits", farbe = Farben.AmberHell) },
+            stand = zahl(credits),
+            waehrung = "Credits",
         )
 
         shop.inhalt?.naechsterWechsel?.let { wechsel ->
             SehrLeise("Neues Sortiment ${restzeit(wechsel)}", mono = true)
         }
 
-        Pillenreihe {
+        // Die Reiterreihe des Ladens — senkrecht, alle fünf in einer Zeile (mobil.css,
+        // `.shop-reiter`). Der Kontostand steht nicht auch noch am Reiter: Er steht
+        // eine Handbreit darüber groß im Kopf.
+        Reiterreihe {
             BEREICHE.forEach { (id, wort) ->
-                Pille(
-                    aufschrift = if (id == PREMIUM && premium?.aktiv == true) "$wort ✓" else wort,
-                    an = bereich == id,
+                SenkrechterReiter(
+                    aufschrift = wort,
+                    offen = bereich == id,
                     beiDruck = {
                         bereich = id
                         scharf = null
                     },
-                    zahl = when (id) {
-                        SORTIMENT -> shop.inhalt?.sortiment?.size?.takeIf { it > 0 }
-                        FAHRZEUGE -> gutscheine.takeIf { it > 0 }
+                    zeichen = ShopZeichen.zu(id),
+                    zeichenGold = id == PREMIUM,
+                    ecke = when (id) {
+                        PREMIUM -> "✓".takeIf { premium?.aktiv == true }
+                        SORTIMENT -> shop.inhalt?.sortiment?.size?.takeIf { it > 0 }?.toString()
+                        FAHRZEUGE -> gutscheine.takeIf { it > 0 }?.toString()
                         else -> null
                     },
+                    eckeWarnt = id == FAHRZEUGE,
                 )
             }
         }
-
-        Bereichskopf(bereich)
 
         if (bereich == PREMIUM) {
             Schaufenster(stand, server)
@@ -169,7 +182,7 @@ fun ShopSeite(
             beiErneut = beiLaden,
         ) { s ->
             when (bereich) {
-                UEBERSICHT -> Uebersicht(s, premium, konto, laeuft, beiTagesbonus, beiAusbildung) {
+                UEBERSICHT -> Uebersicht(s, premium, konto, gutscheine, laeuft, beiTagesbonus, beiAusbildung) {
                     bereich = PREMIUM
                 }
                 SORTIMENT -> Sortiment(
@@ -236,23 +249,6 @@ private val BEREICHE = listOf(
     GUTHABEN to "Guthaben",
 )
 
-/** Kennung, Überschrift und Satz über jedem Bereich — dieselben Wörter wie im Web. */
-@Composable
-private fun Bereichskopf(bereich: String) {
-    val (kennung, titel, satz) = when (bereich) {
-        PREMIUM -> Triple("Das Abo", "Dein Auftritt im Dienst", "Alles, was zum Abo gehört – und was es ausdrücklich nicht tut.")
-        SORTIMENT -> Triple("Tagesauswahl", "Zierstücke des Tages", "Acht wechselnde Stücke – kaufen, verschenken oder direkt anlegen.")
-        FAHRZEUGE -> Triple("Autohaus", "Deine nächsten Fahrzeuge", "Tagesangebot, Gutscheine und der vollständige Fahrzeugkatalog.")
-        GUTHABEN -> Triple("Kontobewegungen", "Credits im Blick", "Nachvollziehen, was hereinkam, und Aktionscodes einlösen.")
-        else -> Triple("Dein Shop", "Heute für dich", "Premium, Tagesbonus und Wochenaufträge auf einen Blick.")
-    }
-    Column(verticalArrangement = Arrangement.spacedBy(Abstand.Haar)) {
-        Etikett(kennung)
-        Text(titel, style = Schrift.Titel, color = Farben.Text)
-        Leise(satz)
-    }
-}
-
 // ----------------------------------------------------------------- Übersicht
 
 @Composable
@@ -260,6 +256,7 @@ private fun Uebersicht(
     s: Shop,
     premium: Premiumstand?,
     konto: Konto?,
+    gutscheine: Int,
     laeuft: Boolean,
     beiTagesbonus: () -> Unit,
     beiAusbildung: () -> Unit,
@@ -267,18 +264,77 @@ private fun Uebersicht(
 ) {
     val aktiv = premium?.aktiv == true
 
-    // Premium in der Übersicht: nur der Anreißer. Das Angebot steht im eigenen Bereich.
-    Kasten(marke = aktiv, abstandInnen = Abstand.Klein) {
-        Etikett("Abo")
-        Text("PagerSpass Premium", style = Schrift.Gross, color = Farben.Text)
-        Leise(
-            if (aktiv) {
-                "Läuft auf diesem Konto — hier steht, was alles dazugehört."
-            } else {
-                "Mehr Platz für eigene Alarm- und Ausrückeordnungen, dazu Rahmen, Melder, Muster und " +
-                    "Titel, die es sonst nirgends gibt."
-            },
-        )
+    // Die Tafel: was der Laden heute für dich bereithält, in Zahlen. Die Credits
+    // stehen nicht darauf — sie stehen eine Handbreit darüber im Kopf.
+    val bonusstand = s.tagesbonus
+    val wechsel = s.naechsterWechsel?.let { "neu ${restzeit(it)}" } ?: "wechselt täglich"
+    Kennzahltafel(
+        buildList {
+            add { m: Modifier ->
+                Kennzahlkachel(
+                    "Glücksrad-Serie",
+                    "${bonusstand.serie} ${if (bonusstand.serie == 1) "Tag" else "Tage"}",
+                    if (bonusstand.verfuegbar) "Dein Dreh ist bereit" else "Für heute gedreht",
+                    m,
+                )
+            }
+            add { m: Modifier ->
+                Kennzahlkachel(
+                    "Sortiment",
+                    "${s.sortiment.size} ${if (s.sortiment.size == 1) "Stück" else "Stücke"}",
+                    wechsel,
+                    m,
+                    farbe = Farben.Blau,
+                )
+            }
+            add { m: Modifier ->
+                Kennzahlkachel(
+                    "Fahrzeuggutscheine",
+                    "$gutscheine",
+                    if (gutscheine > 0) "im Autohaus einlösen" else "der nächste mit dem Aufstieg",
+                    m,
+                    farbe = Farben.Gruen,
+                )
+            }
+            if (s.zulagen.deckel > 0) {
+                add { m: Modifier ->
+                    Kennzahlkachel(
+                        "Wochenzulagen",
+                        "${s.zulagen.verbraucht} / ${s.zulagen.deckel}",
+                        "Credits · " + (s.zulagen.naechsterWechsel?.let { wochenrest(it) } ?: "diese Woche"),
+                        m,
+                        farbe = Farben.Violett,
+                    )
+                }
+            }
+        },
+    )
+
+    // Premium in der Übersicht: nur der Anreißer, als Wink mit Amberkante — das
+    // einzige Angebot der Seite, das echtes Geld kostet. Das Angebot steht im eigenen Bereich.
+    Kasten(marke = true, wartet = true, abstandInnen = Abstand.Klein) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(Abstand.Normal),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            androidx.compose.material3.Icon(
+                KontoZeichen.Stern,
+                contentDescription = null,
+                tint = Farben.AmberHell,
+                modifier = Modifier.size(22.dp),
+            )
+            Column(verticalArrangement = Arrangement.spacedBy(Abstand.Haar), modifier = Modifier.weight(1f)) {
+                Text("PagerSpass Premium", style = Schrift.Normal.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold), color = Farben.Text)
+                Leise(
+                    if (aktiv) {
+                        "Läuft auf diesem Konto — hier steht, was alles dazugehört."
+                    } else {
+                        "Mehr Platz für eigene Alarm- und Ausrückeordnungen, dazu Rahmen, Melder, Muster und " +
+                            "Titel, die es sonst nirgends gibt."
+                    },
+                )
+            }
+        }
         Knopf(if (aktiv) "Ansehen" else "Premium ansehen", beiPremium, kompakt = true)
     }
 
@@ -291,7 +347,6 @@ private fun Uebersicht(
             style = Schrift.Gross,
             color = Farben.Text,
         )
-        SehrLeise("Serie: ${bonus.serie} ${if (bonus.serie == 1) "Tag" else "Tage"}")
         SehrLeise("Credits, Fahrzeuggutscheine und als Wachmitglied auch Gemeinschafts-Coins.")
         bonus.felder.forEach { feld ->
             Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Normal), modifier = Modifier.fillMaxWidth()) {
@@ -423,22 +478,21 @@ private fun Schaufenster(stand: Kontostand, server: String) {
         return
     }
 
-    Kasten(abstandInnen = Abstand.Winzig) {
-        Etikett("Platz im Abo")
-        Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Normal), modifier = Modifier.fillMaxWidth()) {
-            listOf(
-                premium.grenzen.aaoVorlagen to "AAO-Vorlagen",
-                premium.grenzen.szenarien to "Szenarien",
-                premium.grenzen.rundenvorlagen to "Runden­vorlagen",
-                premium.grenzen.leitstellen to "Leitstellen",
-            ).forEach { (wert, was) ->
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(zahl(wert), style = Schrift.MonoNormal.copy(fontSize = Schrift.TITEL), color = Farben.Amber)
-                    SehrLeise(was)
-                }
-            }
-        }
-    }
+    // Der Umfang in vier Zahlen — zwischen Bühne und Vitrine, als Tafel wie in der
+    // Übersicht: oben, was Premium ist, unten liegt es ausgelegt.
+    val katalog = de.pagerspass.pagerspass.melder.Melderkatalog
+    val rahmenZahl = de.pagerspass.pagerspass.ui.schmuck.Schmuck.RAHMEN.count { it.premium }
+    val musterZahl = de.pagerspass.pagerspass.ui.schmuck.Schmuck.KOPFMUSTER.count { it.premium }
+    // Bauformen, dazu acht Funkgerätegehäuse, sechs Schichtkarten, sechs Titel — wie im Web.
+    val weitere = katalog.BAUFORMEN.count { it.premium } + 8 + 6 + 6
+    Kennzahltafel(
+        listOf(
+            { m -> Kennzahlkachel("Melder", "${katalog.GESICHTER.count { it.premium }}", "Gesichter fürs Gerät", m) },
+            { m -> Kennzahlkachel("Alarmtöne", "${katalog.TOENE.count { it.premium }}", "voller, nicht lauter", m, farbe = Farben.Violett) },
+            { m -> Kennzahlkachel("Schmuck", "${rahmenZahl + musterZahl}", "$rahmenZahl Rahmen · $musterZahl Muster", m, farbe = Farben.Blau) },
+            { m -> Kennzahlkachel("Weiteres", "$weitere", "Geräte, Karten, Titel", m, farbe = Farben.Gruen) },
+        ),
+    )
 
     Vitrine()
 
@@ -450,7 +504,7 @@ private fun Schaufenster(stand: Kontostand, server: String) {
         }
     }
 
-    Abschnitt("Die Pläne") {
+    Abschnitt(if (aktiv || offen) "Dein Abo" else "Pläne") {
         when {
             aktiv -> Kasten(abstandInnen = Abstand.Klein) {
                 Text("Danke — Premium läuft auf diesem Konto.", style = Schrift.Gross, color = Farben.Text)
@@ -823,3 +877,91 @@ private fun zeitpunktAus(iso: String): Instant =
 
 /** Tag und Monat — „24.09." für den Auszug. */
 private fun tagKurz(iso: String): String = tag(iso).take(6)
+
+/** Die Zeichen der Reiterreihe des Ladens — dieselben Pfade wie in `ShopView.vue`. */
+private object ShopZeichen {
+    val Uebersicht = strich(
+        "shop-uebersicht",
+        "M4 3h5a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z",
+        "M15 3h5a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1h-5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z",
+        "M4 14h5a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-5a1 1 0 0 1 1-1Z",
+        "M15 14h5a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1h-5a1 1 0 0 1-1-1v-5a1 1 0 0 1 1-1Z",
+    )
+    val Sortiment = strich("shop-sortiment", "M4 8h16l-1 13H5L4 8Z", "M8 8V6a4 4 0 0 1 8 0v2")
+    val Fahrzeuge = strich(
+        "shop-fahrzeuge",
+        "M3 15V9l3-4h10l4 4v6",
+        "M3 12h17M7 15v3M17 15v3",
+        "M5 15a2 2 0 1 0 4 0 2 2 0 1 0-4 0",
+        "M15 15a2 2 0 1 0 4 0 2 2 0 1 0-4 0",
+    )
+    val Guthaben = strich(
+        "shop-guthaben",
+        "M3 6h15a2 2 0 0 1 2 2v11H5a2 2 0 0 1-2-2V6Z",
+        "M3 6l12-3v3M15 11h6v5h-6a2.5 2.5 0 0 1 0-5Z",
+    )
+
+    fun zu(bereich: String) = when (bereich) {
+        PREMIUM -> KontoZeichen.Stern
+        SORTIMENT -> Sortiment
+        FAHRZEUGE -> Fahrzeuge
+        GUTHABEN -> Guthaben
+        else -> Uebersicht
+    }
+}
+
+/**
+ * Der Eingang des Ladens — `ShopPortal.vue` in der Handy-Fassung: Etikett und Name
+ * links, die Kasse rechts als eigene Kachel, der Satz unter beiden. Am Handy der
+ * Kopf des Tablets statt eines goldenen Bands (mobil.css, `.portal`); die Kasse
+ * bleibt amber — sie ist die Zahl, um die es geht.
+ */
+@Composable
+internal fun Ladenportal(etikett: String, titel: String, satz: String, stand: String, waehrung: String) {
+    Column(
+        verticalArrangement = Arrangement.spacedBy(Abstand.Klein),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(de.pagerspass.pagerspass.ui.theme.Rundung.Normal)
+            .background(
+                androidx.compose.ui.graphics.Brush.linearGradient(listOf(Farben.FlaecheHoch, Farben.Flaeche)),
+            )
+            .border(1.dp, Farben.Rand, de.pagerspass.pagerspass.ui.theme.Rundung.Normal)
+            .padding(horizontal = Abstand.Normal, vertical = Abstand.Gross),
+    ) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(Abstand.Normal),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(Abstand.Haar), modifier = Modifier.weight(1f)) {
+                Etikett(etikett)
+                Text(
+                    titel,
+                    style = Schrift.Schlagzeile.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.ExtraBold),
+                    color = Farben.Text,
+                )
+            }
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(Abstand.Haar),
+                modifier = Modifier
+                    .background(Farben.BgTief.copy(alpha = 0.7f), de.pagerspass.pagerspass.ui.theme.Rundung.Klein)
+                    .border(1.dp, Farben.AmberTief, de.pagerspass.pagerspass.ui.theme.Rundung.Klein)
+                    .padding(horizontal = Abstand.Gross, vertical = Abstand.Normal),
+            ) {
+                Text(
+                    stand,
+                    style = Schrift.Schlagzeile.copy(
+                        fontFamily = Schrift.Mono,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.ExtraBold,
+                        lineHeight = Schrift.SCHLAGZEILE,
+                    ),
+                    color = Farben.Amber,
+                    maxLines = 1,
+                )
+                Text(waehrung.uppercase(), style = Schrift.Etikett.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Normal), color = Farben.TextLeise)
+            }
+        }
+        Text(satz, style = Schrift.Klein, color = Farben.TextLeise)
+    }
+}

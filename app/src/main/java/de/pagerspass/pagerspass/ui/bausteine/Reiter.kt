@@ -2,6 +2,8 @@ package de.pagerspass.pagerspass.ui.bausteine
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.defaultMinSize
@@ -131,5 +133,92 @@ fun RowScope.Reiter(
         // stünde sie bei gleich breiten Spalten weit entfernt von dem, was sie
         // zählt.
         if (marke > 0) Markenzahl(marke)
+    }
+}
+
+/**
+ * Der senkrechte Reiter — Zeichen über dem Wort, die Zahl in der Ecke.
+ *
+ * Die Reiterreihe des Ladens am Handy (`#app .shop-reiter` in mobil.css): Fünf
+ * Reiter waagrecht brauchten drei Zeilen; senkrecht gestellt passen alle fünf
+ * nebeneinander, 390 durch fünf sind 78 Punkte. Die Zahl wandert in die Ecke wie
+ * die Marken der Tableiste — in einer senkrechten Zelle nähme sie sonst eine
+ * dritte Zeile.
+ *
+ * @param ecke Was oben rechts steht — eine Anzahl, ein Haken. Leise und neutral,
+ *   nicht rot wie `marke`: Sie zählt, sie mahnt nicht.
+ * @param eckeWarnt Ob die Ecke in Amber steht (offene Gutscheine).
+ * @param zeichenGold Der eine Weg mit Ton (Premium) — nur das Zeichen ist golden,
+ *   nicht die Aufschrift; sonst gäbe es zwei Reiter, die offen aussehen.
+ */
+@Composable
+fun RowScope.SenkrechterReiter(
+    aufschrift: String,
+    offen: Boolean,
+    beiDruck: () -> Unit,
+    zeichen: ImageVector,
+    modifier: Modifier = Modifier,
+    ecke: String? = null,
+    eckeWarnt: Boolean = false,
+    zeichenGold: Boolean = false,
+) {
+    val farbe = if (offen) Farben.Text else Farben.TextLeise
+    Box(
+        modifier = modifier
+            .weight(1f)
+            .defaultMinSize(minHeight = Ziel.Normal)
+            .clickable(
+                onClick = beiDruck,
+                role = Role.Tab,
+                indication = null,
+                interactionSource = null,
+            )
+            .drawBehind {
+                if (!offen) return@drawBehind
+                drawRect(Farben.FlaecheAktiv)
+                val balken = 2.dp.toPx()
+                drawLine(
+                    color = Farben.Amber,
+                    start = Offset(0f, size.height - balken / 2f),
+                    end = Offset(size.width, size.height - balken / 2f),
+                    strokeWidth = balken,
+                )
+            },
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(Abstand.Winzig, Alignment.CenterVertically),
+            modifier = Modifier
+                .align(Alignment.Center)
+                .padding(horizontal = Abstand.Haar, vertical = Abstand.Klein),
+        ) {
+            Icon(
+                imageVector = zeichen,
+                contentDescription = null,
+                tint = if (zeichenGold) Farben.AmberHell else farbe,
+                modifier = Modifier.size(19.dp),
+            )
+            Text(
+                text = aufschrift,
+                style = Schrift.Winzig.copy(fontWeight = if (offen) FontWeight.Bold else FontWeight.Normal),
+                color = farbe,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        if (ecke != null) {
+            Text(
+                text = ecke,
+                style = Schrift.MonoKlein.copy(fontSize = Schrift.WINZIG, fontWeight = FontWeight.SemiBold),
+                color = when {
+                    eckeWarnt -> Farben.AmberHell
+                    offen -> Farben.Text
+                    else -> Farben.TextSehrLeise
+                },
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = Abstand.Haar, end = Abstand.Winzig),
+            )
+        }
     }
 }
