@@ -316,6 +316,11 @@ data class Spieler(
      * Streamer-Modus immer `true` — dann gibt es nichts zu erlauben.
      */
     val streamerfreigabe: Boolean = true,
+    /**
+     * Ob dieser Platz den Lehrgang „Sprechfunk" hat — `null` am älteren Server, dann
+     * gilt keine Sperre (`Funkberechtigung` am Server, Web v6).
+     */
+    val funkschein: Boolean? = null,
 ) {
     val istLeitstelle: Boolean get() = role == "Leitstelle"
     val istBesatzung: Boolean get() = role == "Fahrzeugbesatzung"

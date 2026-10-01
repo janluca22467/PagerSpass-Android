@@ -84,7 +84,7 @@ class Raumbefehle internal constructor(
     // Je Leitung ein eigener Lautsprecher: Funk und Telefon teilen sich sonst
     // denselben Abspielzeiger, und ein Anrufer spräche in den Draht hinein.
     private val drahtOhr = Lautsprecher()
-    private val stellenOhr = Lautsprecher()
+    private val stellenOhr = Lautsprecher { Tonstand.dmo() }
     private val telefonOhr = Lautsprecher()
     private val einzelrufOhr = Lautsprecher()
 
@@ -931,6 +931,50 @@ class Raumbefehle internal constructor(
     /** Die bei der Einsatzleitung gesammelten Nachforderungen gebündelt an die Leitstelle. */
     fun nachforderungenWeiterreichen(incidentId: String, zweig: String) =
         leitung.rufen("NachforderungenWeiterreichen", wert(incidentId), wert(zweig))
+
+    // ------------------------------------------------ seit Web v6: Fahrzeug
+
+    /**
+     * MANV: einem Patienten ein Rettungsmittel oder einen Notarzt zuteilen —
+     * `PatientBehandlerZuweisen`. `null` nimmt den Platz wieder weg.
+     */
+    fun patientBehandlerZuweisen(incidentId: String, patientId: String, vehicleId: String?, notarzt: Boolean) =
+        leitung.rufen("PatientBehandlerZuweisen", wert(incidentId), wert(patientId), opt(vehicleId), wert(notarzt))
+
+    private val _begleiterGekoppelt = MutableStateFlow(false)
+
+    /**
+     * Ob an diesem Platz gerade ein Funkbegleiter hängt (Ereignis `BegleiterStatus`).
+     * Steht neben `neben`, weil es nur der Knopf im Fahrzeugkopf liest.
+     */
+    val begleiterGekoppelt: StateFlow<Boolean> = _begleiterGekoppelt.asStateFlow()
+
+    init {
+        leitung.auf("BegleiterStatus") { a ->
+            val id = a.getOrNull(0)?.let { text(it) } ?: return@auf
+            val aktiv = (a.getOrNull(1) as? JsonPrimitive)?.content?.toBooleanStrictOrNull() ?: return@auf
+            bereich.launch {
+                val selbst = ich ?: runCatching { eigeneKennung() }.getOrNull()
+                if (id == selbst) _begleiterGekoppelt.value = aktiv
+            }
+        }
+    }
+
+    /** Nach dem Öffnen des Dialogs fragen — frühere Statusmeldungen kennt nur der Server. */
+    fun begleiterStandFragen() = bereich.launch {
+        val antwort = runCatching { leitung.frage("BegleiterGekoppelt") }.getOrNull()
+        (antwort as? JsonPrimitive)?.content?.toBooleanStrictOrNull()?.let { _begleiterGekoppelt.value = it }
+    }
+
+    /**
+     * Einen Zugang für den Funkbegleiter erzeugen — das Token für den QR-Code.
+     * Wirft mit dem Satz des Servers, wenn er ablehnt (z. B. ohne Premium).
+     */
+    suspend fun funkbegleiterErzeugen(code: String, geraete: de.pagerspass.pagerspass.netz.Begleitergeraete): String {
+        val kennung = eigeneKennung() ?: error("Nicht angemeldet.")
+        val w = wege ?: error("Keine Verbindung.")
+        return w.funkbegleiter(kennung, code, geraete).token
+    }
 
     // ------------------------------------------------------------- Werkzeug
 

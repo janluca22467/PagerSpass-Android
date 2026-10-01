@@ -55,9 +55,9 @@ import kotlin.math.roundToInt
  * dieselbe Lage. Er zeigt sich nur einer Feuerwehrbesatzung mit Status 4 an einer
  * Lage, für die der Server eine Simulation führt.
  *
- * <b>Bewusst anders als im Web: das Lagebild.</b> `FwLagebild.vue` zeichnet das
- * Gebäude als Schnitt; am Handy stehen die Bereiche als Kacheln mit Feuer- und
- * Rauchbalken — dieselbe Auskunft, dieselbe Wahl per Antippen.
+ * <b>Das Lagebild ist gezeichnet</b> wie in `FwLagebild.vue` — Haus im Schnitt,
+ * Fahrzeug von der Seite, Fläche mit Wind (siehe `FwLagebild.kt`). Angetippt wird
+ * der Bereich in der Zeichnung; was man über ihn weiß, steht darunter.
  */
 
 private val ART = mapOf(
@@ -242,53 +242,13 @@ private fun ColumnScope.FwsimBogen(einsatzId: String, lage: Fwlage, meins: Runde
     }
 
     // ---------------------------------------------------------------- Lagebild
+    FwLagebild(
+        lage = lage,
+        gewaehlt = bereichId,
+        meinFahrzeugId = mein?.vehicleId,
+        beiWahl = { id -> bereichId = if (bereichId == id && truppId == null) null else id },
+    )
     Text(lage.lagebild, style = Schrift.Klein, color = Farben.TextLeise)
-    FlowRow(
-        horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
-        verticalArrangement = Arrangement.spacedBy(Abstand.Klein),
-        maxItemsInEachRow = 2,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        lage.bereiche.sortedByDescending { it.ebene }.forEach { b ->
-            val an = b.id == bereichId
-            Column(
-                verticalArrangement = Arrangement.spacedBy(Abstand.Haar),
-                modifier = Modifier
-                    .weight(1f)
-                    .defaultMinSize(minHeight = 56.dp)
-                    .flaeche(
-                        farbe = if (an) Farben.FlaecheAktiv else Farben.FlaecheHoch,
-                        randfarbe = when {
-                            an -> Farben.Amber
-                            (b.feuer ?: 0.0) > 0 -> Farben.Signal.copy(alpha = 0.6f)
-                            else -> Farben.Rand
-                        },
-                        ecke = 9.dp,
-                        mitLichtkante = false,
-                    )
-                    .clickable(role = Role.Tab, indication = null, interactionSource = null) {
-                        bereichId = if (bereichId == b.id && truppId == null) null else b.id
-                    }
-                    .padding(Abstand.Klein),
-            ) {
-                Text(b.name, style = Schrift.Klein.copy(fontWeight = FontWeight.SemiBold), color = Farben.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Laufbalken(((b.feuer ?: 0.0) / 100).toFloat(), farbe = Farben.Signal)
-                Laufbalken((b.rauch / 100).toFloat(), farbe = Farben.TextSehrLeise)
-                val leute = meineTrupps.count { it.bereichId == b.id } + andereTrupps.count { it.bereichId == b.id }
-                Text(
-                    listOfNotNull(
-                        if (!b.erkundet) "nicht erkundet" else null,
-                        b.vermisste?.takeIf { it > 0 }?.let { "$it vermisst" },
-                        if (leute > 0) "$leute Trupp" + (if (leute > 1) "s" else "") else null,
-                        if (b.kontrolliert) "kalt" else null,
-                    ).joinToString(" · ").ifBlank { " " },
-                    style = Schrift.Winzig,
-                    color = Farben.TextSehrLeise,
-                    maxLines = 1,
-                )
-            }
-        }
-    }
 
     if (bereich != null) {
         Column(

@@ -99,6 +99,11 @@ fun ColumnScope.ManvKasten(
     beiTransport: (String) -> Unit,
     beiVerstorbene: () -> Unit,
     beiTriage: () -> Unit,
+    /**
+     * Wer einen Patienten behandelt — Patient, Fahrzeug (`null` = niemand), Notarztplatz.
+     * Fehlt der Griff, fehlen die beiden Felder (v6, `PatientBehandlerZuweisen`).
+     */
+    beiBehandler: ((String, String?, Boolean) -> Unit)? = null,
 ) {
     if (!einsatz.manv) return
 
@@ -200,6 +205,7 @@ fun ColumnScope.ManvKasten(
                     beiTransportmittel = { beiTransportmittel(p.id, it) },
                     beiZielklinik = { beiZielklinik(p.id, it) },
                     beiTransport = { beiTransport(p.id) },
+                    beiBehandler = beiBehandler?.let { b -> { f: String?, na: Boolean -> b(p.id, f, na) } },
                 )
             }
         }
@@ -217,8 +223,11 @@ private fun Patientenzeile(
     beiTransportmittel: (String?) -> Unit,
     beiZielklinik: (String?) -> Unit,
     beiTransport: () -> Unit,
+    beiBehandler: ((String?, Boolean) -> Unit)? = null,
 ) {
     var ortwahl by remember { mutableStateOf(false) }
+    // Welcher Behandlerplatz gerade gewählt wird: `false` Rettungsmittel, `true` Notarzt.
+    var behandlerwahl by remember { mutableStateOf<Boolean?>(null) }
     var klinikwahl by remember { mutableStateOf(false) }
     val schwarz = patient.kategorie == "Schwarz"
     val transportfahrzeug = raum.vehicles.firstOrNull { it.id == patient.transportVehicleId }
@@ -260,6 +269,29 @@ private fun Patientenzeile(
                     art = Knopfart.Leise,
                     kompakt = true,
                 )
+            }
+            // Wer ihn behandelt: ein Rettungsmittel, und ein Notarzt, wenn einer da ist.
+            if (beiBehandler != null) {
+                val (rd, na) = behandelnde(einsatz, raum)
+                Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
+                    Knopf(
+                        aufschrift = patient.behandler ?: "— unbehandelt —",
+                        beiDruck = { behandlerwahl = false },
+                        art = Knopfart.Leise,
+                        kompakt = true,
+                    )
+                    if (na.isNotEmpty() || patient.notarztVehicleId != null) {
+                        Knopf(
+                            aufschrift = patient.notarzt?.let { "NA $it" } ?: "— kein NA —",
+                            beiDruck = { behandlerwahl = true },
+                            art = Knopfart.Leise,
+                            kompakt = true,
+                        )
+                    }
+                }
+                if (rd.isEmpty() && na.isEmpty()) SehrLeise("Kein Rettungsmittel in Status 4 oder 7 an der Lage.")
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
                 if (sichtungFertig &&
                     patient.transportVehicleId != null &&
                     patient.zielklinikId != null &&
@@ -308,6 +340,25 @@ private fun Patientenzeile(
         )
     }
 
+    behandlerwahl?.let { notarzt ->
+        val (rd, na) = behandelnde(einsatz, raum)
+        val liste = if (notarzt) na else rd
+        Wahlblende(
+            titel = if (notarzt) "Notarzt für P-$nummer" else "Behandlung von P-$nummer",
+            gruppen = listOf(null to (listOf<String?>(null) + liste.map { it.id })),
+            aufschrift = { id ->
+                id?.let { f -> raum.vehicles.firstOrNull { it.id == f }?.funkrufname ?: f }
+                    ?: if (notarzt) "— kein NA —" else "— unbehandelt —"
+            },
+            gewaehlt = if (notarzt) patient.notarztVehicleId else patient.behandlerVehicleId,
+            beiWahl = {
+                beiBehandler?.invoke(it, notarzt)
+                behandlerwahl = null
+            },
+            beiSchliessen = { behandlerwahl = null },
+        )
+    }
+
     if (klinikwahl) {
         Wahlblende(
             titel = "Zielklinik für P-$nummer",
@@ -325,4 +376,17 @@ private fun Patientenzeile(
             suchbar = raum.kliniken.size > 8,
         )
     }
+}
+
+/**
+ * Wer an der Stelle behandeln kann: die Rettungsmittel dieser Lage in Status 4 oder 7,
+ * getrennt nach Rettungsmittel- und Notarztplatz — je Patient einer von beiden
+ * (Server: `Patientenbehandlung`). Die Einsatzleitung teilt beim Massenanfall zu.
+ */
+private fun behandelnde(einsatz: Einsatz, raum: Raumzustand): Pair<List<Rundenfahrzeug>, List<Rundenfahrzeug>> {
+    val vorOrt = raum.vehicles.filter {
+        it.einsatzId == einsatz.id && it.organisation == "Rettungsdienst" && (it.status == 4 || it.status == 7)
+    }
+    val istNa = { f: Rundenfahrzeug -> f.faehigkeiten.any { it.equals("Notarzt", ignoreCase = true) } }
+    return vorOrt.filterNot(istNa) to vorOrt.filter(istNa)
 }

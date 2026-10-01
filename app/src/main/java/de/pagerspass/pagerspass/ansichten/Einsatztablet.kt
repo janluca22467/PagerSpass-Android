@@ -3,6 +3,7 @@ package de.pagerspass.pagerspass.ansichten
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,10 +29,20 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
@@ -317,6 +328,7 @@ private fun Tablet(lage: Tabletlage, jetzt: Long, manv: ManvGriffe, befehle: Rau
                             beiTransport = { p -> manv.transport(einsatz.id, p) },
                             beiVerstorbene = { manv.verstorbene(einsatz.id) },
                             beiTriage = { manv.triage(einsatz.id) },
+                            beiBehandler = { p, f, na -> befehle.patientBehandlerZuweisen(einsatz.id, p, f, na) },
                         )
                         Tabletseite.Raum -> TabletRaum(lage, befehle)
                         Tabletseite.Funk -> TabletFunk(lage, befehle)
@@ -696,6 +708,47 @@ private fun ColumnScope.TabletStruktur(lage: Tabletlage, manv: ManvGriffe, befeh
     var auftragWahl by remember { mutableStateOf<String?>(null) }
     val g = lage.kraefte.firstOrNull { it.id == gewaehlt }
 
+    // ------------------------------------------------------------ Ziehen
+    // Lange drücken und in einen Abschnitt ziehen — wie die Karten im Web-Tablet.
+    // Das Antippen mit der Zielwahl darunter bleibt als zweiter Weg: Am Handy ist
+    // Ziehen in einer langen, rollenden Liste nicht jedermanns Sache.
+    var ziehend by remember(e.id) { mutableStateOf<String?>(null) }
+    var zug by remember { mutableStateOf(Offset.Zero) }
+    var zeiger by remember { mutableStateOf(Offset.Zero) }
+    val zielflaechen = remember(e.id) { mutableStateMapOf<String, Rect>() }
+    val kartenorte = remember(e.id) { mutableStateMapOf<String, Offset>() }
+    val unterZeiger = if (ziehend != null) zielflaechen.entries.firstOrNull { it.value.contains(zeiger) }?.key else null
+
+    /** Wohin eine Kraft gehen kann: `ohne`, `ea:<Name>` oder `br`. */
+    fun moeglich(f: Rundenfahrzeug, ziel: String): Boolean {
+        val haelt = lage.haelt(f.funkrufname)
+        val abschnitt = lage.abschnittVon(f.funkrufname)
+        return when {
+            ziel == "ohne" -> abschnitt != null || haelt
+            ziel.startsWith("ea:") -> abschnitt != ziel.removePrefix("ea:") || haelt
+            ziel == "br" -> e.bereitstellungsraum && f.status == 4 && f.id != lage.meins.id && !haelt
+            else -> false
+        }
+    }
+
+    fun umsetzen(f: Rundenfahrzeug, ziel: String) {
+        if (!moeglich(f, ziel)) return
+        val haelt = lage.haelt(f.funkrufname)
+        when {
+            ziel == "ohne" -> {
+                if (haelt) befehle.bereitstellungSetzen(e.id, f.id, false)
+                if (lage.abschnittVon(f.funkrufname) != null) manv.abschnittZuteilen(e.id, f.id, null, zweig)
+            }
+            ziel.startsWith("ea:") -> {
+                if (haelt) befehle.bereitstellungSetzen(e.id, f.id, false)
+                manv.abschnittZuteilen(e.id, f.id, ziel.removePrefix("ea:"), zweig)
+            }
+            ziel == "br" -> befehle.bereitstellungSetzen(e.id, f.id, true)
+        }
+    }
+    val umsetzenJetzt by rememberUpdatedState(::umsetzen)
+    val kraefteJetzt by rememberUpdatedState(lage.kraefte)
+
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.fillMaxWidth().flaeche(randfarbe = Farben.AmberTief).padding(Abstand.Normal),
@@ -726,11 +779,38 @@ private fun ColumnScope.TabletStruktur(lage: Tabletlage, manv: ManvGriffe, befeh
         }
     }
 
-    SehrLeise(if (g != null) "${kennungVon(g)} gewählt · Ziel unten wählen." else "Fahrzeug antippen, dann unten das Ziel wählen.")
+    SehrLeise(
+        when {
+            ziehend != null -> "Loslassen über dem Ziel."
+            g != null -> "${kennungVon(g)} gewählt · Ziel unten wählen."
+            else -> "Fahrzeug antippen und unten das Ziel wählen — oder lange drücken und in einen Abschnitt ziehen."
+        },
+    )
 
     @Composable
-    fun Spalte(titel: String, nummer: String?, liste: List<Rundenfahrzeug>, leer: String, beiUmbenennen: (() -> Unit)? = null) {
-        Kasten(innenraum = Abstand.Klein, abstandInnen = Abstand.Winzig) {
+    fun Spalte(schluessel: String, titel: String, nummer: String?, liste: List<Rundenfahrzeug>, leer: String, beiUmbenennen: (() -> Unit)? = null) {
+        val gezogen = lage.kraefte.firstOrNull { it.id == ziehend }
+        val nimmtAn = gezogen != null && moeglich(gezogen, schluessel)
+        Kasten(
+            innenraum = Abstand.Klein,
+            abstandInnen = Abstand.Winzig,
+            modifier = Modifier
+                .onGloballyPositioned { zielflaechen[schluessel] = it.boundsInRoot() }
+                // Die Spalte mit der gezogenen Karte liegt oben — sonst glitte die Karte
+                // unter die nächste Spalte.
+                .zIndex(if (liste.any { it.id == ziehend }) 1f else 0f)
+                .then(
+                    if (nimmtAn) {
+                        Modifier.border(
+                            if (unterZeiger == schluessel) 2.dp else 1.dp,
+                            if (unterZeiger == schluessel) Farben.Amber else Farben.AmberTief,
+                            Rundung.Normal,
+                        )
+                    } else {
+                        Modifier
+                    },
+                ),
+        ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
                 nummer?.let { Text(it, style = Schrift.Winzig.copy(fontFamily = Schrift.Mono, fontWeight = FontWeight.Bold), color = Farben.Amber) }
                 Text(titel, style = Schrift.Klein.copy(fontWeight = FontWeight.Bold), color = Farben.Text, modifier = Modifier.weight(1f))
@@ -751,6 +831,42 @@ private fun ColumnScope.TabletStruktur(lage: Tabletlage, manv: ManvGriffe, befeh
                             ecke = 9.dp,
                             mitLichtkante = false,
                         )
+                        .onGloballyPositioned { kartenorte[f.id] = it.positionInRoot() }
+                        .zIndex(if (ziehend == f.id) 1f else 0f)
+                        .graphicsLayer {
+                            if (ziehend == f.id) {
+                                translationX = zug.x
+                                translationY = zug.y
+                                shadowElevation = 12f
+                                alpha = 0.94f
+                            }
+                        }
+                        .pointerInput(f.id) {
+                            detectDragGesturesAfterLongPress(
+                                onDragStart = { o ->
+                                    ziehend = f.id
+                                    gewaehlt = null
+                                    zug = Offset.Zero
+                                    zeiger = (kartenorte[f.id] ?: Offset.Zero) + o
+                                },
+                                onDrag = { aenderung, weg ->
+                                    aenderung.consume()
+                                    zug += weg
+                                    zeiger += weg
+                                },
+                                onDragEnd = {
+                                    val ziel = zielflaechen.entries.firstOrNull { it.value.contains(zeiger) }?.key
+                                    val kraft = kraefteJetzt.firstOrNull { it.id == ziehend }
+                                    if (ziel != null && kraft != null) umsetzenJetzt(kraft, ziel)
+                                    ziehend = null
+                                    zug = Offset.Zero
+                                },
+                                onDragCancel = {
+                                    ziehend = null
+                                    zug = Offset.Zero
+                                },
+                            )
+                        }
                         .clickable(role = Role.Button) { gewaehlt = if (gewaehlt == f.id) null else f.id }
                         .padding(horizontal = Abstand.Klein, vertical = Abstand.Winzig),
                 ) {
@@ -770,9 +886,9 @@ private fun ColumnScope.TabletStruktur(lage: Tabletlage, manv: ManvGriffe, befeh
         }
     }
 
-    Spalte("Ohne Abschnitt", null, lage.kraefte.filter { lage.abschnittVon(it.funkrufname) == null && !lage.haelt(it.funkrufname) }, "Alle Kräfte sind eingeteilt.")
+    Spalte("ohne", "Ohne Abschnitt", null, lage.kraefte.filter { lage.abschnittVon(it.funkrufname) == null && !lage.haelt(it.funkrufname) }, "Alle Kräfte sind eingeteilt.")
     lage.abschnitte.forEachIndexed { i, a ->
-        Spalte(a.name, "EA ${i + 1}", lage.kraefte.filter { lage.abschnittVon(it.funkrufname) == a.name && !lage.haelt(it.funkrufname) }, "Noch niemand eingeteilt.") {
+        Spalte("ea:${a.name}", a.name, "EA ${i + 1}", lage.kraefte.filter { lage.abschnittVon(it.funkrufname) == a.name && !lage.haelt(it.funkrufname) }, "Noch niemand eingeteilt.") {
             umbenennen = a.name
             neuerName = a.name
         }
@@ -797,38 +913,23 @@ private fun ColumnScope.TabletStruktur(lage: Tabletlage, manv: ManvGriffe, befeh
         }
     }
     if (e.bereitstellungsraum) {
-        Spalte("Bereitstellungsraum", null, lage.kraefte.filter { lage.haelt(it.funkrufname) }, "Niemand hält im BR. Nur Kräfte in Status 4 lassen sich hineinstellen.")
+        Spalte("br", "Bereitstellungsraum", null, lage.kraefte.filter { lage.haelt(it.funkrufname) }, "Niemand hält im BR. Nur Kräfte in Status 4 lassen sich hineinstellen.")
     }
 
     // Die Ziele der gewählten Karte — am Handy unten statt Ziehen.
     if (g != null) {
-        val eigen = g.id == lage.meins.id
-        val ziele = buildList<Pair<String, () -> Unit>> {
-            if (lage.abschnittVon(g.funkrufname) != null || lage.haelt(g.funkrufname)) {
-                add("Ohne Abschnitt" to {
-                    if (lage.haelt(g.funkrufname)) befehle.bereitstellungSetzen(e.id, g.id, false)
-                    if (lage.abschnittVon(g.funkrufname) != null) manv.abschnittZuteilen(e.id, g.id, null, zweig)
-                })
-            }
-            lage.abschnitte.forEachIndexed { i, a ->
-                if (lage.abschnittVon(g.funkrufname) != a.name || lage.haelt(g.funkrufname)) {
-                    add("EA ${i + 1} · ${a.name}" to {
-                        if (lage.haelt(g.funkrufname)) befehle.bereitstellungSetzen(e.id, g.id, false)
-                        manv.abschnittZuteilen(e.id, g.id, a.name, zweig)
-                    })
-                }
-            }
-            if (e.bereitstellungsraum && g.status == 4 && !eigen && !lage.haelt(g.funkrufname)) {
-                add("Bereitstellungsraum" to { befehle.bereitstellungSetzen(e.id, g.id, true) })
-            }
-        }
+        val ziele = buildList {
+            add("ohne" to "Ohne Abschnitt")
+            lage.abschnitte.forEachIndexed { i, a -> add("ea:${a.name}" to "EA ${i + 1} · ${a.name}") }
+            add("br" to "Bereitstellungsraum")
+        }.filter { moeglich(g, it.first) }
         Tabletkarte(null, null) {
             Text("${kennungVon(g)} umsetzen nach", style = Schrift.Klein.copy(fontWeight = FontWeight.Bold), color = Farben.Text)
             if (ziele.isEmpty()) SehrLeise("Kein Ziel frei.")
             Pillenreihe {
-                ziele.forEach { (name, tun) ->
+                ziele.forEach { (ziel, name) ->
                     Pille(name, an = false, beiDruck = {
-                        tun()
+                        umsetzen(g, ziel)
                         gewaehlt = null
                     })
                 }

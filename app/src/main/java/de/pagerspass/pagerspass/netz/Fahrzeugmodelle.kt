@@ -297,6 +297,13 @@ data class Fwstoff(
     val leck: Double? = null,
     val ausbreitung: Double = 0.0,
     val erkannt: Boolean = false,
+    // ------------------------------------------ seit Web 5.0.0.26 (v6), fürs Lagebild
+    /** Absperrradius in Metern — `null`, solange niemand abgesperrt hat. */
+    val absperrung: Double? = null,
+    /** Ob der Kanal abgedichtet ist (Gully zu). */
+    val aufgefangen: Boolean = false,
+    val dekon: Boolean = false,
+    val gewaesserErreicht: Boolean = false,
 )
 
 @Serializable
@@ -339,4 +346,11 @@ data class Fwlage(
     val bericht: Fwbericht? = null,
     /** Wann der Server diesen Stand gerechnet hat. */
     val stand: String = "",
+    // ------------------------------------------ seit Web 5.0.0.26 (v6), fürs Lagebild
+    /** Woher der Wind weht, in Grad — dreht die Abschnitte der Fläche. */
+    val wind: Double = 0.0,
+    /** Der Abschnitt, an dem die Fläche gerade am schnellsten läuft. */
+    val front: String? = null,
+    val hektar: Double = 0.0,
+    val hochvolt: Boolean = false,
 )

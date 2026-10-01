@@ -143,10 +143,10 @@ private fun Einzelrufleiste(
     val ausgehend = raum.einzelrufe.firstOrNull { it.klingelt && it.vonPlayerId == ich }
 
     when {
-        laufend != null -> LaufenderEinzelruf(laufend, neben, ich, befehle)
+        laufend != null -> LaufenderEinzelruf(laufend, neben, ich, befehle, raum.vehicles)
 
         eingehend != null -> Rufzeile(
-            titel = eingehend.vonName,
+            titel = funkanzeige(eingehend.vonName, raum.vehicles),
             unter = "Einzelruf",
             punkt = Farben.GruenHell,
         ) {
@@ -155,7 +155,7 @@ private fun Einzelrufleiste(
         }
 
         ausgehend != null -> Rufzeile(
-            titel = ausgehend.zielName,
+            titel = funkanzeige(ausgehend.zielName, raum.vehicles),
             unter = "wird gerufen …",
             punkt = Farben.AmberHell,
         ) {
@@ -203,8 +203,10 @@ private fun LaufenderEinzelruf(
     neben: Raumneben,
     ich: String,
     befehle: Raumbefehle,
+    fahrzeuge: List<de.pagerspass.pagerspass.netz.Rundenfahrzeug> = emptyList(),
 ) {
-    val gegenstelle = if (ruf.vonPlayerId == ich) ruf.zielName else ruf.vonName
+    // Namen in der eingestellten Fahrzeugkennung (siehe `funkanzeige`, v6).
+    val gegenstelle = funkanzeige(if (ruf.vonPlayerId == ich) ruf.zielName else ruf.vonName, fahrzeuge)
     var satz by remember(ruf.id) { mutableStateOf("") }
 
     // Die Gesprächsdauer — eine eigene Uhr, der Server schickt keine Sekunden.
@@ -248,7 +250,7 @@ private fun LaufenderEinzelruf(
             } else {
                 zeilen.forEach { z ->
                     Text(
-                        text = "${z.vonName}: ${z.text}",
+                        text = "${funkanzeige(z.vonName, fahrzeuge)}: ${funkanzeige(z.text, fahrzeuge)}",
                         style = Schrift.Klein,
                         color = if (z.vonPlayerId == ich) Farben.AmberHell else Farben.Text,
                     )
