@@ -33,7 +33,9 @@ import de.pagerspass.pagerspass.netz.Brettkommentar
 import de.pagerspass.pagerspass.netz.Freund
 import de.pagerspass.pagerspass.netz.Nachricht
 import de.pagerspass.pagerspass.ui.bausteine.Bereich
+import de.pagerspass.pagerspass.ui.bausteine.Etikett
 import de.pagerspass.pagerspass.ui.bausteine.Feld
+import de.pagerspass.pagerspass.ui.bausteine.Segment
 import de.pagerspass.pagerspass.ui.bausteine.Kasten
 import de.pagerspass.pagerspass.ui.bausteine.Knopf
 import de.pagerspass.pagerspass.ui.bausteine.Knopfart
@@ -91,47 +93,26 @@ fun ColumnScope.BrettTeil(
     griffe: Brettgriffe = Brettgriffe(),
 ) {
     LaunchedEffect(Unit) { beiLaden() }
-    var text by remember { mutableStateOf("") }
+    var sieb by remember { mutableStateOf("Alles") }
 
-    // Verfassen — oben, wie im Web. Die Sichtbarkeit folgt dem Kreis-Sieb.
-    Kasten(abstandInnen = Abstand.Klein) {
-        Feld(
-            wert = text,
-            beiAenderung = { text = it.take(500) },
-            platzhalter = "Was gibt's von dir?",
-        )
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            SehrLeise("${text.length}/500", modifier = Modifier.weight(1f))
-            Knopf(
-                "Anschlagen",
-                {
-                    beiSchreiben(
-                        text.trim(),
-                        when (reiter) {
-                            "Wache" -> "Wache"
-                            "Alle" -> if (darfOeffentlich) "Oeffentlich" else null
-                            else -> "Freunde"
-                        },
-                    )
-                    text = ""
-                },
-                aktiv = text.isNotBlank(),
-                kompakt = true,
-            )
-        }
-    }
+    Verfassen(hatWache = hatWache, darfOeffentlich = darfOeffentlich, beiSchreiben = beiSchreiben)
 
-    Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
-        Pille("Freunde", an = reiter == "Freunde", beiDruck = { beiReiter("Freunde") })
-        if (hatWache) {
-            Pille("Wache", an = reiter == "Wache", beiDruck = { beiReiter("Wache") })
-        }
-        Pille("Alle", an = reiter == "Alle", beiDruck = { beiReiter("Alle") })
-    }
+    // Zwei Schalter, zwei Fragen: „von wem" und „was". Zusammen ergeben sie einen
+    // Satz — Freunde × Erfolge ist der Ausschnitt, den man am häufigsten sucht.
+    Segment(
+        seiten = listOfNotNull("Freunde", "Wache".takeIf { hatWache }, "Alle"),
+        gewaehlt = reiter,
+        beiWahl = beiReiter,
+        aufschrift = { if (it == "Alle") "Öffentlich" else it },
+        modifier = Modifier.fillMaxWidth(),
+    )
+    Segment(
+        seiten = listOf("Alles", "Beitraege", "Erfolge", "Schichten"),
+        gewaehlt = sieb,
+        beiWahl = { sieb = it },
+        aufschrift = { if (it == "Beitraege") "Beiträge" else it },
+        modifier = Modifier.fillMaxWidth(),
+    )
 
     Bereich(
         laedt = brett.laedt,
@@ -139,10 +120,29 @@ fun ColumnScope.BrettTeil(
         inhalt = brett.inhalt,
         beiErneut = beiLaden,
     ) { seite ->
-        if (seite.eintraege.isEmpty()) {
-            Leerhinweis("Noch nichts am Brett. Der erste Anschlag gehört dir.")
+        val gesiebt = seite.eintraege.filter {
+            when (sieb) {
+                "Beitraege" -> it.art == "Beitrag"
+                "Erfolge" -> it.art in ERFOLGE
+                "Schichten" -> it.art == "Schicht"
+                else -> true
+            }
+        }
+        if (gesiebt.isEmpty()) {
+            // Der leere Zustand trägt den Weg hinaus, wo es einen Handgriff gibt.
+            val satz = when {
+                seite.eintraege.isNotEmpty() -> "In diesem Ausschnitt steht nichts."
+                reiter == "Wache" && hatWache -> "Auf eurer Wache war noch nichts los."
+                reiter == "Wache" -> "Du bist in keiner Wachengemeinschaft."
+                reiter == "Alle" -> "Noch hat niemand öffentlich etwas angeschlagen."
+                else -> "Hier steht, was deine Freunde im Dienst erlebt haben. Fahr eine Schicht " +
+                    "oder schreib die erste Zeile."
+            }
+            Leerhinweis(satz) {
+                if (seite.eintraege.isNotEmpty()) Knopf("Alles zeigen", { sieb = "Alles" })
+            }
         } else {
-            seite.eintraege.forEach { eintrag ->
+            gesiebt.forEach { eintrag ->
                 EintragKarte(
                     eintrag = eintrag,
                     server = server,
@@ -154,6 +154,139 @@ fun ColumnScope.BrettTeil(
             if (seite.weiter != null) {
                 Knopf("Mehr laden", beiMehr, art = Knopfart.Leise, kompakt = true)
             }
+        }
+    }
+}
+
+/** Was am Brett als „Erfolg" zählt — das Sieb „Was". */
+private val ERFOLGE = setOf("Befoerderung", "Abzeichen", "Rekord", "Wachenstufe", "Gemeinschaftsbeitritt")
+
+/** Ab wie vielen Zeichen ein Beitrag zu lang ist. */
+private const val BEITRAG_HOECHSTENS = 500
+
+/**
+ * Das Verfassen-Feld (`VerfassenFeld.vue`) — eine Karte, die zugeklappt eine
+ * Zeile ist und beim Tippen aufgeht.
+ *
+ * <b>Wer lesen darf, wählt man hier</b> und nicht über den Reiter darüber: Der
+ * Reiter sagt, was man liest, der Umschalter hier, wer den eigenen Beitrag sieht.
+ * Öffentlich gibt es erst nach der ersten Schicht. Der Zähler erscheint erst,
+ * wenn es eng wird — eine „500" neben einem leeren Feld ist eine Zahl ohne Frage.
+ */
+@Composable
+private fun Verfassen(
+    hatWache: Boolean,
+    darfOeffentlich: Boolean,
+    beiSchreiben: (String, String?) -> Unit,
+) {
+    var text by remember { mutableStateOf("") }
+    var offen by remember { mutableStateOf(false) }
+    var sichtbarkeit by remember { mutableStateOf("Freunde") }
+    val uebrig = BEITRAG_HOECHSTENS - text.length
+
+    Kasten(abstandInnen = Abstand.Klein, innenraum = Abstand.Normal) {
+        if (offen) Etikett("Was war los?")
+        Feld(
+            wert = text,
+            beiAenderung = {
+                text = it.take(BEITRAG_HOECHSTENS + 200)
+                offen = true
+            },
+            platzhalter = "Eine Zeile aus deiner Schicht …",
+            einzeilig = false,
+        )
+        if (offen || text.isNotEmpty()) {
+            Segment(
+                seiten = listOfNotNull(
+                    "Freunde",
+                    "Wache".takeIf { hatWache },
+                    "Oeffentlich".takeIf { darfOeffentlich },
+                ),
+                gewaehlt = sichtbarkeit,
+                beiWahl = { sichtbarkeit = it },
+                aufschrift = { if (it == "Oeffentlich") "Öffentlich" else it },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Row(Modifier.weight(1f)) {
+                    if (uebrig < 100) {
+                        SehrLeise(uebrig.toString(), mono = true)
+                    }
+                }
+                Knopf(
+                    "Anschlagen",
+                    {
+                        beiSchreiben(text.trim(), sichtbarkeit)
+                        text = ""
+                        offen = false
+                    },
+                    art = Knopfart.Haupt,
+                    aktiv = text.isNotBlank() && uebrig >= 0,
+                    kompakt = true,
+                )
+            }
+            SehrLeise("Am Brett gilt die Hausordnung: keine Links, keine Werbung, keine fremden Daten.")
+        }
+    }
+}
+
+/**
+ * Wer gerade fährt — über dem Brett, als Karte mit Zeilen (`ImDienstLeiste.vue`).
+ *
+ * Höchstens vier, damit die Karte am Handy nicht zur Wand wird, bevor das Brett
+ * beginnt; die übrigen stehen einen Tipp weiter unter „Freunde", wo die Liste
+ * nach Lage sortiert ist.
+ */
+@Composable
+fun ImDienstLeiste(
+    freunde: List<Freund>,
+    server: String,
+    beiProfil: (String) -> Unit,
+    beiDazuschalten: (String) -> Unit,
+    beiAlle: () -> Unit,
+) {
+    if (freunde.isEmpty()) return
+    val gezeigt = freunde.take(4)
+    Buchkarte(
+        titel = "Jetzt im Dienst",
+        zahl = freunde.size.toString(),
+        dicht = true,
+        abstandInnen = 0.dp,
+        kopfweg = if (freunde.size > 4) {
+            { Textweg("alle ${freunde.size}", beiAlle) }
+        } else {
+            null
+        },
+    ) {
+        gezeigt.forEachIndexed { i, f ->
+            de.pagerspass.pagerspass.ui.schmuck.Profilzeile(
+                kennung = f.kennung,
+                anzeigename = f.anzeigename.ifBlank { f.benutzername },
+                unterzeile = lage(f.anwesenheit, f.zuletztGesehen).ifBlank { null },
+                wappen = f.wappen,
+                wappenfarbe = f.wappenfarbe,
+                kopfmuster = f.kopfmuster,
+                bildAdresse = bildweg(server, f.profilbild),
+                premium = f.premium,
+                teammitglied = f.teammitglied,
+                imDienst = true,
+                beiDruck = { beiProfil(f.benutzername) },
+                randlos = true,
+                modifier = Modifier.zeilenstrich(i == gezeigt.lastIndex),
+                hinten = {
+                    val wo = f.anwesenheit
+                    Knopf(
+                        if (wo?.platzFrei == true) "Dazuschalten" else "Voll",
+                        { wo?.let { beiDazuschalten(it.roomCode) } },
+                        aktiv = wo?.platzFrei == true,
+                        kompakt = true,
+                    )
+                },
+            )
         }
     }
 }

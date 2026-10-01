@@ -719,9 +719,14 @@ private fun ColumnScope.Mannschaft(
         } else {
             null
         },
+        dicht = true,
+        abstandInnen = 0.dp,
     ) {
-    detail?.mitglieder?.forEach { mitglied ->
+    val mitglieder = detail?.mitglieder.orEmpty()
+    mitglieder.forEachIndexed { i, mitglied ->
         Profilzeile(
+            randlos = true,
+            modifier = Modifier.zeilenstrich(i == mitglieder.lastIndex),
             kennung = mitglied.kennung,
             anzeigename = mitglied.anzeigename,
             unterzeile = listOfNotNull(

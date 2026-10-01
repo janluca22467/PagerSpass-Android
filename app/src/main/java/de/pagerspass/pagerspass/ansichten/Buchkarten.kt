@@ -190,6 +190,18 @@ fun Kartenzeile(
     )
 }
 
+/** Der Trennstrich unter einer Zeile in einer dichten Karte — die letzte lässt ihn weg. */
+fun Modifier.zeilenstrich(letzte: Boolean): Modifier = drawWithContent {
+    drawContent()
+    if (letzte) return@drawWithContent
+    val strich = 1.dp.toPx()
+    drawRect(
+        color = Farben.Rand,
+        topLeft = androidx.compose.ui.geometry.Offset(0f, size.height - strich),
+        size = size.copy(height = strich),
+    )
+}
+
 /**
  * Der Wink — ein Satz mit Zeichen und Wegen (`.db-wink`). Keine Leerstelle,
  * sondern eine Auskunft über das, was da ist: „Clanrunde läuft", „Nächster

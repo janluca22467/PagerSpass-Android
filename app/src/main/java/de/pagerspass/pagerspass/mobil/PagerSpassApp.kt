@@ -887,6 +887,7 @@ private fun Angemeldet(
                         },
                         einladungAblehnen = { e -> sozial.einladungBeantworten(e.nr, false) },
                         meldungWeg = { kreis.meldungWegnehmen() },
+                        dienst = { zurWahl(steuerung, Weg.Dienst) },
                     ),
                     brett = {
                         BrettTeil(
