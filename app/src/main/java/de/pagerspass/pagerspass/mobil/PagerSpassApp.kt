@@ -1298,6 +1298,44 @@ private fun Angemeldet(
         runde.beitreten(code, stand.konto?.anzeigename.orEmpty())
     }
 
+    // Ein Link von außen (`Tieflinks`) — erst hier, wo Konto, Shop und Wache
+    // stehen. Bis dahin wartet er im Briefkasten.
+    val tieflink by Tieflinks.offen.collectAsStateWithLifecycle()
+    var linkcode by rememberSaveable { mutableStateOf<String?>(null) }
+    LaunchedEffect(tieflink, stand.konto?.kennung) {
+        val adresse = tieflink ?: return@LaunchedEffect
+        if (stand.konto == null) return@LaunchedEffect
+        Tieflinks.erledigt(adresse)
+        when (val ziel = tiefzielAus(adresse)) {
+            is Tiefziel.Code -> linkcode = ziel.code
+            is Tiefziel.Funk -> begleiter.koppeln(ziel.adresse)
+            is Tiefziel.Raum -> beitreten(ziel.code)
+            is Tiefziel.Wache -> {
+                sitzung.beitrittMitCode(ziel.code)
+                runCatching { zurWahl(steuerung, Weg.Wache) }
+            }
+            is Tiefziel.Seite -> appziel(ziel.pfad)?.let { route ->
+                runCatching {
+                    Weg.entries.firstOrNull { it.adresse == route }?.let { zurWahl(steuerung, it) }
+                        ?: steuerung.navigate(route)
+                }
+            }
+            null -> Unit
+        }
+    }
+    linkcode?.let { code ->
+        de.pagerspass.pagerspass.ansichten.CodeBlende(
+            code = code,
+            stand = kontostand,
+            dienst = sitzung.kontodienst,
+            beiShop = {
+                linkcode = null
+                runCatching { zurWahl(steuerung, Weg.Shop) }
+            },
+            beiSchliessen = { linkcode = null },
+        )
+    }
+
     daten.bonusgewinn?.let { gewinn ->
         Bonusblende(gewinn = gewinn, beiSchliessen = { sitzung.bonusgewinnWegnehmen() })
     }

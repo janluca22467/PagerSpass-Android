@@ -595,6 +595,26 @@ private fun ColumnScope.TeilMehr(
             .padding(Abstand.Normal),
     )
 
+    // Der QR-Code wie im Web (`LobbyView.vue`): dieselbe Adresse `/?raum=…`,
+    // die die App auch selbst als Link annimmt. Der Server kommt aus der
+    // Ablage — die Runde kennt ihn nicht, und am Vorabstand gebaut muss der
+    // Code auch dorthin führen.
+    val zusammenhang = androidx.compose.ui.platform.LocalContext.current
+    val server by androidx.compose.runtime.produceState<String?>(null) {
+        value = de.pagerspass.pagerspass.netz.Ablage(zusammenhang).server()
+    }
+    val adresse = server
+    if (stand.code.isNotBlank() && adresse != null) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(Abstand.Haar),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            de.pagerspass.pagerspass.ui.bausteine.QrCode("$adresse/?raum=${stand.code}", groesse = 132.dp)
+            SehrLeise("Scannen und beitreten")
+        }
+    }
+
     Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
         Knopf(
             aufschrift = "Code kopieren",

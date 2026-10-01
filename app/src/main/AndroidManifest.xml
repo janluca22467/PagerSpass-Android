@@ -58,6 +58,7 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:launchMode="singleTask"
             android:label="@string/app_name"
             android:theme="@style/Theme.PagerSpass"
             android:windowSoftInputMode="adjustResize">
@@ -65,6 +66,33 @@
                 <action android:name="android.intent.action.MAIN" />
 
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!--
+                Links auf die Webseite, die die App selbst erledigen kann: Codes,
+                die Kopplung des Funkbegleiters, Raum- und Wachen-QR-Codes und die
+                Seiten unter /play/mobile. Ohne `autoVerify` — Android fragt dann
+                einmal, ob App oder Browser; was die App nicht versteht
+                (`Tieflinks`), bleibt ohne Wirkung und die Startseite steht.
+                Die Wurzel `/` steht da, weil der QR-Code der Lobby `/?raum=…` trägt.
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data android:scheme="https" />
+                <data android:host="pagerspass.de" />
+                <data android:host="www.pagerspass.de" />
+                <data android:host="beta.pagerspass.de" />
+                <data android:path="/" />
+                <data android:pathPrefix="/code/" />
+                <data android:pathPrefix="/funk/" />
+                <data android:pathPrefix="/raum/" />
+                <data android:path="/gemeinschaften" />
+                <data android:pathPrefix="/play/mobile/" />
+                <data android:pathPrefix="/play/desktop/" />
             </intent-filter>
         </activity>
     </application>

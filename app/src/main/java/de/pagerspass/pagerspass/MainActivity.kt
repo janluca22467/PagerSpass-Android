@@ -1,5 +1,6 @@
 package de.pagerspass.pagerspass
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
@@ -11,6 +12,7 @@ import de.pagerspass.pagerspass.mobil.Meldermeldung
 import de.pagerspass.pagerspass.mobil.PagerSpassApp
 import de.pagerspass.pagerspass.mobil.Runde
 import de.pagerspass.pagerspass.mobil.Sitzung
+import de.pagerspass.pagerspass.mobil.Tieflinks
 import de.pagerspass.pagerspass.ui.theme.Farben
 import de.pagerspass.pagerspass.ui.theme.PagerSpassTheme
 
@@ -76,6 +78,11 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge(statusBarStyle = dunkel, navigationBarStyle = dunkel)
         super.onCreate(savedInstanceState)
 
+        // Ein Link, mit dem die App gestartet wurde. Nur beim ersten Anlegen:
+        // Nach dem Drehen trägt die Activity denselben Intent noch einmal, und
+        // ein zweites „Jetzt einlösen" oder ein zweiter Beitritt wäre falsch.
+        if (savedInstanceState == null) Tieflinks.annehmen(intent?.dataString)
+
         setContent {
             PagerSpassTheme {
                 PagerSpassApp(
@@ -88,5 +95,16 @@ class MainActivity : ComponentActivity() {
                 )
             }
         }
+    }
+
+    /**
+     * Ein Link, während die App schon läuft — `singleTask` im Manifest sorgt
+     * dafür, dass er hier ankommt statt in einer zweiten Activity mit eigener
+     * Sitzung, eigener Runde und eigenem Melder.
+     */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        Tieflinks.annehmen(intent.dataString)
     }
 }

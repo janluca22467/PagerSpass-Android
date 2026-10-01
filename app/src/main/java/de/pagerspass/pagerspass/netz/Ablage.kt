@@ -37,6 +37,7 @@ class Ablage(private val zusammenhang: Context) {
     private val karteStilSchluessel = stringPreferencesKey("karteStil")
     private val mitteilungenGelesenSchluessel = stringPreferencesKey("mitteilungenGelesen")
     private val gemeldeteHinweiseSchluessel = stringPreferencesKey("gemeldeteHinweise")
+    private val weggelegteVorschlaegeSchluessel = stringPreferencesKey("vorschlaegeWeg")
 
     suspend fun merkmal(): String? = lesen(merkmalSchluessel)
 
@@ -114,6 +115,24 @@ class Ablage(private val zusammenhang: Context) {
         // nicht mehr liefert, fällt hier auch wieder heraus.
         zusammenhang.ablage.edit {
             it[gemeldeteHinweiseSchluessel] = neue.joinToString(",")
+        }
+    }
+
+    /**
+     * Weggelegte Freundschaftsvorschläge — Kennungen, nur dieses Gerät.
+     *
+     * Wie `pagerspass.vorschlaege.weg` im `localStorage` des Web: Der Server
+     * soll kein Gedächtnis dafür haben, wen man nicht vorgeschlagen bekommen
+     * will. „Wieder zeigen" leert den Eintrag.
+     */
+    suspend fun weggelegteVorschlaege(): Set<String> =
+        lesen(weggelegteVorschlaegeSchluessel)?.split(",")?.filter { it.isNotBlank() }?.toSet()
+            ?: emptySet()
+
+    suspend fun weggelegteVorschlaegeMerken(kennungen: Set<String>) {
+        zusammenhang.ablage.edit { stand ->
+            if (kennungen.isEmpty()) stand.remove(weggelegteVorschlaegeSchluessel)
+            else stand[weggelegteVorschlaegeSchluessel] = kennungen.joinToString(",")
         }
     }
 
