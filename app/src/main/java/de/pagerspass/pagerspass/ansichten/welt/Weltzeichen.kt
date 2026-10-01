@@ -54,6 +54,16 @@ object Weltzeichen {
     val Zurueck = strich("zurueck", "M19 12H5", "m11 6-6 6 6 6")
     val Wache = strich("wache", "m3 11 9-7 9 7", "M5 10v10h14V10", "M12 13.5a2.5 2.5 0 1 1-.01 0Z")
 
+    /** Die Stecknadel aus `Bauortwahl.vue`: der Punkt, um den es geht. */
+    val Stecknadel = strich(
+        "stecknadel",
+        "M12 21s7-6.3 7-11a7 7 0 1 0-14 0c0 4.7 7 11 7 11Z",
+        "M12 12.5a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5Z",
+    )
+
+    /** Der Winkel der Erfahrung — `Erfahrungszeichen.vue`. */
+    val Erfahrung = strich("erfahrung", "M4.5 16.5 12 8l7.5 8.5", staerke = 2.2f)
+
     /** Die Raute der Welt-Credits — `Waehrung.vue`. */
     val Waehrung = strich("waehrung", "M12 3.5 20.5 12 12 20.5 3.5 12Z")
 

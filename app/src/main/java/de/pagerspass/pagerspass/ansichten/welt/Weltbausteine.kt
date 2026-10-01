@@ -10,6 +10,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Size
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -295,5 +299,118 @@ fun Wahlzeile(
             if (an) Text("✓", style = Schrift.Winzig.copy(fontWeight = FontWeight.Bold), color = Farben.AufAmber)
         }
         Box(Modifier.weight(1f)) { inhalt() }
+    }
+}
+
+/**
+ * Eine Zeile, die auswählt — `.listenwahl` aus `base.css`.
+ *
+ * Fläche mit Rand, links ein Balken von drei Punkten; gewählt trägt sie Amber
+ * ringsum und den Hauch darunter. Anders als die `Wahlzeile` ohne Haken: Hier
+ * wird eines aus vielen gewählt, nicht mehreres angekreuzt.
+ */
+@Composable
+fun Listenwahl(
+    an: Boolean,
+    beiDruck: () -> Unit,
+    modifier: Modifier = Modifier,
+    balken: Color? = null,
+    inhalt: @Composable RowScope.() -> Unit,
+) {
+    val balkenfarbe = balken ?: if (an) Farben.Amber else Farben.RandHell
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(Abstand.Normal),
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier
+            .fillMaxWidth()
+            .defaultMinSize(minHeight = 44.dp)
+            .clip(Rundung.Klein)
+            .background(if (an) Farben.HauchAmber else Farben.Flaeche)
+            .border(1.dp, if (an) Farben.Amber else Farben.Rand, Rundung.Klein)
+            .drawBehind { drawRect(balkenfarbe, size = Size(3.dp.toPx(), size.height)) }
+            .clickable(onClick = beiDruck)
+            .padding(start = Abstand.Normal + 2.dp, end = Abstand.Normal, top = Abstand.Klein, bottom = Abstand.Klein),
+        content = inhalt,
+    )
+}
+
+/**
+ * „Alle wählen (n)“ / „Auswahl aufheben“ — `AlleWaehlen.vue`. Erst ab zwei
+ * Fahrzeugen: Bei einem ist der Haken selbst der kürzere Weg.
+ */
+@Composable
+fun AlleWaehlen(ids: List<String>, angehakt: Set<String>, beiSetzen: (Set<String>) -> Unit) {
+    if (ids.size <= 1) return
+    val alle = ids.all { it in angehakt }
+    Knopf(
+        if (alle) "Auswahl aufheben" else "Alle wählen (${ids.size})",
+        { beiSetzen(if (alle) angehakt - ids.toSet() else angehakt + ids) },
+        art = Knopfart.Leise,
+        kompakt = true,
+    )
+}
+
+/**
+ * Die Reiterreihe in der Welt — `.reiter` mit dem Welt-Ton aus `welt.css`: eine
+ * eingelassene Leiste, gleich breite Wege, der gewählte in Cyan statt Bernstein.
+ * Bernstein heißt in der Welt „Geld“ und „Bauen“ — ein bernsteinfarbenes „Alle“
+ * über einer Liste mit Beträgen las sich wie ein weiterer Betrag.
+ */
+@Composable
+fun <T> Weltreiter(
+    wege: List<T>,
+    gewaehlt: T,
+    beiWahl: (T) -> Unit,
+    aufschrift: (T) -> String,
+    modifier: Modifier = Modifier,
+    zahl: ((T) -> Int)? = null,
+) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(Abstand.Haar),
+        modifier = modifier
+            .fillMaxWidth()
+            .background(Weltfarben.GlasTief, Rundung.Klein)
+            .border(1.dp, Weltfarben.Kante, Rundung.Klein)
+            .padding(Abstand.Haar),
+    ) {
+        wege.forEach { w ->
+            val an = w == gewaehlt
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(Abstand.Winzig, Alignment.CenterHorizontally),
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .weight(1f)
+                    .defaultMinSize(minHeight = 44.dp)
+                    .then(
+                        if (an) Modifier
+                            .background(
+                                androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Weltfarben.Hauch, Color.Transparent)),
+                                Rundung.Winzig,
+                            )
+                            .border(1.dp, Weltfarben.AkzentTief, Rundung.Winzig)
+                        else Modifier,
+                    )
+                    .clickable { beiWahl(w) }
+                    .padding(horizontal = Abstand.Haar, vertical = Abstand.Winzig),
+            ) {
+                Text(
+                    aufschrift(w),
+                    style = Schrift.Winzig.copy(fontWeight = if (an) FontWeight.SemiBold else FontWeight.Normal),
+                    color = if (an) Weltfarben.Akzent else Farben.TextSehrLeise,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (zahl != null) {
+                    Text(
+                        "${zahl(w)}",
+                        style = Schrift.Winzig.copy(fontFamily = Schrift.Mono),
+                        color = if (an) Weltfarben.Akzent else Farben.TextLeise,
+                        modifier = Modifier
+                            .background(Farben.FlaecheAktiv, Rundung.Rund)
+                            .padding(horizontal = 6.dp),
+                    )
+                }
+            }
+        }
     }
 }

@@ -18,6 +18,17 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.em
+import de.pagerspass.pagerspass.ui.bausteine.Etikett
+import de.pagerspass.pagerspass.ui.bausteine.Segment
+import de.pagerspass.pagerspass.ui.karte.Kartenstil
+import de.pagerspass.pagerspass.netz.Ablage
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -195,16 +206,20 @@ private fun Weltriegel(
     }
 }
 
-/** „PAGERSPASS · WORLD“ — die Kennung über jeder Seite der Welt. */
+/**
+ * „PAGERSPASS · WORLD“ — die Kennung über jeder Seite der Welt
+ * (`.gruendung__kennung`): im Cyan der Welt, mit Kante, gesperrt.
+ */
 @Composable
 fun Kennung(modifier: Modifier = Modifier) {
     Text(
         text = "PAGERSPASS · WORLD",
-        style = Schrift.Winzig.copy(fontFamily = Schrift.Mono, fontWeight = FontWeight.Bold),
-        color = Farben.Amber,
+        style = Schrift.Winzig.copy(fontFamily = Schrift.Mono, letterSpacing = 0.08.em),
+        color = Weltfarben.Akzent,
         modifier = modifier
-            .background(Farben.HauchAmber, Rundung.Rund)
-            .padding(horizontal = Abstand.Klein, vertical = 2.dp),
+            .background(Weltfarben.Hauch, Rundung.Rund)
+            .border(1.dp, Weltfarben.AkzentTief, Rundung.Rund)
+            .padding(horizontal = Abstand.Klein, vertical = Abstand.Haar),
     )
 }
 
@@ -228,6 +243,7 @@ private fun WeltGruendung(welt: Welt, zustand: Weltzustand, beiZurueck: () -> Un
     var sendet by remember { mutableStateOf(false) }
     val hoehe = LocalConfiguration.current.screenHeightDp.dp
     val oben = WindowInsets.safeDrawing.asPaddingValues().calculateTopPadding()
+    val zusammenhang = androidx.compose.ui.platform.LocalContext.current
 
     fun stadtSuchen(eingabe: String = suche) {
         val stadt = stadtFinden(eingabe)
@@ -262,15 +278,17 @@ private fun WeltGruendung(welt: Welt, zustand: Weltzustand, beiZurueck: () -> Un
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .heightIn(max = hoehe * 0.58f)
-                .flaeche(farbe = Farben.FlaecheHoch.copy(alpha = 0.97f), ecke = 16.dp)
+                .heightIn(max = hoehe * 0.6f)
+                // Am Handy ein Blatt von unten: nur oben gerundet, `--abstand` als Polster.
+                .background(Weltfarben.GlasHoch, RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp))
+                .border(1.dp, Weltfarben.Kante, RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp))
                 .imePadding()
                 .verticalScroll(rememberScrollState())
-                .padding(Abstand.Gross)
+                .padding(Abstand.Normal)
                 .padding(bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()),
         ) {
             Kennung()
-            Text("Deine Leitstelle in der Welt", style = Schrift.Titel, color = Farben.Text)
+            Text("Deine Leitstelle in der Welt", style = Schrift.Schlagzeile, color = Farben.Text)
             Leisesatz(
                 "Eine Karte, alle Spieler. Wähle einen Ort — er entscheidet über jede Anfahrt und jeden " +
                     "Nachbarn. Es gibt keinen Mindestabstand: Deine Heimatstadt geht auch dann, wenn dort " +
@@ -290,6 +308,16 @@ private fun WeltGruendung(welt: Welt, zustand: Weltzustand, beiZurueck: () -> Un
                 etikett = "Name der Leitstelle",
                 platzhalter = "Leitstelle Musterstadt",
             )
+            Etikett("Kartenansicht")
+            Segment(
+                Kartenstil.entries,
+                ebenen.stil ?: Kartenstil.Dunkel,
+                { st ->
+                    ebenen.stil = st
+                    bereich.launch { runCatching { Ablage(zusammenhang).karteStilSetzen(st.name) } }
+                },
+                aufschrift = { it.titel },
+            )
             Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein), verticalAlignment = Alignment.Bottom) {
                 Feld(
                     wert = suche,
@@ -299,7 +327,7 @@ private fun WeltGruendung(welt: Welt, zustand: Weltzustand, beiZurueck: () -> Un
                     weiterTaste = ImeAction.Search,
                     modifier = Modifier.weight(1f),
                 )
-                Knopf("Hin", { stadtSuchen() }, kompakt = true)
+                Knopf("Hin", { stadtSuchen() })
             }
             val vorschlaege = staedteVorschlagen(suche).filter { it.name != suche }
             if (vorschlaege.isNotEmpty()) {
@@ -309,8 +337,13 @@ private fun WeltGruendung(welt: Welt, zustand: Weltzustand, beiZurueck: () -> Un
             }
             if (sucheLeer) Leisesatz("Die Stadt kenne ich nicht — zoom hinein und tipp auf die Karte.")
             Text(
-                text = gewaehlt?.let { "✓ Standort gesetzt — %.4f, %.4f".format(it.lat, it.lon) }
-                    ?: "Noch kein Standort — such eine Stadt oder tipp auf die Karte.",
+                text = gewaehlt?.let { g ->
+                    buildAnnotatedString {
+                        withStyle(SpanStyle(color = Farben.GruenHell)) { append("✓ ") }
+                        append("Standort gesetzt — ")
+                        withStyle(SpanStyle(fontFamily = Schrift.Mono)) { append("%.4f, %.4f".format(g.lat, g.lon)) }
+                    }
+                } ?: AnnotatedString("Noch kein Standort — such eine Stadt oder tipp auf die Karte."),
                 style = Schrift.Klein,
                 color = if (gewaehlt != null) Farben.AmberHell else Farben.TextLeise,
             )

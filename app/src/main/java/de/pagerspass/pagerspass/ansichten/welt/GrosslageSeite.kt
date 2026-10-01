@@ -10,6 +10,15 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.Text
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
+import de.pagerspass.pagerspass.ui.bausteine.Leerhinweis
+import de.pagerspass.pagerspass.ui.bausteine.Hakenzeile
+import de.pagerspass.pagerspass.ui.theme.Rundung
+import de.pagerspass.pagerspass.ui.theme.eingelassen
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -45,9 +54,8 @@ import kotlinx.coroutines.launch
  * Darunter die Wochenziele — sie hängen an derselben Woche.
  */
 @Composable
-fun GrosslageSeite(welt: Welt, zustand: Weltzustand, karte: Weltkartenstand) {
+fun GrosslageSeite(welt: Welt, zustand: Weltzustand, @Suppress("UNUSED_PARAMETER") karte: Weltkartenstand) {
     val takt = sekundentakt()
-    val bereich = rememberCoroutineScope()
     var ziele by remember { mutableStateOf<WeltZiele?>(null) }
     LaunchedEffect(zustand.gutschrift) {
         welt.grosslageLaden()
@@ -59,21 +67,26 @@ fun GrosslageSeite(welt: Welt, zustand: Weltzustand, karte: Weltkartenstand) {
     val g = zustand.grosslage
 
     if (g == null) {
-        Leisesatz("Gerade ist kein Großeinsatz angekündigt. Er kommt einmal die Woche — hier steht dann, wann und wo.")
+        Leerhinweis("Für diese Woche ist noch nichts angekündigt. Der Termin wird montags gezogen.")
     } else {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
-            Text(g.name, style = Schrift.Gross.copy(fontWeight = FontWeight.Bold), color = Farben.Text, modifier = Modifier.weight(1f))
+            Ueberschrift(g.name, Modifier.weight(1f))
             Weltmarke(
                 when (g.zustand) {
                     "Laeuft" -> "läuft"
                     "Vorbei" -> "vorbei"
                     else -> "angekündigt"
                 },
-                if (g.zustand == "Laeuft") Farben.SignalHell else Farben.TextLeise,
+                when (g.zustand) {
+                    "Laeuft" -> Farben.SignalHell
+                    "Vorbei" -> Farben.TextSehrLeise
+                    else -> Farben.TextLeise
+                },
             )
         }
         val ziel = if (g.zustand == "Angekuendigt") g.beginntUm else g.endetUm
         val ms = fahrt.restMs(ziel) ?: 0
+        // Der Countdown sitzt eingelassen im tiefen Grund — `.grossblende__countdown`.
         Text(
             when {
                 ms <= 0 -> if (g.zustand == "Angekuendigt") "jetzt" else "vorbei"
@@ -87,94 +100,112 @@ fun GrosslageSeite(welt: Welt, zustand: Weltzustand, karte: Weltkartenstand) {
                     }
                 }
             },
-            style = Schrift.Titel.copy(fontFamily = Schrift.Mono),
-            color = Farben.Amber,
+            style = Schrift.Schlagzeile.copy(fontFamily = Schrift.Mono),
+            color = Farben.AmberHell,
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Farben.BgTief, Rundung.Klein)
+                .eingelassen()
+                .padding(horizontal = Abstand.Normal, vertical = Abstand.Klein),
         )
         Leisesatz("${termin(g.beginntUm)} · zwölf Stunden · ${g.ort}")
-        Knopf("Auf der Karte zeigen", { karte.hinschauen(g.lat, g.lon, 11.0) }, kompakt = true, art = Knopfart.Leise)
 
-        if (g.zustand != "Angekuendigt") {
-            Wertzeile("Einsatzkräfte an den Abschnitten", zahl(g.gestellteKraefte))
-            Wertzeile("Fahrzeuge im Einsatz — von allen Leitstellen", "${g.gestellt} / ${g.bedarf}", leise = true)
-            val anteil = if (g.bedarf == 0) 0 else minOf(100, Math.round(g.gestellt * 100f / g.bedarf))
-            Weltbalken(anteil / 100f)
-            Leisesatz(
-                "${g.bedarf} Fahrzeuge fordert dieser Großeinsatz insgesamt — mehr, als eine Leitstelle allein " +
-                    "stellen kann. Bei $anteil % ist der Bonus zu $anteil % verdient; voll gibt es ihn bei gedecktem Bedarf.",
-                winzig = true,
-            )
-            if (g.wellen > 0) {
-                Wertzeile("Welle", "${g.wellenStand} / ${g.wellen}", leise = true)
-                g.naechsteWelleUm?.let { um ->
-                    val rest = fahrt.restMs(um) ?: 0
-                    val text = if (rest <= 0) "gleich" else {
-                        val h = rest / 3_600_000
-                        val m = Math.ceil((rest % 3_600_000) / 60_000.0).toInt()
-                        if (h > 0) "in $h h $m min" else "in $m min"
-                    }
-                    Leisesatz("Die nächste Welle bringt $text neue Abschnitte.", winzig = true)
+        Wertzeile("Einsatzkräfte an den Abschnitten", zahl(g.gestellteKraefte))
+        Wertzeile("Fahrzeuge im Einsatz — von allen Leitstellen", "${g.gestellt} / ${g.bedarf}", leise = true)
+        val anteil = if (g.bedarf == 0) 0 else minOf(100, Math.round(g.gestellt * 100f / g.bedarf))
+        Weltbalken(anteil / 100f)
+        Leisesatz(
+            "${g.bedarf} Fahrzeuge fordert dieser Großeinsatz insgesamt — mehr, als eine Leitstelle allein " +
+                "stellen kann. Bei $anteil % ist der Bonus zu $anteil % verdient; voll gibt es ihn bei gedecktem Bedarf.",
+            winzig = true,
+        )
+        if (g.zustand == "Laeuft") {
+            Wertzeile("Welle", "${g.wellenStand} / ${g.wellen}", leise = true)
+            val naechste = g.naechsteWelleUm?.let { um ->
+                val rest = fahrt.restMs(um) ?: 0
+                if (rest <= 0) "gleich" else {
+                    val h = rest / 3_600_000
+                    val m = Math.ceil((rest % 3_600_000) / 60_000.0).toInt()
+                    if (h > 0) "in $h h $m min" else "in $m min"
                 }
             }
+            Leisesatz(
+                if (naechste != null) "Der Bedarf kommt in Wellen über die zwölf Stunden verteilt — die nächste Welle " +
+                    "bringt $naechste neue Abschnitte."
+                else "Alle Wellen sind abgeworfen — was jetzt offen ist, ist alles, was noch kommt.",
+                winzig = true,
+            )
             Wertzeile("Abschnitte, die noch Fahrzeuge brauchen", "${g.offeneLagen}", leise = true)
             if (g.offenePlaetze > 0) Wertzeile("Freie Fahrzeugplätze dort", "${g.offenePlaetze}", leise = true)
             Bedarfsblatt(g.bedarfe)
         }
 
-        Wertzeile(
-            "Im Bereitstellungsraum",
-            "${zahl(g.bereitgestellteKraefte)} Kräfte" +
-                if (g.meineBereitgestelltenKraefte > 0) " · davon ${zahl(g.meineBereitgestelltenKraefte)} von dir" else "",
-        )
-        if (g.bereitgestellt > 0) {
-            Wertzeile(
-                "Fahrzeuge dort",
-                "${g.bereitgestellt}" + if (g.meineBereitgestellt > 0) " · davon ${g.meineBereitgestellt} von dir" else "",
-                leise = true,
-            )
-        }
-        if (g.offeneLagen == 0) Anforderung(g.angefordert)
-
         if (g.anfahrtOffen) {
-            Vorschicken(zustand, knopf = "Fahrzeuge vorschicken") { ids -> welt.bereitstellen(ids) }
-            Leisesatz(
-                "Vorgeschickte Fahrzeuge warten im Bereitstellungsraum und werden von dort den Abschnitten " +
-                    "zugeteilt — oder du alarmierst sie selbst auf einen Abschnitt.",
-                winzig = true,
+            Wertzeile(
+                "Im Bereitstellungsraum",
+                "${zahl(g.bereitgestellteKraefte)} Kräfte" +
+                    if (g.meineBereitgestelltenKraefte > 0) " · davon ${zahl(g.meineBereitgestelltenKraefte)} von dir" else "",
             )
+            if (g.bereitgestellt > 0) {
+                Wertzeile(
+                    "Fahrzeuge dort",
+                    "${g.bereitgestellt}" + if (g.meineBereitgestellt > 0) " · davon ${g.meineBereitgestellt} von dir" else "",
+                    leise = true,
+                )
+            }
+            if (g.bedarfe.isEmpty()) Anforderung(g.angefordert)
+            Vorschicken(zustand) { ids -> welt.bereitstellen(ids) }
         }
         Text(
-            "Bonus bei gedecktem Bedarf: ${credits(g.abschlussbonus)}",
+            when {
+                g.beteiligt -> "Du bist dabei — Bonus bis zu ${credits(g.abschlussbonus)}, voll bei gedecktem Bedarf."
+                g.zustand == "Laeuft" -> "Die Lagen stehen auf der Karte und in der Lagenliste."
+                else -> "Allein nicht zu schaffen — schick Fahrzeuge vor, sie warten dort bis zum Beginn."
+            },
             style = Schrift.Klein,
-            color = Farben.AmberHell,
+            color = Farben.TextLeise,
         )
-        g.vorwoche?.let { v ->
+        if (g.anfahrtOffen) {
             Leisesatz(
-                "Letzte Woche: ${v.name} — ${if (v.geschafft) "geschafft" else "verfehlt"} " +
-                    "(${v.gestellt}/${v.bedarf} Kräfte, ${zahl(v.bonus)} $WAEHRUNG).",
+                "Fahrzeuge im Bereitstellungsraum arbeiten die Abschnitte von selbst ab — und kehren danach " +
+                    "dorthin zurück.",
+            )
+        }
+        g.vorwoche?.let { v ->
+            Text(
+                buildAnnotatedString {
+                    append("Letzte Woche: ${v.name} — ")
+                    withStyle(
+                        SpanStyle(
+                            color = if (v.geschafft) Farben.GruenHell else Farben.SignalHell,
+                            fontWeight = FontWeight.SemiBold,
+                        ),
+                    ) { append(if (v.geschafft) "geschafft" else "verfehlt") }
+                    append(" (${v.gestellt}/${v.bedarf} Kräfte, ${credits(v.bonus)} je Beteiligtem).")
+                },
+                style = Schrift.Klein,
+                color = Farben.TextLeise,
             )
         }
     }
 
     // ------------------------------------------------------------ Wochenziele
     ziele?.let { z ->
-        Ueberschrift("Diese Woche")
+        Ueberschrift("Diese Woche", Modifier.padding(top = Abstand.Klein))
         z.ziele.forEach { ziel ->
-            Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Normal), verticalAlignment = Alignment.CenterVertically) {
-                Text(if (ziel.erfuellt) "✓" else "○", style = Schrift.Normal, color = if (ziel.erfuellt) Farben.GruenHell else Farben.TextSehrLeise)
+            Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    if (ziel.erfuellt) "✓" else "○",
+                    style = Schrift.Klein,
+                    color = if (ziel.erfuellt) Farben.GruenHell else Farben.TextSehrLeise,
+                )
                 Column(Modifier.weight(1f)) {
                     Text(ziel.titel, style = Schrift.Klein, color = Farben.Text)
                     Text("${ziel.stand}/${ziel.zielwert}", style = Schrift.Winzig.copy(fontFamily = Schrift.Mono), color = Farben.TextSehrLeise)
                 }
-                Text(credits(ziel.belohnung), style = Schrift.Winzig.copy(fontFamily = Schrift.Mono), color = Farben.Amber)
+                Text(credits(ziel.belohnung), style = Schrift.Winzig.copy(fontFamily = Schrift.Mono), color = Farben.AmberHell)
             }
         }
-    }
-
-    // ---------------------------------------------------------------- Events
-    val events = zustand.events.filter { it.zustand != "Vorbei" && it.zustand != "Entwurf" }
-    if (events.isNotEmpty()) {
-        Ueberschrift("Events")
-        events.forEach { Eventkasten(welt, zustand, it) }
     }
 }
 
@@ -182,7 +213,7 @@ fun GrosslageSeite(welt: Welt, zustand: Weltzustand, karte: Weltkartenstand) {
 private fun Bedarfsblatt(bedarfe: List<Weltbedarf>) {
     bedarfe.forEach { b ->
         Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein), verticalAlignment = Alignment.CenterVertically) {
-            Weltmarke(b.faehigkeit, if (b.imRaum < b.fehlt) Farben.SignalHell else Farben.TextLeise)
+            Weltmarke(b.faehigkeit, if (b.imRaum < b.fehlt) Farben.Amber else Farben.TextLeise)
             Text(
                 "fehlt an ${b.fehlt} ${if (b.fehlt == 1) "Abschnitt" else "Abschnitten"} · ${b.imRaum} im Raum",
                 style = Schrift.Winzig,
@@ -198,17 +229,18 @@ private fun Anforderung(angefordert: List<Weltanforderung>) {
     Leisesatz("Wird angefordert — die Zahl sagt, wie viele Fahrzeuge im Raum es mitbringen:", winzig = true)
     Umbruchreihe {
         angefordert.forEach { a ->
-            Weltmarke("${a.faehigkeit} · ${a.imRaum}", if (a.imRaum == 0) Farben.SignalHell else Farben.TextLeise)
+            Weltmarke("${a.faehigkeit} · ${a.imRaum}", if (a.imRaum == 0) Farben.Amber else Farben.TextLeise)
         }
     }
 }
 
 /**
- * Fahrzeuge in einen Bereitstellungsraum vorschicken — Großeinsatz und Event.
- * Dorthin fährt nur, was zu Hause steht.
+ * Fahrzeuge in einen Bereitstellungsraum vorschicken — Großeinsatz und Event
+ * (derselbe Block in `GrosslageBlende.vue` und `EventRaum.vue`). Dorthin fährt
+ * nur, was zu Hause steht.
  */
 @Composable
-fun Vorschicken(zustand: Weltzustand, knopf: String, senden: suspend (List<String>) -> String?) {
+fun Vorschicken(zustand: Weltzustand, senden: suspend (List<String>) -> String?) {
     val bereich = rememberCoroutineScope()
     var offen by remember { mutableStateOf(false) }
     var angehakt by remember { mutableStateOf(setOf<String>()) }
@@ -217,12 +249,11 @@ fun Vorschicken(zustand: Weltzustand, knopf: String, senden: suspend (List<Strin
     val frei: List<WeltFahrzeug> = zustand.freieFahrzeuge
 
     if (!offen) {
-        Knopf(knopf, { offen = true }, art = Knopfart.Haupt, aktiv = frei.isNotEmpty(), kompakt = true)
-        if (frei.isEmpty()) Leisesatz("Kein Fahrzeug auf der Wache.", winzig = true)
+        Knopf("Fahrzeuge vorschicken", { offen = true }, art = Knopfart.Haupt, aktiv = frei.isNotEmpty(), breit = true)
         return
     }
     if (frei.isEmpty()) {
-        Warnsatz("Kein Fahrzeug auf der Wache.")
+        Text("Kein Fahrzeug auf der Wache.", style = Schrift.Klein, color = Farben.SignalHell)
     } else {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
             Leisesatz(
@@ -230,20 +261,17 @@ fun Vorschicken(zustand: Weltzustand, knopf: String, senden: suspend (List<Strin
                 modifier = Modifier.weight(1f),
                 winzig = true,
             )
-            val alle = frei.all { it.id in angehakt }
-            Knopf(if (alle) "Keine" else "Alle ${frei.size}", {
-                angehakt = if (alle) emptySet() else frei.map { it.id }.toSet()
-            }, kompakt = true, art = Knopfart.Leise)
+            AlleWaehlen(frei.map { it.id }, angehakt) { angehakt = it }
         }
         frei.forEach { f ->
-            Wahlzeile(an = f.id in angehakt, beiWechsel = {
-                angehakt = if (f.id in angehakt) angehakt - f.id else angehakt + f.id
-            }) {
-                Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
-                    Text(f.funkrufname, style = Schrift.MonoKlein, color = Farben.Text)
-                    Text(f.typ, style = Schrift.Winzig, color = Farben.TextLeise)
-                }
-            }
+            Hakenzeile(
+                buildAnnotatedString {
+                    withStyle(SpanStyle(fontFamily = Schrift.Mono)) { append(f.funkrufname) }
+                    withStyle(SpanStyle(color = Farben.TextLeise)) { append("  ${f.typ}") }
+                },
+                f.id in angehakt,
+                { an -> angehakt = if (an) angehakt + f.id else angehakt - f.id },
+            )
         }
     }
     Warnsatz(fehler)
@@ -262,8 +290,8 @@ fun Vorschicken(zustand: Weltzustand, knopf: String, senden: suspend (List<Strin
                     offen = false
                 }
             }
-        }, art = Knopfart.Haupt, kompakt = true, aktiv = !sendet && frei.isNotEmpty())
-        Knopf("Abbrechen", { offen = false }, art = Knopfart.Leise, kompakt = true)
+        }, art = Knopfart.Haupt, aktiv = !sendet && frei.isNotEmpty())
+        Knopf("Abbrechen", { offen = false }, art = Knopfart.Leise)
     }
 }
 
@@ -346,45 +374,56 @@ private fun Eventkulisse(e: WeltEvent, ton: androidx.compose.ui.graphics.Color) 
 
 /**
  * Ein Event-Einsatz der World — die Kulisse samt Bereitstellungsraum
- * (`EventKulisse.vue` und `EventRaum.vue`).
+ * (`EventKulisse.vue` und `EventRaum.vue`): oben das Banner, darunter Titel und
+ * Zeitfenster, die Beschreibung, wo es ist, und unter einem Strich der Raum.
  */
 @Composable
 fun Eventkasten(welt: Welt, zustand: Weltzustand, e: WeltEvent) {
-    val ton = e.farbe?.let(::farbeAus) ?: Farben.Violett
-    Weltkasten(randfarbe = ton) {
+    val ton = e.farbe?.let(::farbeAus) ?: Farben.Amber
+    Weltkasten(randfarbe = ton.copy(alpha = 0.5f)) {
         Eventkulisse(e, ton)
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
-            Farbpunkt(ton, 10)
-            Text(e.titel, style = Schrift.Klein.copy(fontWeight = FontWeight.Bold), color = Farben.Text, modifier = Modifier.weight(1f))
-            Weltmarke(if (e.zustand == "Laeuft") "läuft" else "angekündigt", ton)
-        }
-        e.beschreibung?.takeIf { it.isNotBlank() }?.let { Leisesatz(it) }
+        Text(e.titel, style = Schrift.Normal.copy(fontWeight = FontWeight.Bold), color = Farben.Text)
         Leisesatz(
-            "${e.ort} · " + (if (e.offeneLagen == 1) "eine offene Lage" else "${e.offeneLagen} offene Lagen") +
-                " · ${terminKurz(e.beginntUm)} bis ${terminKurz(e.endetUm)}",
+            when (e.zustand) {
+                "Angekuendigt" -> "Beginnt ${terminKurz(e.beginntUm)}"
+                "Laeuft" -> "Läuft bis ${terminKurz(e.endetUm)}"
+                else -> "Vorbei seit ${terminKurz(e.endetUm)}"
+            },
+        )
+        e.beschreibung?.takeIf { it.isNotBlank() }?.let { Text(it, style = Schrift.Klein, color = Farben.Text) }
+        Leisesatz(
+            "${e.ort} · " + if (e.offeneLagen == 1) "eine offene Lage" else "${e.offeneLagen} offene Lagen",
             winzig = true,
         )
         val raum = e.brName ?: return@Weltkasten
-        Wertzeile(
-            raum,
-            "${e.bereitgestellt}" + if (e.meineBereitgestellt > 0) " · davon ${e.meineBereitgestellt} von dir" else "",
-        )
-        if (!e.raumOffen) {
-            Leisesatz("Öffnet" + (e.brOffenAb?.let { " am ${terminKurz(it)}" } ?: "") + ".", winzig = true)
+        Column(
+            verticalArrangement = Arrangement.spacedBy(Abstand.Klein),
+            modifier = Modifier
+                .fillMaxWidth()
+                .drawBehind { drawLine(Farben.Rand, Offset(0f, 0f), Offset(size.width, 0f), 1.dp.toPx()) }
+                .padding(top = Abstand.Klein),
+        ) {
+            Wertzeile(
+                raum,
+                "${e.bereitgestellt}" + if (e.meineBereitgestellt > 0) " · davon ${e.meineBereitgestellt} von dir" else "",
+            )
+            if (!e.raumOffen) {
+                Leisesatz("Öffnet" + (e.brOffenAb?.let { " am ${terminKurz(it)}" } ?: "") + ".")
+            }
+            if (e.offeneLagen > 0) {
+                if (e.offenePlaetze > 0) Wertzeile("Freie Fahrzeugplätze an den Abschnitten", "${e.offenePlaetze}", leise = true)
+                Bedarfsblatt(e.bedarfe)
+            } else {
+                Anforderung(e.angefordert)
+                if (e.raumOffen) Vorschicken(zustand) { ids -> welt.eventBereitstellen(e.id, ids) }
+            }
+            Leisesatz(
+                if (e.autoAbarbeiten) "Fahrzeuge im Bereitstellungsraum arbeiten die Abschnitte von selbst ab — und " +
+                    "kehren danach dorthin zurück."
+                else "Bei diesem Termin wird von Hand disponiert: Die Fahrzeuge warten im Raum, bis du sie über die " +
+                    "Lagenliste alarmierst.",
+                winzig = true,
+            )
         }
-        if (e.offeneLagen > 0) {
-            if (e.offenePlaetze > 0) Wertzeile("Freie Fahrzeugplätze an den Abschnitten", "${e.offenePlaetze}", leise = true)
-            Bedarfsblatt(e.bedarfe)
-        } else {
-            Anforderung(e.angefordert)
-        }
-        if (e.raumOffen) {
-            Vorschicken(zustand, knopf = "Fahrzeuge vorschicken") { ids -> welt.eventBereitstellen(e.id, ids) }
-        }
-        Leisesatz(
-            if (e.autoAbarbeiten) "Die Fahrzeuge fahren von dort selbst auf die Abschnitte."
-            else "Von dort fährt niemand von selbst — alarmiere die Fahrzeuge an den Abschnitten.",
-            winzig = true,
-        )
     }
 }

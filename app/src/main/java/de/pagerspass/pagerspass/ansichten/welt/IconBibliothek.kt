@@ -28,6 +28,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.Text
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
+import de.pagerspass.pagerspass.ui.bausteine.Leerhinweis
+import de.pagerspass.pagerspass.ui.bausteine.Etikett
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -123,7 +130,7 @@ fun IconpackWahl() {
         }
     }
 
-    Ueberschrift("Fahrzeug-Icons")
+    Ueberschrift("Fahrzeug-Icons", Modifier.padding(top = Abstand.Klein))
     Leisesatz("Nur du siehst sie — auf deiner Karte gelten sie für alle Fahrzeuge.", winzig = true)
     val aktiv = packs.firstOrNull { it.aktiv }?.id
     Pillenreihe {
@@ -139,14 +146,14 @@ fun IconpackWahl() {
     }
     Leisesatz(
         if (packs.isEmpty()) {
-            "Du hast noch kein Pack. Du musst nicht alle Fahrzeuge bebildern — ein einziges reicht."
+            "Du hast noch kein Pack. Du musst nicht alle Fahrzeuge malen — ein einziges reicht."
         } else {
             "Ein Pack ersetzt nur, was es hinterlegt — der Rest bleibt gezeichnet."
         },
         winzig = true,
     )
     Warnsatz(fehler)
-    Knopf("Icon-Packs verwalten", { bibliothek = true }, kompakt = true, art = Knopfart.Leise)
+    Knopf(if (packs.isEmpty()) "Pack anlegen" else "Icons bearbeiten", { bibliothek = true }, kompakt = true)
 
     if (bibliothek) {
         Dialog(
@@ -289,58 +296,80 @@ fun IconBibliothek(beiSchliessen: () -> Unit) {
                         Knopf("Behalten", { loeschfrage = null }, kompakt = true, art = Knopfart.Leise)
                     }
                 }
-                Pillenreihe {
-                    Pille("Bearbeiten", an = false, beiDruck = { offen = p }, aktiv = !sendet)
-                    Pille("Umbenennen", an = false, beiDruck = { umbenennen = p.id; umName = p.name }, aktiv = !sendet)
-                    Pille("Code holen", an = false, aktiv = !sendet, beiDruck = {
+                Umbruchreihe {
+                    Knopf("Bearbeiten", { offen = p }, kompakt = true, art = Knopfart.Haupt, aktiv = !sendet)
+                    Knopf("Umbenennen", { umbenennen = p.id; umName = p.name }, kompakt = true, aktiv = !sendet)
+                    Knopf("Code holen", {
                         handlung("Der Code ließ sich nicht holen.") { codeVon = p.id to wege.code(p.id) }
-                    })
-                    Pille("Löschen", an = false, farbe = Farben.Signal, beiDruck = { loeschfrage = p.id }, aktiv = !sendet)
+                    }, kompakt = true, aktiv = !sendet)
+                    Knopf("Löschen", { loeschfrage = p.id }, kompakt = true, art = Knopfart.Gefahr, aktiv = !sendet)
                 }
                 // Der Code erscheint erst, wenn jemand ihn geholt hat — auch auf dem
                 // Server entsteht er erst dann.
                 codeVon?.takeIf { it.first == p.id }?.let { (_, c) ->
                     SelectionContainer {
-                        Text("Zum Weitergeben: $c", style = Schrift.MonoNormal.copy(fontWeight = FontWeight.Bold), color = Farben.Amber)
+                        Text(
+                            buildAnnotatedString {
+                                append("Zum Weitergeben: ")
+                                withStyle(SpanStyle(fontFamily = Schrift.Mono, fontWeight = FontWeight.Bold, color = Farben.Text)) { append(c) }
+                                withStyle(SpanStyle(color = Farben.TextSehrLeise)) { append(" — wer ihn eingibt, bekommt eine eigene Kopie.") }
+                            },
+                            style = Schrift.Klein,
+                            color = Farben.TextLeise,
+                        )
                     }
-                    SehrLeise("Wer ihn eingibt, bekommt eine eigene Kopie.")
                 }
             }
         }
         if (liste.isEmpty()) {
-            SehrLeise("Du hast noch kein Icon-Pack. Leg eins an — du musst nicht alle Fahrzeuge bebildern, ein einziges reicht.")
+            Leerhinweis("Du hast noch kein Icon-Pack. Leg eins an — du musst nicht alle Fahrzeuge malen, ein einziges reicht.")
         }
 
         val voll = liste.size >= grenzen.maxPacks
         Abschnitt("Neues Pack") {
-            Feld(
-                wert = neuerName,
-                beiAenderung = { neuerName = it.take(grenzen.maxNameLaenge) },
-                platzhalter = "Name, zum Beispiel „Feuerrot“",
-                aktiv = !voll,
-            )
-            Knopf("Anlegen", {
-                val name = neuerName.trim()
-                handlung("Das Anlegen ging nicht.") {
-                    val neu = wege.anlegen(name)
-                    neuerName = ""
-                    offen = neu
-                }
-            }, kompakt = true, aktiv = !voll && !sendet && neuerName.isNotBlank())
+            Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein), verticalAlignment = Alignment.CenterVertically) {
+                Feld(
+                    wert = neuerName,
+                    beiAenderung = { neuerName = it.take(grenzen.maxNameLaenge) },
+                    platzhalter = "Name, zum Beispiel „Feuerrot“",
+                    aktiv = !voll,
+                    modifier = Modifier.weight(1f),
+                )
+                Knopf("Anlegen", {
+                    val name = neuerName.trim()
+                    handlung("Das Anlegen ging nicht.") {
+                        val neu = wege.anlegen(name)
+                        neuerName = ""
+                        offen = neu
+                    }
+                }, art = Knopfart.Haupt, aktiv = !voll && !sendet && neuerName.isNotBlank())
+            }
             if (voll) SehrLeise("Mehr als ${grenzen.maxPacks} Packs gehen nicht. Benenne eins um oder lösche es.")
         }
 
         Abschnitt("Pack per Code übernehmen") {
-            SehrLeise("Was dabei entsteht, ist eine eigene Kopie. Wer dir den Code gegeben hat, kann seins danach löschen.")
-            Feld(wert = code, beiAenderung = { code = it.uppercase().take(6) }, platzhalter = "ABC234", aktiv = !voll)
-            Knopf("Übernehmen", {
-                val c = code
-                handlung("Der Code passt nicht.") {
-                    val neu = wege.uebernehmen(c)
-                    code = ""
-                    hinweis = "„${neu.name}“ ist übernommen."
-                }
-            }, kompakt = true, aktiv = !voll && !sendet && code.isNotBlank())
+            SehrLeise(
+                "Was dabei entsteht, ist eine eigene Kopie. Wer dir den Code gegeben hat, kann seins danach löschen, " +
+                    "ohne dass deine Fahrzeuge ausfallen.",
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein), verticalAlignment = Alignment.CenterVertically) {
+                Feld(
+                    wert = code,
+                    beiAenderung = { code = it.uppercase().take(6) },
+                    platzhalter = "ABC234",
+                    aktiv = !voll,
+                    stil = Schrift.MonoNormal,
+                    modifier = Modifier.weight(1f),
+                )
+                Knopf("Übernehmen", {
+                    val c = code
+                    handlung("Der Code passt nicht.") {
+                        val neu = wege.uebernehmen(c)
+                        code = ""
+                        hinweis = "„${neu.name}“ ist übernommen."
+                    }
+                }, aktiv = !voll && !sendet && code.isNotBlank())
+            }
         }
 
         Abschnitt("Pack aus einer Zip importieren") {
@@ -349,7 +378,10 @@ fun IconBibliothek(beiSchliessen: () -> Unit) {
                     "die je Fahrzeugtyp die Grafik nennt, und ein Ordner assets mit den Grafiken. " +
                     "Wie das genau aussieht, steht im Wiki (World → Eigene Fahrzeug-Icons).",
             )
-            Knopf("Zip wählen", { zip.launch("application/zip") }, kompakt = true, aktiv = !voll && !sendet)
+            Knopf("Zip wählen", { zip.launch("application/zip") }, aktiv = !voll && !sendet)
+            if (voll) {
+                SehrLeise("Mehr als ${grenzen.maxPacks} Packs gehen nicht — auch nicht per Import. Lösche eins, um Platz zu machen.")
+            }
             importiert?.let { i ->
                 Text(
                     "„${i.pack.name}“ ist da — ${i.uebernommen} ${if (i.uebernommen == 1) "Icon" else "Icons"} übernommen" +
@@ -411,13 +443,23 @@ private fun IconEditor(pack: Pack, typen: List<Icontyp>, grenzen: IconGrenzen, b
     Seite {
         Seitenkopf(
             titel = pack.name,
-            unterzeile = "${icons.size} von ${typen.size} Fahrzeugtypen belegt",
-            knoepfe = { Knopf("Zur Bibliothek", beiZurueck, art = Knopfart.Leise, kompakt = true) },
+            unterzeile = "Fahrzeug-Icons",
+            knoepfe = { Knopf("Alle Packs", beiZurueck, kompakt = true) },
         )
+        if (!laedt) {
+            SehrLeise(
+                "${icons.size} von ${typen.size} Fahrzeugtypen belegt · ${kb(pack.bytes)} von ${kb(grenzen.maxBytesJePack)} KB",
+            )
+        }
         Warnsatz(fehler)
-        Feld(wert = suche, beiAenderung = { suche = it }, platzhalter = "Fahrzeug suchen")
-        Schalterzeile("Nur belegte Typen", nurBelegte, { nurBelegte = it })
-        if (laedt) Ladezeile()
+        if (laedt) {
+            Leerhinweis("Wird geladen …")
+            return@Seite
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein), verticalAlignment = Alignment.CenterVertically) {
+            Feld(wert = suche, beiAenderung = { suche = it }, platzhalter = "Fahrzeugtyp suchen …", modifier = Modifier.weight(1f))
+            Pille("Nur belegte", nurBelegte, { nurBelegte = !nurBelegte })
+        }
 
         val gefiltert = typen.filter { t ->
             (!nurBelegte || icons.containsKey(t.vorlageId)) &&
@@ -425,6 +467,7 @@ private fun IconEditor(pack: Pack, typen: List<Icontyp>, grenzen: IconGrenzen, b
                     .any { it.contains(suche.trim(), ignoreCase = true) })
         }
         // Nach Organisation und Kategorie — dieselben Gruppen wie in der Kaufliste der Welt.
+        if (gefiltert.isEmpty()) SehrLeise("Dazu gibt es keinen Fahrzeugtyp.")
         gefiltert.groupBy { "${it.organisation} · ${it.kategorie}" }.forEach { (titel, liste) ->
             Ueberschrift(titel)
             liste.forEach { t ->
@@ -446,14 +489,14 @@ private fun IconEditor(pack: Pack, typen: List<Icontyp>, grenzen: IconGrenzen, b
                             Text("—", style = Schrift.Klein, color = Farben.TextSehrLeise)
                         }
                     }
-                    Column(Modifier.weight(1f)) {
-                        Text(t.typ, style = Schrift.Klein.copy(fontWeight = FontWeight.Bold), color = Farben.Text)
-                        Text(t.beschreibung, style = Schrift.Winzig, color = Farben.TextSehrLeise, maxLines = 2)
+                    Text(t.typ, style = Schrift.Klein, color = Farben.Text, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    when {
+                        icon?.dreht == true -> Text("⟳", style = Schrift.Klein, color = Weltfarben.Akzent)
+                        icon != null -> Text("●", style = Schrift.Winzig, color = Farben.Amber)
                     }
                 }
             }
         }
-        if (!laedt && gefiltert.isEmpty()) SehrLeise("Kein Fahrzeug passt dazu.")
     }
 }
 
@@ -518,17 +561,27 @@ private fun IconTypSeite(
     }
 
     Seite {
-        Seitenkopf(
-            titel = typ.typ,
-            unterzeile = "${typ.organisation} · ${typ.kategorie}",
-            knoepfe = { Knopf("Zur Liste", beiZurueck, art = Knopfart.Leise, kompakt = true) },
-        )
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
+            Knopf("← Liste", beiZurueck, kompakt = true)
+            Text(
+                buildAnnotatedString {
+                    withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = Farben.Text)) { append(typ.typ) }
+                    withStyle(SpanStyle(color = Farben.TextSehrLeise, fontSize = Schrift.WINZIG)) { append(" · ${typ.organisation}") }
+                },
+                style = Schrift.Normal,
+                modifier = Modifier.weight(1f),
+            )
+        }
         SehrLeise(typ.beschreibung)
         Warnsatz(fehler)
-        hinweis?.let { Text(it, style = Schrift.Klein, color = Farben.AmberHell) }
 
+        // Die Bühne: „Dein Icon“. Die Seitenansicht „Ohne Icon“ daneben zeichnet
+        // das Web aus seinem Bauplan — den gibt es in der App nicht.
         if (icon == null) {
-            Leisesatz("Für diesen Typ zeichnet das Spiel selbst. Leg eine Grafik darüber — PNG, JPG oder WebP; sie wird als WebP abgelegt.")
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier.fillMaxWidth().height(140.dp).flaeche().padding(Abstand.Normal),
+            ) { SehrLeise("noch keins") }
         } else {
             Blaulichtbuehne(
                 icon = icon,
@@ -549,68 +602,16 @@ private fun IconTypSeite(
                     lichterSetzen(neu, i, "Licht ${i + 1} verschoben.")
                 },
             )
-            SehrLeise("Tippen setzt ein Blaulicht dorthin, wo es auf dem Bild sitzt; ein gesetztes antippen wählt es, ziehen verschiebt es.")
-            Text(
-                "${icon.breite ?: "?"} × ${icon.hoehe ?: "?"} Punkte · ${icon.blaulichter.size}/${grenzen.maxBlaulichter} Blaulichter",
-                style = Schrift.MonoKlein,
-                color = Farben.TextLeise,
-            )
-            Schalterzeile(
-                titel = "Dreht mit dem Kurs",
-                an = icon.dreht,
-                beiWechsel = { neu ->
-                    tun("Das ging nicht.") {
-                        wege.drehung(pack.id, typ.vorlageId, neu)
-                        beiGeaendert(icon.copy(dreht = neu))
-                        hinweis = if (neu) "Dreht jetzt mit dem Kurs." else "Steht jetzt still, egal wohin das Fahrzeug fährt."
-                    }
-                },
-                unterzeile = "Aus: Das Bild steht aufrecht, wie es gemalt ist. An: Es zeigt in Fahrtrichtung — dann muss die Front oben liegen.",
-                aktiv = !laeuft,
-            )
-
-            val licht = lichtwahl?.let { icon.blaulichter.getOrNull(it) }
-            if (licht != null) {
-                val index = lichtwahl ?: 0
-                fun aendern(neu: Blaulichtpunkt) =
-                    lichterSetzen(icon.blaulichter.mapIndexed { n, p -> if (n == index) neu else p }, index, "Licht ${index + 1} gespeichert.")
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(Abstand.Klein),
-                    modifier = Modifier.fillMaxWidth().flaeche(randfarbe = Farben.Amber).padding(Abstand.Normal),
-                ) {
-                    Text("Licht ${index + 1}", style = Schrift.Normal.copy(fontWeight = FontWeight.Bold), color = Farben.Text)
-                    Lichtwahl("Form", licht.form, grenzen.blaulichtFormen.ifEmpty { listOf("rund", "eckig") }, ::lichtwort) { aendern(licht.copy(form = it)) }
-                    Lichtwahl("Blitzmuster", licht.art, grenzen.blaulichtArten.ifEmpty { listOf("doppel", "vierfach", "rundum") }, ::lichtwort) { aendern(licht.copy(art = it)) }
-                    Lichtwahl("Takt", licht.takt, grenzen.blaulichtTakte.ifEmpty { listOf("a", "b") }, ::lichtwort) { aendern(licht.copy(takt = it)) }
-                    Lichtwahl("Farbe", licht.farbe, grenzen.blaulichtFarben.ifEmpty { listOf("blau", "gelb") }, ::lichtwort) { aendern(licht.copy(farbe = it)) }
-                    Text("Breite ${((licht.b ?: 0.16) * 100).roundToInt()} %", style = Schrift.Winzig, color = Farben.TextLeise)
-                    Regler(((licht.b ?: 0.16) * 100).roundToInt(), 4..60, 1, { aendern(licht.copy(b = it / 100.0)) })
-                    Text("Höhe ${((licht.h ?: 0.16) * 100).roundToInt()} %", style = Schrift.Winzig, color = Farben.TextLeise)
-                    Regler(((licht.h ?: 0.16) * 100).roundToInt(), 4..60, 1, { aendern(licht.copy(h = it / 100.0)) })
-                    Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
-                        Knopf("Licht entfernen", {
-                            val neu = icon.blaulichter.filterIndexed { n, _ -> n != index }
-                            lichterSetzen(neu, if (neu.isEmpty()) null else minOf(index, neu.size - 1))
-                        }, kompakt = true, art = Knopfart.Gefahr, aktiv = !laeuft)
-                        Knopf("Fertig", { lichtwahl = null }, kompakt = true, art = Knopfart.Leise)
-                    }
-                }
-            }
-            if (icon.blaulichter.isNotEmpty()) {
-                Knopf("Alle Lichter entfernen", { lichterSetzen(emptyList(), null) }, kompakt = true, art = Knopfart.Leise, aktiv = !laeuft)
-            }
         }
+        SehrLeise("Dein Icon")
+        hinweis?.let { Text(it, style = Schrift.Klein, color = Farben.GruenHell) }
 
         Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
-            Knopf(if (icon == null) "Bild hochladen" else "Bild ersetzen", { bildwahl.launch("image/*") }, kompakt = true, aktiv = !laeuft)
+            Knopf(if (icon == null) "Bild hochladen" else "Bild ersetzen", { bildwahl.launch("image/*") }, art = Knopfart.Haupt, aktiv = !laeuft)
             if (icon != null) {
-                Knopf("Icon entfernen", { loeschfrage = true }, kompakt = true, art = Knopfart.Gefahr, aktiv = !laeuft)
+                Knopf("Entfernen", { loeschfrage = true }, art = Knopfart.Gefahr, aktiv = !laeuft)
             }
         }
-        SehrLeise(
-            "Größer als $FELD Punkte wird verkleinert; die kürzeste Kante braucht mindestens ${grenzen.minKante} Punkte, " +
-                "höchstens ${kb(grenzen.maxBytesJeIcon)} KB je Icon.",
-        )
         if (loeschfrage && icon != null) {
             Text("Das Icon für ${typ.typ} entfernen?", style = Schrift.Klein, color = Farben.SignalHell)
             Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
@@ -626,6 +627,109 @@ private fun IconTypSeite(
                 Knopf("Behalten", { loeschfrage = false }, kompakt = true, art = Knopfart.Leise)
             }
         }
+
+        if (icon != null) {
+            Schalterzeile(
+                titel = "Mit dem Kurs drehen",
+                an = icon.dreht,
+                beiWechsel = { neu ->
+                    tun("Das ging nicht.") {
+                        wege.drehung(pack.id, typ.vorlageId, neu)
+                        beiGeaendert(icon.copy(dreht = neu))
+                        hinweis = if (neu) "Dreht jetzt mit dem Kurs." else "Steht jetzt still, egal wohin das Fahrzeug fährt."
+                    }
+                },
+                unterzeile = if (icon.dreht) "Das Icon zeigt in Fahrtrichtung — richtig für eine Zeichnung von oben."
+                else "Das Icon steht immer gerade, egal wohin das Fahrzeug fährt.",
+                aktiv = !laeuft,
+            )
+
+            // ------------------------------------------------------- Blaulicht
+            Text("Blaulicht", style = Schrift.Klein.copy(fontWeight = FontWeight.SemiBold), color = Farben.Text)
+            SehrLeise(
+                if (icon.blaulichter.isNotEmpty()) {
+                    "${icon.blaulichter.size} von höchstens ${grenzen.maxBlaulichter} Lichtern. Tipp auf eine Nummer, um das " +
+                        "Licht einzustellen; zieh es, um es zu verschieben. Auf einer freien Stelle setzt ein Tipp einen Punkt."
+                } else {
+                    "Bei Sondersignal blitzt das ganze Bild. Tipp auf das Bild, um einen Lichtpunkt zu setzen."
+                },
+            )
+            if (icon.blaulichter.isNotEmpty()) {
+                Column(verticalArrangement = Arrangement.spacedBy(Abstand.Winzig)) {
+                    icon.blaulichter.forEachIndexed { i, p ->
+                        Listenwahl(an = lichtwahl == i, beiDruck = { lichtwahl = i }) {
+                            Text("${i + 1}", style = Schrift.MonoKlein.copy(fontWeight = FontWeight.Bold), color = Farben.Amber)
+                            Column(Modifier.weight(1f)) {
+                                Text("Licht ${i + 1}", style = Schrift.Klein.copy(fontWeight = FontWeight.Bold), color = Farben.Text)
+                                Text(
+                                    "${lichtwort(p.form ?: "rund")} · ${p.art?.let(::lichtwort) ?: "wie das Fahrzeug"} · " +
+                                        "Takt ${(p.takt ?: "a").uppercase()} · ${lichtwort(p.farbe ?: "blau")}",
+                                    style = Schrift.Winzig,
+                                    color = Farben.TextSehrLeise,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            val licht = lichtwahl?.let { icon.blaulichter.getOrNull(it) }
+            if (licht != null) {
+                val index = lichtwahl ?: 0
+                fun aendern(neu: Blaulichtpunkt) =
+                    lichterSetzen(icon.blaulichter.mapIndexed { n, p -> if (n == index) neu else p }, index, "Licht ${index + 1} gespeichert.")
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(Abstand.Klein),
+                    modifier = Modifier.fillMaxWidth().flaeche(randfarbe = Farben.AmberTief).padding(Abstand.Normal),
+                ) {
+                    Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Licht ${index + 1} einstellen", style = Schrift.Klein.copy(fontWeight = FontWeight.Bold), color = Farben.Text)
+                            SehrLeise("Takt B läuft eine halbe Blitzfolge hinter Takt A — damit wechseln linke und rechte Leuchten wirklich ab.")
+                        }
+                        Knopf("Licht entfernen", {
+                            val neu = icon.blaulichter.filterIndexed { n, _ -> n != index }
+                            lichterSetzen(neu, if (neu.isEmpty()) null else minOf(index, neu.size - 1))
+                        }, kompakt = true, art = Knopfart.Gefahr, aktiv = !laeuft)
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
+                        Auswahl("Form", grenzen.blaulichtFormen.ifEmpty { listOf("rund", "eckig") }, licht.form ?: "rund", ::lichtwort,
+                            { aendern(licht.copy(form = it)) }, Modifier.weight(1f), aktiv = !laeuft)
+                        Auswahl("Blitzmuster", listOf("") + grenzen.blaulichtArten.ifEmpty { listOf("doppel", "vierfach", "rundum") },
+                            licht.art ?: "", { if (it.isEmpty()) "Wie das Fahrzeug" else lichtwort(it) },
+                            { aendern(licht.copy(art = it.ifEmpty { null })) }, Modifier.weight(1f), aktiv = !laeuft)
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
+                        Auswahl("Blitzfolge", grenzen.blaulichtTakte.ifEmpty { listOf("a", "b") }, licht.takt ?: "a", ::lichtwort,
+                            { aendern(licht.copy(takt = it)) }, Modifier.weight(1f), aktiv = !laeuft)
+                        Auswahl("Farbe", grenzen.blaulichtFarben.ifEmpty { listOf("blau", "gelb") }, licht.farbe ?: "blau", ::lichtwort,
+                            { aendern(licht.copy(farbe = it)) }, Modifier.weight(1f), aktiv = !laeuft)
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Etikett("Breite", Modifier.weight(1f))
+                        Text(licht.b?.let { "${(it * 100).roundToInt()} %" } ?: "Standard", style = Schrift.Winzig.copy(fontFamily = Schrift.Mono), color = Farben.TextLeise)
+                    }
+                    Regler(((licht.b ?: 0.12) * 100).roundToInt(), 2..100, 1, { aendern(licht.copy(b = it / 100.0)) })
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Etikett("Höhe", Modifier.weight(1f))
+                        Text(licht.h?.let { "${(it * 100).roundToInt()} %" } ?: "Standard", style = Schrift.Winzig.copy(fontFamily = Schrift.Mono), color = Farben.TextLeise)
+                    }
+                    Regler(((licht.h ?: 0.12) * 100).roundToInt(), 2..100, 1, { aendern(licht.copy(h = it / 100.0)) })
+                    if (licht.b != null || licht.h != null) {
+                        Knopf("Standardgröße", { aendern(licht.copy(b = null, h = null)) }, kompakt = true, aktiv = !laeuft)
+                    }
+                }
+            }
+            if (icon.blaulichter.isNotEmpty()) {
+                Knopf("Alle Lichter entfernen", { lichterSetzen(emptyList(), null) }, aktiv = !laeuft)
+            } else {
+                Knopf("Licht in die Mitte setzen", { lichterSetzen(listOf(Blaulichtpunkt(x = 0.5, y = 0.5)), 0) }, aktiv = !laeuft)
+            }
+        }
+
+        SehrLeise(
+            "PNG, JPEG, WebP oder GIF, höchstens ${kb(grenzen.maxBytesJeIcon)} KB. Größere Bilder werden vor dem " +
+                "Hochladen auf $FELD Punkte verkleinert; das Seitenverhältnis bleibt, wie es ist.",
+        )
         if (laeuft) Ladezeile("Wird gespeichert …")
     }
 }
