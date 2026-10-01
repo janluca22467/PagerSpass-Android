@@ -788,6 +788,10 @@ data class Wachenstatistik(
     val hilfsfristSekunden: Double? = null,
     /** Die Punkte der letzten dreißig Tage — wer gerade fährt. */
     val aktivitaetPunkte: Int = 0,
+    /** Die Schichten der letzten dreißig Tage — die Nebenzeile der Kachel „30 Tage". */
+    val aktivitaetSchichten: Int = 0,
+    /** Wann zuletzt jemand von der Wache gefahren ist; fehlt auf älteren Servern. */
+    val letzteSchicht: String? = null,
     val clanrundenSperreMinuten: Int = 0,
     val naechsteFreischaltung: String? = null,
     val clanrundenCoins: Int = 0,

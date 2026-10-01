@@ -194,21 +194,43 @@ fun WachenStufe(s: Wachenstatistik) {
                     ""
                 },
         )
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(Abstand.SehrGross)) {
-            Kennwert("Schichten", zahl(s.schichten))
-            Kennwert("Einsätze", zahl(s.einsaetze))
-            Kennwert("Ø Hilfsfrist", s.hilfsfristSekunden?.let { hilfsfrist(it.toInt()) } ?: "—")
-            Kennwert("30 Tage", zahl(s.aktivitaetPunkte))
-        }
+        // Die Zahlen stehen nicht mehr hier, sondern als Tafel unter dem Kopf
+        // (`Wachentafel`) — dieselbe Handschrift wie oben im Dienstbuch.
     }
 }
 
+/**
+ * Die Kennzahlen der Wache als Tafel — dieselbe wie oben auf der Übersicht des
+ * Dienstbuchs. Bis 5.0.0.26 standen sie als vier nackte Zahlen im Fuß des Kopfs;
+ * wer vom eigenen Dienstbuch herüberkam, las dieselbe Auskunft in einer zweiten
+ * Handschrift.
+ */
 @Composable
-private fun Kennwert(was: String, wert: String) {
-    Column {
-        Etikett(was)
-        Text(wert, style = Schrift.MonoNormal, color = Farben.Text)
-    }
+fun Wachentafel(s: Wachenstatistik) {
+    // „m:ss" aus ganzen Sekunden — sonst stünde bei 59,6 Sekunden „0:60".
+    val frist = s.hilfsfristSekunden?.let { hilfsfrist(Math.round(it).toInt()) }
+    val jeSchicht = if (s.schichten > 0) kommazahl(s.einsaetze.toDouble() / s.schichten) else null
+    val zuletzt = s.letzteSchicht?.let { tag(it).takeIf { t -> t != "—" }?.take(5) }
+    Kennzahltafel(
+        listOf(
+            { m -> Kennzahlkachel("Schichten", zahl(s.schichten), zuletzt?.let { "zuletzt $it" } ?: "noch keine", m) },
+            { m ->
+                Kennzahlkachel("Einsätze", zahl(s.einsaetze), jeSchicht?.let { "$it je Schicht" } ?: "—", m, farbe = Farben.BlauHell)
+            },
+            { m ->
+                Kennzahlkachel("Ø Hilfsfrist", frist?.let { "$it min" } ?: "—", "über alle Einsätze", m, farbe = Farben.GruenHell)
+            },
+            { m ->
+                Kennzahlkachel(
+                    "30 Tage",
+                    "${zahl(s.aktivitaetPunkte)} P",
+                    "${s.aktivitaetSchichten} ${if (s.aktivitaetSchichten == 1) "Schicht" else "Schichten"}",
+                    m,
+                    farbe = Farben.ViolettHell,
+                )
+            },
+        ),
+    )
 }
 
 // ---------------------------------------------------------------- Wachentag
@@ -237,14 +259,15 @@ fun WachenTag(
     val gueltig = eingabe.isEmpty() || eingabe.length >= 2
     val vorschau = (if (bearbeitet) eingabe else aktuell).ifBlank { "TAG" }
 
-    Kasten(abstandInnen = Abstand.Klein) {
+    // Eine Karte wie die übrigen der Wachenseite. Das Etikett „Wachentag", das
+    // bis dahin über dem Satz stand, ist jetzt ihr Titel.
+    Buchkarte("Wachentag") {
         Row(
             horizontalArrangement = Arrangement.spacedBy(Abstand.Normal),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Wachentagplakette(aktuell.ifBlank { vorschau })
             Column(modifier = Modifier.weight(1f)) {
-                Etikett("Wachentag")
                 Text(
                     text = when {
                         erreicht && aktuell.isNotBlank() -> "Eure Wache trägt $aktuell"
@@ -350,7 +373,9 @@ fun WachenLaufbahn(statistik: Wachenstatistik, stufen: List<Wachenrang>) {
         band.scrollTo((index * karte).coerceAtMost(band.maxValue))
     }
 
-    Abschnitt("Laufbahn der Wache") {
+    // Eine Karte wie die übrigen der Wachenseite: Kopf mit Titel, darunter der
+    // Stand und das Band, das seitwärts rollt.
+    Buchkarte("Laufbahn der Wache") {
         SehrLeise(
             "Stufe ${statistik.stufe} · ${zahl(statistik.erfahrung)} Punkte · " +
                 (statistik.bisZurNaechsten?.let { "noch ${zahl(it)} bis Stufe ${statistik.stufe + 1}" }
