@@ -36,11 +36,18 @@ object Abstand {
     /** Der Regelfall: Innenraum eines Kastens, Gitterfuge. */
     val Normal = 12.dp
 
-    /** Zwischen zwei Kästen. */
-    val Gross = 16.dp
+    /**
+     * Zwischen zwei Kästen.
+     *
+     * 13 und nicht die 16 des Rechners — die Handy-Schicht (`mobil.css`) setzt
+     * die beiden oberen Stufen herab: Am Handy steht alles untereinander, jede
+     * Fuge ist reine Höhe, und eine Seite mit acht Kästen zahlt sie achtmal.
+     * Die Staffel bleibt intakt: größer als `Normal` (12), kleiner als `SehrGross`.
+     */
+    val Gross = 13.dp
 
-    /** Zwischen zwei Abschnitten einer Seite. */
-    val SehrGross = 24.dp
+    /** Zwischen zwei Abschnitten einer Seite — am Handy 18 statt 24, siehe `Gross`. */
+    val SehrGross = 18.dp
 }
 
 /**
@@ -52,8 +59,8 @@ object Rundung {
     /** Kästen, Karten, Dialoge. */
     val Normal = RoundedCornerShape(14.dp)
 
-    /** Knöpfe, Felder. */
-    val Klein = RoundedCornerShape(9.dp)
+    /** Knöpfe, Felder, Zeilen — `--radius-klein`, 10 Punkt. */
+    val Klein = RoundedCornerShape(10.dp)
 
     /** Was in einer Zeile sitzt: Marken, Punkte, Balken. */
     val Winzig = RoundedCornerShape(6.dp)

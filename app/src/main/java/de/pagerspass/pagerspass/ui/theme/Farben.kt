@@ -35,6 +35,17 @@ object Farben {
     val Rand = Color(0xFF333741)
     val RandHell = Color(0xFF515763)
 
+    /**
+     * Eingelassen — die Gegenrichtung.
+     *
+     * Dunkler als der Grund: ein Bett, in das etwas hineingeht — Listenrumpf,
+     * Suchfeld, Funkprotokoll. Die einzige Fläche, die nach unten zeigt.
+     */
+    val FlaecheTief = Color(0xFF0E0F12)
+
+    /** Der Grund unter einem Gruppentitel in einer Wegeliste (`--leiste-band`). */
+    val LeisteBand = Color(0xFF1B1D22)
+
     // -------------------------------------------------------------- Schrift
     //
     // Alle drei Stufen halten 4,5:1 auch auf `FlaecheAktiv` — der hellsten
@@ -77,11 +88,13 @@ object Farben {
     // Kanal läuft die Reihe von vorn — dann trägt die Nummer daneben die
     // Unterscheidung allein.
 
+    // Die Werte sind die hellen Fassungen von oben (v6): Die Marke im
+    // Funkprotokoll ist Text, kein Punkt, und muss auf `FlaecheAktiv` lesbar sein.
     val Kanal = listOf(
-        Color(0xFF78BEF5),
-        Color(0xFFFF9D3B),
+        Color(0xFF7BC0F5),
+        Color(0xFFFFA448),
         Color(0xFF6EE7A8),
-        Color(0xFFB197FC),
+        Color(0xFFC1ADFD),
         Color(0xFFF0C86E),
         Color(0xFF6EDCD6),
     )
