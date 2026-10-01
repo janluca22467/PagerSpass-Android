@@ -8,6 +8,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.Text
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Icon
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -454,55 +459,60 @@ private fun Streifengriffe(welt: Welt, zustand: Weltzustand, werkbank: Werkbank,
 }
 
 /**
- * Der Fahrzeugkauf — der Fahrzeug-Reiter von `BauBlende.vue`.
+ * Der Fahrzeugkauf — `BauBlende.vue` mit `nur="fahrzeug"`, so wie das Web ihn
+ * am Handy als eigene Seite öffnet.
  *
  * <b>Erst die Wache, dann die Liste.</b> Was angeboten wird, hängt an der
  * Bauart (was dort stehen darf) und an den Freischaltungen (Rettungsdienst,
  * Polizei, THW) — beides steht hier, damit nichts angeboten wird, was der
- * Server ablehnt.
+ * Server ablehnt. Ohne Wache steht in der Liste nichts.
+ *
+ * <b>Bewusst ohne Riss:</b> Das Web zeichnet vor jede Zeile die Seitenansicht
+ * aus seinem Bauplan; die gibt es in der App nicht, und ein leeres Fach
+ * davor sagte nichts.
  */
 @Composable
-fun FahrzeugkaufSeite(welt: Welt, zustand: Weltzustand, werkbank: Werkbank) {
+fun FahrzeugkaufSeite(welt: Welt, zustand: Weltzustand, @Suppress("UNUSED_PARAMETER") werkbank: Werkbank) {
     val bereich = rememberCoroutineScope()
+    // Ohne Lehrgangseinrichtung und Werkstatt: Dort steht kein Fahrzeug.
     val wachen = zustand.stand?.wachen.orEmpty().filter { traegtFahrzeuge(it.art) }
-    var wache by remember { mutableStateOf<WeltWache?>(null) }
-    var vorlage by remember { mutableStateOf<WeltVorlage?>(null) }
+    var wacheId by remember { mutableStateOf<String?>(null) }
+    var vorlage by remember { mutableStateOf<String?>(null) }
     var suche by remember { mutableStateOf("") }
     var fehler by remember { mutableStateOf<String?>(null) }
     var sendet by remember { mutableStateOf(false) }
-    val aktuelleWache = wache?.let { w -> wachen.firstOrNull { it.id == w.id } }
+    val w = wachen.firstOrNull { it.id == wacheId }
     val frei = zustand.stand?.freischaltungen.orEmpty().filter { it.frei }.map { it.was }.toSet()
+    val freiePlaetze = w?.let { it.stellplaetze - it.belegt } ?: 0
 
-    if (wachen.isEmpty()) {
-        Leisesatz("Fahrzeuge brauchen eine Wache. Bau zuerst eine — unter „Bauen“.")
-        Knopf("Zur Bauseite", { werkbank.seite = Werkzeug.Bauen }, kompakt = true)
-        return
-    }
-    Leisesatz("Guthaben: ${credits(zustand.guthaben)}")
     Auswahl(
         etikett = "Wache",
         eintraege = wachen,
-        gewaehlt = aktuelleWache,
+        gewaehlt = w,
         aufschrift = { "${it.name} · ${it.belegt}/${it.stellplaetze}" },
-        unterschrift = { artname(it.art) },
-        beiWahl = { wache = it; vorlage = null },
+        unterschrift = { if (it.belegt >= it.stellplaetze) "voll" else null },
+        platzhalter = "Wähle eine Wache",
+        // Eine volle Wache ist im Web eine gesperrte Zeile — hier nimmt die Wahl sie nicht an.
+        beiWahl = { if (it.belegt < it.stellplaetze) { wacheId = it.id } },
     )
-    val w = aktuelleWache ?: return
-    val freiePlaetze = w.stellplaetze - w.belegt
-    // Jede Wache kauft aus dem Katalog ihres Staats — der Staat kommt vom
-    // Server und folgt dem Standort. Ohne die Prüfung stünden österreichische
-    // Fahrzeuge in Kassel, und der Kauf scheiterte erst am Server.
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
-        Landesflagge(w.staat, 18.dp)
-        Text(
-            if (freiePlaetze > 0) "Katalog ${staatName(w.staat)} · noch $freiePlaetze ${if (freiePlaetze == 1) "Platz" else "Plätze"} frei."
-            else "Katalog ${staatName(w.staat)} · Diese Wache ist voll.",
-            style = Schrift.Klein,
-            color = Farben.TextLeise,
-        )
+    if (w != null) {
+        // Jede Wache kauft aus dem Katalog ihres Staats — der Staat kommt vom
+        // Server und folgt dem Standort.
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
+            Landesflagge(w.staat, 18.dp)
+            Text(
+                buildAnnotatedString {
+                    append("Katalog ${staatName(w.staat)} · noch ")
+                    withStyle(SpanStyle(fontFamily = Schrift.Mono)) { append("$freiePlaetze") }
+                    append(" Plätze frei.")
+                },
+                style = Schrift.Klein,
+                color = Farben.TextLeise,
+            )
+        }
     }
 
-    val vorlagen = jeTypEine(zustand.vorlagen.values).filter { v ->
+    val vorlagen = if (w == null) emptyList() else jeTypEine(zustand.vorlagen.values).filter { v ->
         (v.staaten.firstOrNull() ?: "Deutschland") == w.staat &&
             passtZurWache(w.art, v) && when (v.organisation) {
             "Feuerwehr" -> true
@@ -512,39 +522,85 @@ fun FahrzeugkaufSeite(welt: Welt, zustand: Weltzustand, werkbank: Werkbank) {
             else -> false
         }
     }
-    if (vorlagen.size > 8) Feld(wert = suche, beiAenderung = { suche = it }, platzhalter = "Typ, Fähigkeit …")
-    val gefiltert = vorlagen.filter { v ->
-        val t = suche.trim().lowercase()
-        t.isEmpty() || t in v.typ.lowercase() || t in v.kategorie.lowercase() || v.faehigkeiten.any { t in it.lowercase() }
+    // Wechselt die Wache, verfällt eine Wahl, die dort nicht stehen darf.
+    if (vorlage != null && vorlagen.none { it.id == vorlage }) vorlage = null
+
+    when {
+        w == null -> Text(
+            "Wähle zuerst die Wache — was dort stehen darf, hängt an ihrer Bauart.",
+            style = Schrift.Klein,
+            color = Farben.TextSehrLeise,
+        )
+        vorlagen.isEmpty() -> Text(
+            if (zustand.vorlagen.isEmpty()) "Der Katalog wird geladen …" else "Für diese Wache ist gerade nichts freigeschaltet.",
+            style = Schrift.Klein,
+            color = Farben.TextSehrLeise,
+        )
     }
-    if (zustand.vorlagen.isEmpty()) Leisesatz("Der Katalog wird geladen …")
-    gefiltert.groupBy { it.kategorie }.forEach { (kategorie, liste) ->
-        Ueberschrift(kategorie.ifBlank { "Weitere" })
-        liste.forEach { v ->
-            val preis = zustand.stand?.fahrzeugpreise?.get(v.id) ?: 0
-            Wahlzeile(an = vorlage?.id == v.id, beiWechsel = { vorlage = v }) {
-                Column {
-                    Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
-                        Text(v.typ, style = Schrift.Klein.copy(fontWeight = FontWeight.Bold), color = Farben.Text, modifier = Modifier.weight(1f))
-                        Text(credits(preis), style = Schrift.MonoKlein, color = if (preis <= zustand.guthaben) Farben.Amber else Farben.SignalHell)
+    if (vorlagen.size > 8) {
+        Feld(wert = suche, beiAenderung = { suche = it }, platzhalter = "Typ, Fähigkeit, Organisation …")
+    }
+    // Die Suche ändert die Anzeige, nicht den Bestand: Die Wahl bleibt, auch
+    // wenn das gewählte Fahrzeug gerade nicht zum Suchwort passt.
+    val gruppen = vorlagen.filter { v ->
+        val t = suche.trim().lowercase()
+        t.isEmpty() || t in v.typ.lowercase() || t in v.kategorie.lowercase() ||
+            t in v.organisation.lowercase() || v.faehigkeiten.any { t in it.lowercase() }
+    }.groupBy { it.kategorie }
+    val guthaben = zustand.guthaben
+    if (vorlagen.isNotEmpty() && gruppen.isEmpty()) {
+        Text("Kein Fahrzeug passt zu „$suche“.", style = Schrift.Klein, color = Farben.TextSehrLeise)
+    }
+    gruppen.forEach { (kategorie, liste) ->
+        Ueberschrift(kategorie, Modifier.padding(top = Abstand.Klein))
+        Column(verticalArrangement = Arrangement.spacedBy(Abstand.Winzig)) {
+            liste.forEach { v ->
+                val preis = zustand.stand?.fahrzeugpreise?.get(v.id) ?: 0
+                Listenwahl(
+                    an = vorlage == v.id,
+                    beiDruck = { vorlage = v.id },
+                    // Zu teuer heißt blass, nicht gesperrt: Wählen darf man trotzdem.
+                    modifier = Modifier.alpha(if (preis > guthaben) 0.55f else 1f),
+                ) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Abstand.Haar)) {
+                        Text(
+                            v.typ,
+                            style = Schrift.Klein.copy(fontWeight = FontWeight.SemiBold),
+                            color = Farben.Text,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            v.faehigkeiten.joinToString(" · ").ifEmpty { v.beschreibung },
+                            style = Schrift.Winzig,
+                            color = Farben.TextSehrLeise,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
                     }
-                    if (v.beschreibung.isNotBlank()) Text(v.beschreibung, style = Schrift.Winzig, color = Farben.TextSehrLeise, maxLines = 2)
-                    if (v.faehigkeiten.isNotEmpty()) Text(v.faehigkeiten.joinToString(" · "), style = Schrift.Winzig, color = Farben.TextLeise, maxLines = 2)
+                    Text(
+                        credits(preis),
+                        style = Schrift.MonoKlein,
+                        color = Farben.AmberHell,
+                        maxLines = 1,
+                        modifier = Modifier.padding(start = Abstand.Normal),
+                    )
                 }
             }
         }
     }
     Warnsatz(fehler)
-    val v = vorlage
     Knopf(
-        if (sendet) "Wird gekauft …" else v?.let { "Kaufen für ${credits(zustand.stand?.fahrzeugpreise?.get(it.id) ?: 0)}" } ?: "Fahrzeug wählen",
+        if (sendet) "Wird gekauft …" else "Kaufen",
         {
-            val gewaehlt = vorlage ?: run { fehler = "Wähle Wache und Fahrzeug."; return@Knopf }
+            val id = w?.id
+            val gewaehlt = vorlage
+            if (id == null || gewaehlt == null) { fehler = "Wähle Wache und Fahrzeug."; return@Knopf }
             sendet = true
             fehler = null
             bereich.launch {
                 fehler = welt.handlung("Der Kauf ging nicht.") {
-                    welt.wege.fahrzeugKaufen(it, w.id, gewaehlt.id)
+                    welt.wege.fahrzeugKaufen(it, id, gewaehlt)
                     welt.allesLaden()
                 }
                 sendet = false
@@ -552,6 +608,6 @@ fun FahrzeugkaufSeite(welt: Welt, zustand: Weltzustand, werkbank: Werkbank) {
         },
         art = Knopfart.Haupt,
         breit = true,
-        aktiv = !sendet && v != null && freiePlaetze > 0,
+        aktiv = !sendet && vorlage != null && freiePlaetze > 0,
     )
 }

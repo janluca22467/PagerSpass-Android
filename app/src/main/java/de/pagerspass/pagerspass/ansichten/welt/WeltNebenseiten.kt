@@ -10,6 +10,27 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
+import de.pagerspass.pagerspass.ui.bausteine.Leerhinweis
+import de.pagerspass.pagerspass.ui.bausteine.Pille
+import de.pagerspass.pagerspass.ui.bausteine.Pillenreihe
+import de.pagerspass.pagerspass.ui.theme.flaeche
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.border
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.text.style.TextAlign
+import de.pagerspass.pagerspass.ui.karte.Kartenstil
+import de.pagerspass.pagerspass.ui.bausteine.Etikett
+import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.draw.clip
+import de.pagerspass.pagerspass.ui.theme.flaechenmarke
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -308,14 +329,18 @@ private val GRUNDTEXT = mapOf(
     "Zweigstelle" to "Zweigstelle gegründet", "Wochensieg" to "Wochensiege (Preisgeld)",
 )
 
-/** Die Kasse — `KasseBlende.vue`: Kredit, Summen je Grund, die letzten Buchungen. */
+/**
+ * Die Kasse — `KasseBlende.vue`: oben der Kredit (laufend oder die Angebote),
+ * darunter die Summen je Grund für sieben Tage oder seit je, zuletzt die
+ * Buchungen.
+ */
 @Composable
 fun KasseSeite(welt: Welt, zustand: Weltzustand) {
     val bereich = rememberCoroutineScope()
     var blatt by remember { mutableStateOf<WeltKassenblatt?>(null) }
     var fehler by remember { mutableStateOf<String?>(null) }
     var kreditfehler by remember { mutableStateOf<String?>(null) }
-    var zeitraum by remember { mutableStateOf("7 Tage") }
+    var zeitraum by remember { mutableStateOf("sieben") }
     var arbeitet by remember { mutableStateOf(false) }
     var tilgung by remember { mutableStateOf("") }
 
@@ -327,31 +352,42 @@ fun KasseSeite(welt: Welt, zustand: Weltzustand) {
     }
     LaunchedEffect(zustand.gutschrift) { laden() }
 
-    Warnsatz(fehler)
-    val b = blatt ?: run {
-        if (fehler == null) Ladezeile("Das Kassenblatt wird geladen …")
+    if (fehler != null) {
+        Warnsatz(fehler)
         return
     }
-    Wertzeile("Guthaben", credits(b.guthaben), farbe = Farben.Amber)
+    val b = blatt ?: run {
+        Leerhinweis("Das Kassenblatt wird geladen …")
+        return
+    }
 
     // ----------------------------------------------------------------- Kredit
-    val k = b.kredit
-    if (k != null) {
-        Weltkasten(randfarbe = Farben.SignalTief) {
-            Wertzeile("Restschuld", zahl(k.restschuld), farbe = Farben.SignalHell)
-            Weltbalken(if (k.rueckzahlung > 0) k.getilgt.toFloat() / k.rueckzahlung else 0f, Farben.GruenHell)
+    Column(
+        verticalArrangement = Arrangement.spacedBy(Abstand.Klein),
+        modifier = Modifier.fillMaxWidth().flaeche().padding(Abstand.Klein),
+    ) {
+        val k = b.kredit
+        if (k != null) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Restschuld", style = Schrift.Klein.copy(fontWeight = FontWeight.SemiBold), color = Farben.Text, modifier = Modifier.weight(1f))
+                Text(credits(k.restschuld), style = Schrift.Gross.copy(fontFamily = Schrift.Mono), color = Farben.Amber)
+            }
+            Weltbalken(if (k.rueckzahlung > 0) k.getilgt.toFloat() / k.rueckzahlung else 0f, Farben.Amber)
             Leisesatz(
                 "${zahl(k.getilgt)} von ${zahl(k.rueckzahlung)} getilgt · ${k.zinsprozent} % Aufschlag · " +
                     "${k.tilgungProzent} % jeder Gutschrift tilgen von selbst.",
                 winzig = true,
             )
+            // Leer heißt alles — der Platzhalter sagt, wie viel das ist.
             val betrag = tilgung.filter(Char::isDigit).toLongOrNull()?.coerceAtMost(k.restschuld) ?: k.restschuld
-            Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein), verticalAlignment = Alignment.Bottom) {
+            val gedeckt = (zustand.betrieb?.guthaben ?: b.guthaben) >= betrag
+            Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein), verticalAlignment = Alignment.CenterVertically) {
                 Feld(
                     wert = tilgung,
                     beiAenderung = { tilgung = it.filter(Char::isDigit).take(9) },
-                    etikett = "Betrag (leer = alles)",
+                    platzhalter = zahl(k.restschuld),
                     tastatur = androidx.compose.ui.text.input.KeyboardType.Number,
+                    stil = Schrift.MonoNormal,
                     modifier = Modifier.weight(1f),
                 )
                 Knopf("${zahl(betrag)} tilgen", {
@@ -363,51 +399,78 @@ fun KasseSeite(welt: Welt, zustand: Weltzustand) {
                         laden()
                         arbeitet = false
                     }
-                }, kompakt = true, aktiv = !arbeitet && betrag > 0 && b.guthaben >= betrag)
+                }, art = Knopfart.Haupt, aktiv = !arbeitet && betrag > 0 && gedeckt)
             }
-            if (b.guthaben < betrag) Leisesatz("Dafür reicht das Guthaben gerade nicht.", winzig = true)
-        }
-    } else if (b.kreditangebote.isNotEmpty()) {
-        Ueberschrift("Kredit aufnehmen")
-        b.kreditangebote.forEach { a ->
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Abstand.Normal)) {
-                Column(Modifier.weight(1f)) {
-                    Text(credits(a.betrag), style = Schrift.MonoKlein.copy(fontWeight = FontWeight.Bold), color = Farben.Text)
-                    Text("${a.zinsprozent} % Aufschlag · zurück ${zahl(a.rueckzahlung)}", style = Schrift.Winzig, color = Farben.TextSehrLeise)
-                }
-                Knopf(if (a.frei) "Aufnehmen" else "ab Stufe ${a.abStufe}", {
-                    arbeitet = true
-                    kreditfehler = null
-                    bereich.launch {
-                        kreditfehler = welt.handlung("Der Kredit ging nicht.") { welt.wege.kreditAufnehmen(it, a.betrag); welt.betriebLaden() }
-                        laden()
-                        arbeitet = false
+            if (!gedeckt) Leisesatz("Dafür fehlen Welt-Credits — es geht auch weniger.", winzig = true)
+        } else {
+            Text("Kredit aufnehmen", style = Schrift.Klein.copy(fontWeight = FontWeight.SemiBold), color = Farben.Text)
+            Column(verticalArrangement = Arrangement.spacedBy(Abstand.Winzig)) {
+                b.kreditangebote.forEach { a ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Farben.FlaecheHoch, Rundung.Winzig)
+                            .padding(horizontal = Abstand.Klein, vertical = Abstand.Winzig),
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(credits(a.betrag), style = Schrift.MonoKlein, color = Farben.Text)
+                            Text("${a.zinsprozent} % Aufschlag · zurück ${zahl(a.rueckzahlung)}", style = Schrift.Winzig, color = Farben.TextSehrLeise)
+                        }
+                        Knopf(if (a.frei) "Aufnehmen" else "ab Stufe ${a.abStufe}", {
+                            arbeitet = true
+                            kreditfehler = null
+                            bereich.launch {
+                                kreditfehler = welt.handlung("Der Kredit ging nicht.") { welt.wege.kreditAufnehmen(it, a.betrag); welt.betriebLaden() }
+                                laden()
+                                arbeitet = false
+                            }
+                        }, kompakt = true, aktiv = a.frei && !arbeitet)
                     }
-                }, kompakt = true, aktiv = a.frei && !arbeitet)
+                }
             }
+            Leisesatz("Einer zur Zeit — getilgt wird von selbst, ein Viertel jeder Gutschrift.", winzig = true)
         }
-        Leisesatz("Getilgt wird von selbst aus jeder Gutschrift — oder früher von Hand.", winzig = true)
+        Warnsatz(kreditfehler)
     }
-    Warnsatz(kreditfehler)
 
     // ---------------------------------------------------------------- Summen
-    Segment(listOf("7 Tage", "Gesamt"), zeitraum, { zeitraum = it })
-    val summen = if (zeitraum == "7 Tage") b.summenSiebenTage else b.summenGesamt
-    if (summen.isEmpty()) Leisesatz("In diesem Zeitraum hat sich nichts bewegt.")
-    summen.forEach { s ->
-        Wertzeile(
-            GRUNDTEXT[s.grund] ?: s.grund,
-            (if (s.summe >= 0) "+" else "") + zahl(s.summe),
-            farbe = if (s.summe >= 0) Farben.GruenHell else Farben.SignalHell,
-        )
+    Pillenreihe {
+        Pille("7 Tage", zeitraum == "sieben", { zeitraum = "sieben" })
+        Pille("Seit je", zeitraum == "gesamt", { zeitraum = "gesamt" })
+    }
+    val summen = if (zeitraum == "sieben") b.summenSiebenTage else b.summenGesamt
+    if (summen.isEmpty()) {
+        Leerhinweis("In diesem Zeitraum hat sich nichts bewegt.")
+    } else {
+        Column(verticalArrangement = Arrangement.spacedBy(Abstand.Haar)) {
+            summen.forEach { s ->
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Farben.Flaeche, Rundung.Winzig)
+                        .padding(horizontal = Abstand.Klein, vertical = Abstand.Winzig),
+                ) {
+                    Text(GRUNDTEXT[s.grund] ?: s.grund, style = Schrift.Klein, color = Farben.Text, modifier = Modifier.weight(1f))
+                    Text(
+                        (if (s.summe >= 0) "+" else "") + credits(s.summe),
+                        style = Schrift.MonoKlein,
+                        color = if (s.summe >= 0) Farben.GruenHell else Farben.SignalHell,
+                    )
+                }
+            }
+        }
     }
 
-    Ueberschrift("Letzte Buchungen")
+    Ueberschrift("Letzte Buchungen", Modifier.padding(top = Abstand.Klein))
     b.buchungen.forEach { z ->
         Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Normal), verticalAlignment = Alignment.Top) {
             Column(Modifier.weight(1f)) {
                 Text(GRUNDTEXT[z.grund] ?: z.grund, style = Schrift.Klein, color = Farben.Text)
-                z.vermerk?.let { Text(it, style = Schrift.Winzig, color = Farben.TextLeise, maxLines = 2) }
+                z.vermerk?.let { Text(it, style = Schrift.Winzig, color = Farben.TextSehrLeise, maxLines = 2) }
                 Text(tagUndUhr(z.um), style = Schrift.Winzig.copy(fontFamily = Schrift.Mono), color = Farben.TextSehrLeise)
             }
             Column(horizontalAlignment = Alignment.End) {
@@ -416,7 +479,7 @@ fun KasseSeite(welt: Welt, zustand: Weltzustand) {
                     style = Schrift.MonoKlein,
                     color = if (z.betrag >= 0) Farben.GruenHell else Farben.SignalHell,
                 )
-                Text("→ ${zahl(z.standDanach)}", style = Schrift.Winzig, color = Farben.TextSehrLeise)
+                Text("→ ${zahl(z.standDanach)}", style = Schrift.Winzig.copy(fontFamily = Schrift.Mono), color = Farben.TextSehrLeise)
             }
         }
     }
@@ -424,12 +487,15 @@ fun KasseSeite(welt: Welt, zustand: Weltzustand) {
 
 // ================================================================ Rangliste
 
-/** Die Rangliste — `RanglisteBlende.vue`: diese Woche und seit je. */
+/**
+ * Die Rangliste — `RanglisteBlende.vue`: diese Woche und seit je, darüber in der
+ * Woche die Krone der letzten, darunter der eigene Platz.
+ */
 @Composable
 fun RanglisteSeite(welt: Welt, zustand: Weltzustand) {
     var liste by remember { mutableStateOf<WeltRangliste?>(null) }
     var fehler by remember { mutableStateOf<String?>(null) }
-    var sicht by remember { mutableStateOf("Diese Woche") }
+    var sicht by remember { mutableStateOf("woche") }
     LaunchedEffect(zustand.wochensiege) {
         while (true) {
             val k = welt.kennung ?: break
@@ -439,53 +505,107 @@ fun RanglisteSeite(welt: Welt, zustand: Weltzustand) {
             delay(60_000)
         }
     }
-    Warnsatz(fehler)
-    val l = liste ?: run {
-        if (fehler == null) Ladezeile()
+    if (fehler != null) {
+        Warnsatz(fehler)
         return
     }
-    l.letzteWoche?.let { s ->
-        Weltkasten(randfarbe = Farben.AmberTief) {
-            Text(
-                "♛ Woche ${s.woche}: ${s.name}",
-                style = Schrift.Klein.copy(fontWeight = FontWeight.Bold),
-                color = Farben.Amber,
-                modifier = Modifier.zumProfil(s.benutzername),
-            )
-            Leisesatz("${s.leitstelle} · ${zahl(s.credits)} verdient · ${s.lagenGedeckt} Lagen · Preisgeld ${credits(s.preisgeld)}", winzig = true)
-        }
+    val l = liste
+    Pillenreihe {
+        Pille("Diese Woche", sicht == "woche", { sicht = "woche" })
+        Pille("Seit je", sicht == "gesamt", { sicht = "gesamt" })
     }
-    if (l.meineWochensiege > 0) Leisesatz("Du hast schon ${l.meineWochensiege} ${if (l.meineWochensiege == 1) "Woche" else "Wochen"} gewonnen.")
-    Segment(listOf("Diese Woche", "Gesamt"), sicht, { sicht = it })
-    val zeilen = if (sicht == "Diese Woche") l.dieseWoche else l.gesamt
-    val mein = if (sicht == "Diese Woche") l.meinPlatzWoche else l.meinPlatzGesamt
-    Leisesatz(mein?.let { "Dein Platz: $it" } ?: "Du stehst noch nicht in der Liste.")
-    if (zeilen.isEmpty()) Leisesatz("Noch niemand in der Liste.")
-    zeilen.forEach { r ->
-        val ich = r.platz == mein
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(Abstand.Normal),
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(if (ich) Farben.HauchAmber else Farben.Flaeche, Rundung.Klein)
-                .padding(horizontal = Abstand.Normal, vertical = Abstand.Klein),
-        ) {
-            Text("${r.platz}.", style = Schrift.MonoKlein.copy(fontWeight = FontWeight.Bold), color = if (r.platz <= 3) Farben.Amber else Farben.TextLeise)
+    if (l == null) {
+        Ladezeile()
+        return
+    }
+    val s = l.letzteWoche
+    if (sicht == "woche" && s != null) {
+        Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein), verticalAlignment = Alignment.CenterVertically) {
+            Text("♛", style = Schrift.Gross, color = Farben.Amber)
             Column(Modifier.weight(1f)) {
                 Text(
-                    r.name + if (r.wochensiege > 0) " ♛${r.wochensiege}" else "",
+                    buildAnnotatedString {
+                        append("Letzte Woche gewann ")
+                        withStyle(SpanStyle(fontWeight = FontWeight.SemiBold, color = Farben.Text)) { append(s.name) }
+                    },
                     style = Schrift.Klein,
-                    color = Farben.Text,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.zumProfil(r.benutzername),
+                    color = Farben.TextLeise,
+                    modifier = Modifier.zumProfil(s.benutzername),
                 )
-                Text("${r.leitstelle} · Stufe ${r.stufe} · ${r.lagenGedeckt} Lagen", style = Schrift.Winzig, color = Farben.TextSehrLeise, maxLines = 1)
+                Text(
+                    "${s.leitstelle} · ${zahl(s.credits)} verdient · ${zahl(s.preisgeld)} Preisgeld",
+                    style = Schrift.Winzig,
+                    color = Farben.TextSehrLeise,
+                )
             }
-            Text(zahl(r.credits), style = Schrift.MonoKlein, color = Farben.Amber)
         }
     }
+    val zeilen = if (sicht == "woche") l.dieseWoche else l.gesamt
+    val mein = if (sicht == "woche") l.meinPlatzWoche else l.meinPlatzGesamt
+    if (zeilen.isEmpty()) {
+        Leerhinweis("Noch hat niemand etwas verdient. Der erste Platz ist zu haben.")
+    } else {
+        Column(verticalArrangement = Arrangement.spacedBy(Abstand.Haar)) {
+            zeilen.forEach { r ->
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(if (r.platz == mein) Farben.HauchAmber else Farben.Flaeche, Rundung.Winzig)
+                        .padding(horizontal = Abstand.Klein, vertical = Abstand.Winzig),
+                ) {
+                    Text(
+                        "${r.platz}",
+                        style = Schrift.MonoKlein.copy(fontWeight = FontWeight.Bold),
+                        color = when (r.platz) {
+                            1 -> Farben.Amber
+                            2 -> Farben.TextLeise
+                            3 -> Farben.OrangeHell
+                            else -> Farben.TextSehrLeise
+                        },
+                        modifier = Modifier.width(28.dp),
+                    )
+                    Column(Modifier.weight(1f)) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein), verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                r.name,
+                                style = Schrift.Klein,
+                                color = Farben.Text,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f, fill = false).zumProfil(r.benutzername),
+                            )
+                            if (r.wochensiege > 0) Text("♛ ${r.wochensiege}", style = Schrift.Winzig, color = Farben.Amber)
+                        }
+                        Text(
+                            "${r.leitstelle} · Stufe ${r.stufe} · ${r.lagenGedeckt} Lagen",
+                            style = Schrift.Winzig,
+                            color = Farben.TextSehrLeise,
+                            maxLines = 1,
+                        )
+                    }
+                    Text(credits(r.credits), style = Schrift.MonoKlein, color = Farben.AmberHell)
+                }
+            }
+        }
+    }
+    Text(
+        buildAnnotatedString {
+            if (mein != null) {
+                append("Dein Platz: ")
+                withStyle(SpanStyle(fontFamily = Schrift.Mono)) { append("$mein") }
+                if (l.meineWochensiege > 0) {
+                    append(" · gewonnene Wochen: ")
+                    withStyle(SpanStyle(fontFamily = Schrift.Mono)) { append("${l.meineWochensiege}") }
+                }
+            } else {
+                append("Sobald du etwas verdienst, stehst du mit drauf.")
+            }
+        },
+        style = Schrift.Klein,
+        color = Farben.TextLeise,
+    )
 }
 
 // ================================================================= Laufbahn
@@ -521,52 +641,121 @@ private val FREISCHALTNAMEN = mapOf(
     "Massenanfall" to "Massenanfall — MANV-Lagen entstehen auch bei dir", "Landesleitstelle" to "Landesleitstelle — die siebte Ausbaustufe",
 )
 
-/** Die Laufbahn — `LaufbahnBlende.vue`: alle Stufen, was wann aufgeht. */
+/**
+ * Die Laufbahn — `LaufbahnBlende.vue`: oben die zwei Größen gegenübergestellt
+ * (Erfahrung wächst nur, Credits gibt man aus), dann das Nächste, dann alle
+ * Stufen.
+ */
 @Composable
 fun LaufbahnSeite(welt: Welt, zustand: Weltzustand) {
     LaunchedEffect(Unit) { welt.laufbahnLaden() }
     val meine = zustand.stufe
     val erfahrung = zustand.betrieb?.erfahrung ?: zustand.stand?.erfahrung ?: 0
-    Wertzeile("Stufe", "$meine")
-    Wertzeile("Erfahrung", zahl(erfahrung))
+    Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein), modifier = Modifier.height(IntrinsicSize.Min)) {
+        Groesse(
+            "Erfahrung",
+            Weltzeichen.Erfahrung,
+            zahl(erfahrung),
+            Farben.BlauHell,
+            "wächst nur · bestimmt die Stufe",
+            Modifier.weight(1f).fillMaxHeight(),
+        )
+        Groesse(
+            "Welt-Credits",
+            Weltzeichen.Waehrung,
+            zahl(zustand.guthaben),
+            Farben.AmberHell,
+            "gibst du aus · ändert die Stufe nicht",
+            Modifier.weight(1f).fillMaxHeight(),
+        )
+    }
+    Leisesatz("Hundert verdiente Credits sind zehn Erfahrung — und die schrumpft nie.")
+    zustand.laufbahn.firstOrNull { it.nummer > meine && it.schaltetFrei.isNotEmpty() }?.let { n ->
+        Text(
+            buildAnnotatedString {
+                append("Als Nächstes: ")
+                withStyle(SpanStyle(fontWeight = FontWeight.Bold)) {
+                    append(n.schaltetFrei.joinToString(" und ") { FREISCHALTNAMEN[it] ?: it })
+                }
+                append(" ab Stufe ${n.nummer} — ")
+                withStyle(SpanStyle(fontFamily = Schrift.Mono)) { append("noch ${zahl(maxOf(0, n.abErfahrung - erfahrung))}") }
+                append(" Erfahrung.")
+            },
+            style = Schrift.Klein,
+            color = Farben.Text,
+            modifier = Modifier.fillMaxWidth().background(Farben.FlaecheHoch, Rundung.Normal).padding(Abstand.Klein),
+        )
+    }
     if (zustand.laufbahn.isEmpty()) {
-        Ladezeile()
+        Text("Die Laufbahn ließ sich nicht laden.", style = Schrift.Klein, color = Farben.TextSehrLeise)
         return
     }
-    zustand.laufbahn.firstOrNull { it.nummer > meine && it.schaltetFrei.isNotEmpty() }?.let { n ->
-        Weltkasten(randfarbe = Farben.AmberTief) {
-            Text("Als Nächstes auf Stufe ${n.nummer}", style = Schrift.Klein.copy(fontWeight = FontWeight.Bold), color = Farben.Amber)
-            n.schaltetFrei.forEach { Leisesatz(FREISCHALTNAMEN[it] ?: it) }
-            Leisesatz("Noch ${zahl(maxOf(0, n.abErfahrung - erfahrung))} Erfahrung.", winzig = true)
-        }
-    }
-    zustand.laufbahn.forEach { s ->
-        val erreicht = s.nummer <= meine
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(Abstand.Normal),
-            verticalAlignment = Alignment.Top,
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(if (s.nummer == meine) Farben.HauchAmber else androidx.compose.ui.graphics.Color.Transparent, Rundung.Klein)
-                .padding(horizontal = Abstand.Klein, vertical = 4.dp),
-        ) {
-            Text(
-                "${s.nummer}",
-                style = Schrift.MonoKlein.copy(fontWeight = FontWeight.Bold),
-                color = if (erreicht) Farben.Amber else Farben.TextSehrLeise,
-            )
-            Column(Modifier.weight(1f)) {
+    Column(verticalArrangement = Arrangement.spacedBy(Abstand.Haar)) {
+        zustand.laufbahn.forEach { s ->
+            val erreicht = s.nummer <= meine
+            val aktuell = s.nummer == meine
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .alpha(if (erreicht) 1f else 0.7f)
+                    .then(
+                        if (aktuell) Modifier.background(Farben.FlaecheAktiv, Rundung.Normal).border(1.dp, Farben.AmberTief, Rundung.Normal)
+                        else Modifier,
+                    )
+                    .padding(horizontal = Abstand.Klein, vertical = Abstand.Winzig),
+            ) {
                 Text(
-                    "ab ${zahl(s.abErfahrung)} · ${s.wachendeckel} Wachen",
-                    style = Schrift.Winzig.copy(fontFamily = Schrift.Mono),
-                    color = if (erreicht) Farben.TextLeise else Farben.TextSehrLeise,
+                    "${s.nummer}",
+                    style = Schrift.MonoKlein.copy(fontWeight = FontWeight.Bold),
+                    color = if (aktuell) Farben.AmberHell else Farben.TextLeise,
+                    textAlign = TextAlign.End,
+                    modifier = Modifier.width(36.dp),
                 )
-                s.schaltetFrei.forEach {
-                    Text(FREISCHALTNAMEN[it] ?: it, style = Schrift.Klein, color = if (erreicht) Farben.Text else Farben.TextLeise)
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
+                        Text("${s.wachendeckel} Wachen", style = Schrift.Klein, color = Farben.Text, modifier = Modifier.weight(1f))
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text("ab", style = Schrift.Winzig.copy(fontFamily = Schrift.Mono), color = Farben.TextSehrLeise)
+                            androidx.compose.material3.Icon(Weltzeichen.Erfahrung, contentDescription = null, tint = Farben.TextSehrLeise, modifier = Modifier.size(11.dp))
+                            Text(zahl(s.abErfahrung), style = Schrift.Winzig.copy(fontFamily = Schrift.Mono), color = Farben.TextSehrLeise)
+                        }
+                    }
+                    when {
+                        s.schaltetFrei.isNotEmpty() -> Text(
+                            s.schaltetFrei.joinToString(" · ") { FREISCHALTNAMEN[it] ?: it },
+                            style = Schrift.Winzig,
+                            color = Farben.AmberHell,
+                        )
+                        aktuell -> Text("Hier stehst du.", style = Schrift.Winzig, color = Farben.TextSehrLeise)
+                    }
                 }
             }
-            if (!erreicht) Text("noch ${zahl(maxOf(0, s.abErfahrung - erfahrung))}", style = Schrift.Winzig, color = Farben.TextSehrLeise)
         }
+    }
+}
+
+/** Eine der zwei Größen oben auf der Laufbahn — `.laufbahn__groesse`. */
+@Composable
+private fun Groesse(
+    titel: String,
+    zeichen: androidx.compose.ui.graphics.vector.ImageVector,
+    wert: String,
+    farbe: androidx.compose.ui.graphics.Color,
+    unter: String,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        verticalArrangement = Arrangement.spacedBy(1.dp),
+        modifier = modifier.background(Farben.FlaecheHoch, Rundung.Normal).padding(Abstand.Klein),
+    ) {
+        Text(titel, style = Schrift.Klein, color = Farben.TextLeise)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Abstand.Haar)) {
+            androidx.compose.material3.Icon(zeichen, contentDescription = null, tint = farbe, modifier = Modifier.size(18.dp))
+            Text(wert, style = Schrift.Gross.copy(fontFamily = Schrift.Mono), color = farbe)
+        }
+        Text(unter, style = Schrift.Winzig, color = Farben.TextSehrLeise)
     }
 }
 
@@ -580,16 +769,21 @@ private val GANGARTEN = listOf(
 )
 
 /**
- * Die Einstellungen — `EinstellungBlende.vue`: Gangart und Karte.
+ * Die Einstellungen — `EinstellungBlende.vue`: Gangart, Karte, Fahrzeug-Icons,
+ * Ebenen.
  *
  * <b>Mehr Durchsatz kostet Lohn.</b> Jede Schraube hebt den Durchsatz, und in
  * demselben Maß nimmt die Vergütung je Lage ab — die Zahl dazu kommt vom Server.
- * Die Icon-Packs wählt man hier; bearbeitet werden sie in der Bibliothek
- * (`IconBibliothek`), die sich über die Welt legt.
+ * Die eigenen Schrauben speichern sich selbst, kurz nachdem man loslässt; ein
+ * „Übernehmen“ dahinter wäre ein Schritt, den man vergisst.
+ *
+ * <b>Bewusst nicht hier:</b> Zurücksetzen steht unter dem Konto (wie im Web),
+ * und den Ton des Funkgeräts gibt es in der App nicht als eigenen Regler.
  */
 @Composable
 fun EinstellungSeite(welt: Welt, zustand: Weltzustand, ebenen: Weltebenen) {
     val bereich = rememberCoroutineScope()
+    val zusammenhang = androidx.compose.ui.platform.LocalContext.current
     var stand by remember { mutableStateOf<WeltEinstellung?>(null) }
     var fehler by remember { mutableStateOf<String?>(null) }
     var gangart by remember { mutableStateOf("Normal") }
@@ -621,20 +815,27 @@ fun EinstellungSeite(welt: Welt, zustand: Weltzustand, ebenen: Weltebenen) {
         }
     }
 
+    // Die eigenen Schrauben speichern sich, wenn eine Weile nichts mehr kommt.
+    LaunchedEffect(dichte, nachschub, arbeitszeit) {
+        val s = stand ?: return@LaunchedEffect
+        if (gangart != "Eigen") return@LaunchedEffect
+        if (s.gangart == "Eigen" && s.dichte == dichte && s.nachschub == nachschub && s.arbeitszeit == arbeitszeit) return@LaunchedEffect
+        delay(400)
+        speichern("Eigen")
+    }
+
+    Warnsatz(fehler)
+
     Ueberschrift("Gangart")
-    GANGARTEN.forEach { (id, was) ->
-        Wahlzeile(an = gangart == id, beiWechsel = {
-            gangart = id
-            speichern(id)
-        }) {
-            Column {
-                Text(id, style = Schrift.Klein.copy(fontWeight = FontWeight.Bold), color = Farben.Text)
-                Text(was, style = Schrift.Winzig, color = Farben.TextSehrLeise)
-            }
+    Leisesatz("Wie viel gleichzeitig los ist — am Stundenverdienst ändert es nichts.", winzig = true)
+    Pillenreihe {
+        GANGARTEN.forEach { (id, _) ->
+            Pille(id, gangart == id, { gangart = id; speichern(id) }, aktiv = !sendet)
         }
     }
+    Leisesatz(GANGARTEN.firstOrNull { it.first == gangart }?.second.orEmpty(), winzig = true)
     val s = stand
-    if (gangart == "Eigen" && s != null) {
+    if (gangart == "Eigen") {
         listOf(
             Triple("Einsatzdichte", "Wie viele Lagen in deinem Bereich gleichzeitig offenstehen.", 0),
             Triple("Zeit zwischen Alarmierungen", "Wie schnell nachkommt, wenn du abgearbeitet hast. Niedrig heißt: einzeln statt in Schüben.", 1),
@@ -642,61 +843,83 @@ fun EinstellungSeite(welt: Welt, zustand: Weltzustand, ebenen: Weltebenen) {
         ).forEach { (name, was, nr) ->
             val wert = when (nr) { 0 -> dichte; 1 -> nachschub; else -> arbeitszeit }
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(name, style = Schrift.Klein, color = Farben.Text, modifier = Modifier.weight(1f))
-                Text("$wert %", style = Schrift.MonoKlein, color = Farben.Amber)
+                Etikett(name, Modifier.weight(1f))
+                Text("$wert %", style = Schrift.Winzig.copy(fontFamily = Schrift.Mono), color = Farben.TextLeise)
             }
-            Leisesatz(was, winzig = true)
-            Regler(wert, s.kleinstes..s.groesstes, 5, { neu ->
+            Regler(wert, (s?.kleinstes ?: 50)..(s?.groesstes ?: 200), 5, { neu ->
                 when (nr) { 0 -> dichte = neu; 1 -> nachschub = neu; else -> arbeitszeit = neu }
             })
+            Leisesatz(was, winzig = true)
         }
-        val geaendert = s.gangart != "Eigen" || s.dichte != dichte || s.nachschub != nachschub || s.arbeitszeit != arbeitszeit
-        Knopf(if (sendet) "Wird gespeichert …" else "Übernehmen", { speichern("Eigen") }, kompakt = true, aktiv = geaendert && !sendet)
     }
     s?.lohnProzent?.takeIf { it < 100 }?.let {
-        Text("Vergütung je Lage: $it % — mehr Durchsatz kostet Lohn.", style = Schrift.Klein, color = Farben.Amber)
+        Text(
+            buildAnnotatedString {
+                append("Jede Lage bringt ")
+                withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append("$it %") }
+                append(" der Vergütung — mehr zu tun heißt je Lage weniger.")
+            },
+            style = Schrift.Klein,
+            color = Farben.Text,
+        )
     }
-    Warnsatz(fehler)
 
-    Ueberschrift("Karte")
-    Leisesatz("Die Kartenansicht wechselst du mit ◐ auf der Karte. Hier legst du fest, was sie zeigt.", winzig = true)
-    Schalterzeile("Lagen", ebenen.lagen, { ebenen.lagen = it })
-    Schalterzeile("Eigene Fahrzeuge", ebenen.eigene, { ebenen.eigene = it })
-    Schalterzeile("Eigene Wachen", ebenen.wachen, { ebenen.wachen = it })
-    Schalterzeile("Eigene Punkte", ebenen.pois, { ebenen.pois = it })
-    Schalterzeile("Fahrweg beim Antippen", ebenen.wege, { ebenen.wege = it })
-    Schalterzeile("Fremde Fahrzeuge", ebenen.fremde, { ebenen.fremde = it })
-    Schalterzeile("Fremde Wachen", ebenen.fremdeWachen, { ebenen.fremdeWachen = it })
-    Schalterzeile("Großeinsatz und Events", ebenen.grosslage, { ebenen.grosslage = it })
+    Ueberschrift("Karte", Modifier.padding(top = Abstand.Klein))
+    LaunchedEffect(Unit) {
+        if (ebenen.stil == null) {
+            val roh = runCatching { de.pagerspass.pagerspass.netz.Ablage(zusammenhang).karteStil() }.getOrNull()
+            ebenen.stil = Kartenstil.entries.firstOrNull { it.name == roh } ?: Kartenstil.Dunkel
+        }
+    }
+    Pillenreihe {
+        Kartenstil.entries.forEach { st ->
+            Pille(st.titel, (ebenen.stil ?: Kartenstil.Dunkel) == st, {
+                ebenen.stil = st
+                bereich.launch { runCatching { de.pagerspass.pagerspass.netz.Ablage(zusammenhang).karteStilSetzen(st.name) } }
+            })
+        }
+    }
 
     // Die Fahrzeug-Icons: wählen hier, verwalten in der Bibliothek darüber.
     IconpackWahl()
 
-    // ------------------------------------------------------ Gefahrenbereich
-    var resetOffen by remember { mutableStateOf(false) }
-    var passwort by remember { mutableStateOf("") }
-    var resetMeldung by remember { mutableStateOf<String?>(null) }
-    Ueberschrift("Gefahrenbereich")
-    Leisesatz(
-        "PagerSpass - World zurücksetzen: Leitstelle, Wachen, Fahrzeuge, Guthaben und Buchungsblatt werden " +
-            "gelöscht. Dein Konto und alles andere bleiben. Danach wählst du einen neuen Standort.",
-        winzig = true,
+    Ueberschrift("Ebenen", Modifier.padding(top = Abstand.Klein))
+    Leisesatz("Was auf der Karte gezeichnet wird — dieselben Schalter wie am Ebenenknopf.", winzig = true)
+    val b = zustand.betrieb
+    val zeilen = listOf(
+        Triple("Lagen", (b?.lagen?.size ?: 0) > 0, 0),
+        Triple("Eigene Fahrzeuge", true, 1),
+        Triple("Eigene Wachen", (zustand.stand?.wachen?.size ?: 0) > 0, 2),
+        Triple("Eigene Punkte", zustand.pois.isNotEmpty(), 3),
+        Triple("Fahrweg beim Antippen", true, 4),
+        Triple("Fremde Fahrzeuge", (b?.fremde?.size ?: 0) > 0, 5),
+        Triple("Fremde Wachen", (b?.fremdeWachen?.size ?: 0) > 0, 6),
+        Triple("Großeinsatz und Events", zustand.grosslage != null || zustand.events.any { it.brLat != null }, 7),
     )
-    if (!resetOffen) {
-        Knopf("Welt zurücksetzen", { resetOffen = true }, kompakt = true, art = Knopfart.Gefahr)
-    } else {
-        Feld(wert = passwort, beiAenderung = { passwort = it }, etikett = "Passwort zur Bestätigung", geheim = true)
-        Warnsatz(resetMeldung)
-        Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
-            Knopf("Welt dauerhaft zurücksetzen", {
-                sendet = true
-                bereich.launch {
-                    resetMeldung = welt.handlung("Das Zurücksetzen ging nicht.") { welt.wege.zuruecksetzen(it, passwort) }
-                    sendet = false
-                    if (resetMeldung == null) welt.erneutBetreten()
+    Column(verticalArrangement = Arrangement.spacedBy(Abstand.Winzig)) {
+        zeilen.forEach { (name, vorhanden, nr) ->
+            val an = when (nr) {
+                0 -> ebenen.lagen; 1 -> ebenen.eigene; 2 -> ebenen.wachen; 3 -> ebenen.pois
+                4 -> ebenen.wege; 5 -> ebenen.fremde; 6 -> ebenen.fremdeWachen; else -> ebenen.grosslage
+            }
+            fun setzen(neu: Boolean) = when (nr) {
+                0 -> ebenen.lagen = neu; 1 -> ebenen.eigene = neu; 2 -> ebenen.wachen = neu; 3 -> ebenen.pois = neu
+                4 -> ebenen.wege = neu; 5 -> ebenen.fremde = neu; 6 -> ebenen.fremdeWachen = neu; else -> ebenen.grosslage = neu
+            }
+            // Eine Ebene ohne Inhalt steht grau da, statt zu verschwinden.
+            Listenwahl(
+                an = an && vorhanden,
+                beiDruck = { if (vorhanden) setzen(!an) },
+                modifier = Modifier.alpha(if (vorhanden) 1f else 0.5f),
+            ) {
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier.size(18.dp).border(1.5.dp, if (an) Farben.Amber else Farben.TextSehrLeise, Rundung.Winzig),
+                ) {
+                    if (an) Text("✓", style = Schrift.Winzig.copy(fontWeight = FontWeight.Bold), color = Farben.Amber)
                 }
-            }, kompakt = true, art = Knopfart.Gefahr, aktiv = passwort.isNotBlank() && !sendet)
-            Knopf("Abbrechen", { resetOffen = false; passwort = "" }, kompakt = true, art = Knopfart.Leise)
+                Text(name, style = Schrift.Klein, color = Farben.Text)
+            }
         }
     }
 }
@@ -708,7 +931,8 @@ fun EinstellungSeite(welt: Welt, zustand: Weltzustand, ebenen: Weltebenen) {
  *
  * <b>Vier Listen und nicht eine.</b> „Was habe ich eingestellt“, „was ist
  * gerade draußen", „was steht bei mir und gehört mir nicht“ und „was kann ich
- * mieten" sind vier Sachverhalte mit vier Handlungen.
+ * mieten" sind vier Sachverhalte mit vier Handlungen. Die beiden Formulare
+ * (Gesuch, Einstellen) sind zu, bis man sie öffnet — sie sind der seltenere Weg.
  */
 @Composable
 fun LeiheSeite(welt: Welt, zustand: Weltzustand) {
@@ -716,7 +940,7 @@ fun LeiheSeite(welt: Welt, zustand: Weltzustand) {
     var stand by remember { mutableStateOf<WeltLeihstand?>(null) }
     var fehler by remember { mutableStateOf<String?>(null) }
     var sendet by remember { mutableStateOf(false) }
-    var reiter by remember { mutableStateOf("Ausleihen") }
+    var reiter by remember { mutableStateOf("ausleihen") }
 
     suspend fun laden() {
         val k = welt.kennung ?: return
@@ -740,7 +964,10 @@ fun LeiheSeite(welt: Welt, zustand: Weltzustand) {
         }
     }
 
-    Segment(listOf("Ausleihen", "Verleihen"), reiter, { reiter = it })
+    Pillenreihe {
+        Pille("Ausleihen", reiter == "ausleihen", { reiter = "ausleihen" })
+        Pille("Verleihen", reiter == "verleihen", { reiter = "verleihen" })
+    }
     Warnsatz(fehler)
     val s = stand ?: run {
         if (fehler == null) Ladezeile()
@@ -755,180 +982,291 @@ fun LeiheSeite(welt: Welt, zustand: Weltzustand) {
         return if (h < 24) "noch $h h" else "noch ${tage(Math.ceil(h / 24.0).toInt())}"
     }
     fun angebotstext(t: Int, preis: Int, km: Double) =
-        "${tage(t)} · ${if (preis > 0) "${zahl(preis)} Credits" else "kostenlos"} · ${Math.round(km)} km"
+        "${tage(t)} · ${if (preis > 0) "${zahl(preis)} Credits" else "kostenlos"} · ${zahl(Math.round(km))} km"
 
-    if (reiter == "Ausleihen") {
+    if (reiter == "ausleihen") {
+        // ------------------------------------------------------------ Geliehen
         if (s.geliehen.isNotEmpty()) {
             Ueberschrift("Geliehen")
+            var rueckgabeGefragt by remember { mutableStateOf<String?>(null) }
             s.geliehen.forEach { f ->
-                Weltkasten {
-                    Text(f.funkrufname, style = Schrift.MonoKlein, color = Farben.Text)
-                    Namenssatz("${f.typ} · von ", f.gegenueber, f.gegenueberBenutzername, " · ${f.wache} · ${rest(f.bis)}")
-                    Knopf("Zurückgeben", { tun("Das ging nicht.") { welt.wege.leiheZurueckgeben(it, f.fahrzeugId); welt.betriebLaden() } }, kompakt = true, art = Knopfart.Leise, aktiv = !sendet)
-                }
+                Leihzeile(
+                    inhalt = {
+                        Text(f.funkrufname, style = Schrift.MonoKlein, color = Farben.Text)
+                        Namenssatz("${f.typ} · von ", f.gegenueber ?: "einer Leitstelle", f.gegenueberBenutzername, " · ${f.wache}", winzig = false)
+                    },
+                    griffe = {
+                        val r = rest(f.bis)
+                        Text(r, style = Schrift.Winzig.copy(fontFamily = Schrift.Mono), color = Farben.TextSehrLeise)
+                        if (r != "kommt zurück") {
+                            if (rueckgabeGefragt != f.fahrzeugId) {
+                                Knopf("Zurückgeben", { rueckgabeGefragt = f.fahrzeugId }, kompakt = true, art = Knopfart.Leise, aktiv = !sendet)
+                            } else {
+                                Knopf("Ohne Erstattung", {
+                                    tun("Das ging nicht.") { welt.wege.leiheZurueckgeben(it, f.fahrzeugId); welt.betriebLaden() }
+                                    rueckgabeGefragt = null
+                                }, kompakt = true, aktiv = !sendet)
+                                Knopf("Nein", { rueckgabeGefragt = null }, kompakt = true, art = Knopfart.Leise)
+                            }
+                        }
+                    },
+                )
             }
         }
 
-        Ueberschrift("Leihbar")
+        // ------------------------------------------------------------- Leihbar
+        Ueberschrift("Leihbar", Modifier.padding(top = Abstand.Klein))
+        Leisesatz("Sofort bezahlt, zählt nicht auf deine Stellplätze, fährt nach Ablauf allein heim.", winzig = true)
         var zielWache by remember { mutableStateOf<WeltWache?>(null) }
         var kategorie by remember { mutableStateOf("") }
-        var sortierung by remember { mutableStateOf("Nächste") }
+        var sortierung by remember { mutableStateOf("entfernung") }
         fun vorlageVon(a: WeltLeihangebot) = a.vorlageId?.let { zustand.vorlage(it) }
         fun zielFuer(a: WeltLeihangebot): WeltWache? {
             val v = vorlageVon(a)
             val passende = if (v != null) eigeneWachen.filter { passtZurWache(it.art, v) } else eigeneWachen
             return passende.firstOrNull { it.id == zielWache?.id } ?: passende.firstOrNull()
         }
-        if (s.leihbar.isNotEmpty()) {
-            Auswahl("Fährt zu", listOf<WeltWache?>(null) + eigeneWachen, zielWache, { it?.name ?: "Erste passende Wache" }, { zielWache = it })
-            val kategorien = s.leihbar.mapNotNull { vorlageVon(it)?.kategorie }.distinct().sorted()
-            Auswahl("Fahrzeugart", listOf("") + kategorien, kategorie, { it.ifEmpty { "Alle Fahrzeugarten" } }, { kategorie = it })
-            Segment(listOf("Nächste", "Günstigste", "Neueste"), sortierung, { sortierung = it })
-        }
         val sichtbar = s.leihbar
             .filter { kategorie.isEmpty() || vorlageVon(it)?.kategorie == kategorie }
             .let { l ->
                 when (sortierung) {
-                    "Günstigste" -> l.sortedBy { it.preis }
-                    "Neueste" -> l.sortedByDescending { it.angebotenUm }
+                    "preis" -> l.sortedBy { it.preis }
+                    "neu" -> l.sortedByDescending { it.angebotenUm }
                     else -> l.sortedBy { it.entfernungKm }
                 }
             }
+        if (eigeneWachen.size > 1 && sichtbar.isNotEmpty()) {
+            Auswahl("Fährt zu", listOf<WeltWache?>(null) + eigeneWachen, zielWache, { it?.name ?: "Erste passende Wache" }, { zielWache = it })
+        }
+        if (s.leihbar.size > 3) {
+            val kategorien = s.leihbar.mapNotNull { vorlageVon(it)?.kategorie }.distinct().sorted()
+            Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
+                Auswahl("Fahrzeugart", listOf("") + kategorien, kategorie, { it.ifEmpty { "Alle Fahrzeugarten" } }, { kategorie = it }, modifier = Modifier.weight(1f))
+                Auswahl(
+                    "Ordnen",
+                    listOf("entfernung", "preis", "neu"),
+                    sortierung,
+                    { when (it) { "preis" -> "Günstigste zuerst"; "neu" -> "Neueste zuerst"; else -> "Nächste zuerst" } },
+                    { sortierung = it },
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
         when {
-            s.leihbar.isEmpty() -> Leisesatz("Gerade bietet niemand etwas an.")
-            sichtbar.isEmpty() -> Leisesatz("Nichts in dieser Fahrzeugart.")
+            s.leihbar.isEmpty() -> Text(
+                "Gerade steht nichts im Markt — gib ein Gesuch auf, dann bringt es dir jemand.",
+                style = Schrift.Klein,
+                color = Farben.TextSehrLeise,
+            )
+            sichtbar.isEmpty() -> Text("Für diese Fahrzeugart steht gerade nichts im Markt.", style = Schrift.Klein, color = Farben.TextSehrLeise)
         }
         sichtbar.forEach { a ->
-            Weltkasten {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
-                    Column(Modifier.weight(1f)) {
-                        Text(a.funkrufname, style = Schrift.MonoKlein, color = Farben.Text)
-                        Leisesatz("${a.typ} · ${angebotstext(a.tage, a.preis, a.entfernungKm)}", winzig = true)
-                        Namenssatz("${a.ort} · von ", a.von, a.vonBenutzername, " · fährt zu ${zielFuer(a)?.name ?: "—"}")
-                    }
-                    Knopf("Mieten", {
+            Leihzeile(
+                inhalt = {
+                    Text(a.funkrufname, style = Schrift.MonoKlein, color = Farben.Text)
+                    Text("${a.typ} · ${angebotstext(a.tage, a.preis, a.entfernungKm)}", style = Schrift.Klein, color = Farben.TextLeise)
+                    Namenssatz("${a.ort} · ", a.von ?: "eine Leitstelle", a.vonBenutzername)
+                    if (eigeneWachen.size > 1) Leisesatz("fährt zu ${zielFuer(a)?.name ?: "—"}", winzig = true)
+                },
+                griffe = {
+                    Knopf("Leihen", {
                         val ziel = zielFuer(a) ?: run { fehler = "Du hast keine Wache, auf der dieses Fahrzeug stehen dürfte."; return@Knopf }
                         tun("Das Mieten ging nicht.") { welt.wege.leiheMieten(it, a.id, ziel.id); welt.betriebLaden() }
                     }, kompakt = true, aktiv = !sendet)
-                }
-            }
+                },
+            )
         }
 
         // --------------------------------------------------------- Gesuche
-        Ueberschrift("Gesuch aufgeben")
-        var gesuchWache by remember { mutableStateOf<WeltWache?>(null) }
-        var gesuchKategorie by remember { mutableStateOf<String?>(null) }
-        var gesuchTage by remember { mutableStateOf(2) }
-        var gesuchPreis by remember { mutableStateOf(100) }
-        Leisesatz("Du brauchst ein Fahrzeug, das niemand anbietet? Häng ein Gesuch aus — wer eines hat, schickt es.", winzig = true)
-        Auswahl("Fährt zu", eigeneWachen, gesuchWache, { it.name }, { gesuchWache = it; gesuchKategorie = null })
-        val kategorien = gesuchWache?.let { w ->
-            s.gesuchshoechstpreise.keys.filter { k -> zustand.vorlagen.values.any { it.kategorie == k && passtZurWache(w.art, it) } }.sorted()
-        }.orEmpty()
-        Auswahl(
-            "Fahrzeugart",
-            kategorien,
-            gesuchKategorie,
-            { it },
-            { gesuchKategorie = it },
-            platzhalter = if (gesuchWache == null) "Erst die Wache wählen" else "Wähle eine Fahrzeugart",
-        )
-        val deckel = gesuchKategorie?.let { s.gesuchshoechstpreise[it] } ?: 0
-        if (deckel in 1 until gesuchPreis) gesuchPreis = deckel
-        Text("Für ${tage(gesuchTage)}", style = Schrift.Klein, color = Farben.TextLeise)
-        Regler(gesuchTage, 1..7, 1, { gesuchTage = it })
-        Wertzeile("Du zahlst", "${zahl(gesuchPreis)} Credits" + if (deckel > 0) " · höchstens ${zahl(deckel)}" else "")
-        Regler(gesuchPreis, 0..maxOf(1, deckel), maxOf(10, Math.round((if (deckel > 0) deckel else 100) / 100.0).toInt() * 10), { gesuchPreis = it })
-        Knopf(if (sendet) "Wird aufgegeben …" else "Gesuch aufgeben", {
-            val w = gesuchWache ?: return@Knopf
-            val kat = gesuchKategorie ?: return@Knopf
-            tun("Das Gesuch ging nicht raus.") { welt.wege.gesuchAufgeben(it, kat, w.id, gesuchTage, gesuchPreis) }
-        }, kompakt = true, art = Knopfart.Haupt, aktiv = !sendet && gesuchWache != null && gesuchKategorie != null)
+        var gesuchOffen by remember { mutableStateOf(false) }
+        Blockkopf("Gesuch aufgeben", gesuchOffen) { gesuchOffen = !gesuchOffen }
+        if (gesuchOffen) {
+            var gesuchWache by remember { mutableStateOf<WeltWache?>(null) }
+            var gesuchKategorie by remember { mutableStateOf<String?>(null) }
+            var gesuchTage by remember { mutableStateOf(2) }
+            var gesuchPreis by remember { mutableStateOf(100) }
+            Leisesatz("Sag, was dir fehlt — bezahlt wird erst, wenn eines losfährt.", winzig = true)
+            Auswahl("Fährt zu", eigeneWachen, gesuchWache, { it.name }, { gesuchWache = it; gesuchKategorie = null }, platzhalter = "Wähle eine Wache")
+            val kategorien = gesuchWache?.let { w ->
+                s.gesuchshoechstpreise.keys.filter { k -> zustand.vorlagen.values.any { it.kategorie == k && passtZurWache(w.art, it) } }.sorted()
+            }.orEmpty()
+            Auswahl(
+                "Fahrzeugart",
+                kategorien,
+                gesuchKategorie,
+                { it },
+                { gesuchKategorie = it },
+                platzhalter = if (gesuchWache == null) "Erst die Wache wählen" else "Wähle eine Fahrzeugart",
+                aktiv = gesuchWache != null,
+            )
+            val deckel = gesuchKategorie?.let { s.gesuchshoechstpreise[it] } ?: 0
+            if (deckel in 1 until gesuchPreis) gesuchPreis = deckel
+            Etikett("Für ${tage(gesuchTage)}")
+            Regler(gesuchTage, 1..7, 1, { gesuchTage = it })
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Etikett("Du zahlst", Modifier.weight(1f))
+                Text(
+                    "${zahl(gesuchPreis)} Credits" + if (deckel > 0) " · höchstens ${zahl(deckel)}" else "",
+                    style = Schrift.Winzig.copy(fontFamily = Schrift.Mono),
+                    color = Farben.TextLeise,
+                )
+            }
+            Regler(gesuchPreis, 0..maxOf(1, deckel), maxOf(10, Math.round((if (deckel > 0) deckel else 100) / 100.0).toInt() * 10), { gesuchPreis = it })
+            Knopf(if (sendet) "Wird aufgegeben …" else "Gesuch aufgeben", {
+                val w = gesuchWache ?: return@Knopf
+                val kat = gesuchKategorie ?: return@Knopf
+                tun("Das Gesuch ging nicht raus.") { welt.wege.gesuchAufgeben(it, kat, w.id, gesuchTage, gesuchPreis) }
+            }, art = Knopfart.Haupt, aktiv = !sendet && gesuchWache != null && gesuchKategorie != null)
+        }
         if (s.meineGesuche.isNotEmpty()) {
-            Ueberschrift("Deine Gesuche")
+            Ueberschrift("Deine Gesuche", Modifier.padding(top = Abstand.Klein))
             s.meineGesuche.forEach { g ->
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
+                Leihzeile(
+                    wartet = true,
+                    inhalt = {
                         Text(g.kategorie, style = Schrift.MonoKlein, color = Farben.Text)
-                        Leisesatz("${tage(g.tage)} · ${if (g.preis > 0) "${zahl(g.preis)} Credits" else "kostenlos"} · zu ${g.wache}", winzig = true)
-                    }
-                    Knopf("Zurückziehen", { tun("Das ging nicht.") { welt.wege.gesuchZurueckziehen(it, g.id) } }, kompakt = true, art = Knopfart.Leise, aktiv = !sendet)
-                }
+                        Text(
+                            "${tage(g.tage)} · ${if (g.preis > 0) "${zahl(g.preis)} Credits" else "kostenlos"} · zu ${g.wache}",
+                            style = Schrift.Klein,
+                            color = Farben.TextLeise,
+                        )
+                    },
+                    griffe = {
+                        Knopf("Zurückziehen", { tun("Das ging nicht.") { welt.wege.gesuchZurueckziehen(it, g.id) } }, kompakt = true, art = Knopfart.Leise, aktiv = !sendet)
+                    },
+                )
             }
         }
     } else {
         // ----------------------------------------------------------- Einstellen
-        Ueberschrift("Einstellen")
-        val drin = s.eingestellt.map { it.fahrzeugId }.toSet()
-        val einstellbar = zustand.fahrzeuge.filter { it.lage == "Wache" && !it.geliehen && it.id !in drin }
-        var fahrzeug by remember { mutableStateOf<WeltFahrzeug?>(null) }
-        var anzahlTage by remember { mutableStateOf(2) }
-        var preis by remember { mutableStateOf(200) }
-        Leisesatz("Ein Fahrzeug, das gerade nichts zu tun hat, verdient so etwas — es fährt erst los, wenn jemand mietet.", winzig = true)
-        if (einstellbar.isEmpty()) {
-            Leisesatz("Kein Fahrzeug steht gerade frei auf einer Wache.")
-        } else {
-            Auswahl("Fahrzeug", einstellbar, fahrzeug, { "${it.funkrufname} · ${it.typ}" }, { fahrzeug = it })
-            val hoechst = fahrzeug?.let { s.hoechstpreise[it.id] } ?: 0
-            if (hoechst in 1 until preis) preis = hoechst
-            Text("Für ${tage(anzahlTage)}", style = Schrift.Klein, color = Farben.TextLeise)
-            Regler(anzahlTage, 1..7, 1, { anzahlTage = it })
-            Wertzeile("Preis", "${zahl(preis)} Credits" + if (hoechst > 0) " · höchstens ${zahl(hoechst)}" else "")
-            Regler(preis, 0..maxOf(1, hoechst), maxOf(10, Math.round((if (hoechst > 0) hoechst else 100) / 100.0).toInt() * 10), { preis = it })
-            Knopf(if (sendet) "Wird eingestellt …" else "In den Markt stellen", {
-                val f = fahrzeug ?: return@Knopf
-                tun("Das Einstellen ging nicht.") { welt.wege.leiheAnbieten(it, f.id, anzahlTage, preis) }
-                fahrzeug = null
-            }, kompakt = true, art = Knopfart.Haupt, aktiv = !sendet && fahrzeug != null)
+        var einstellenOffen by remember { mutableStateOf(false) }
+        Blockkopf("Einstellen", einstellenOffen) { einstellenOffen = !einstellenOffen }
+        if (einstellenOffen) {
+            val drin = s.eingestellt.map { it.fahrzeugId }.toSet()
+            val einstellbar = zustand.fahrzeuge.filter { it.lage == "Wache" && !it.geliehen && it.id !in drin }
+            var fahrzeug by remember { mutableStateOf<WeltFahrzeug?>(null) }
+            var anzahlTage by remember { mutableStateOf(2) }
+            var preis by remember { mutableStateOf(200) }
+            Leisesatz("Bleibt einsatzbereit, bis jemand mietet — erst dann fährt es los.", winzig = true)
+            if (einstellbar.isEmpty()) {
+                Text("Eingestellt werden kann nur, was gerade auf seiner Wache steht.", style = Schrift.Klein, color = Farben.TextSehrLeise)
+            } else {
+                Auswahl("Fahrzeug", einstellbar, fahrzeug, { "${it.funkrufname} · ${it.typ}" }, { fahrzeug = it }, platzhalter = "Wähle ein Fahrzeug")
+                val hoechst = fahrzeug?.let { s.hoechstpreise[it.id] } ?: 0
+                if (hoechst in 1 until preis) preis = hoechst
+                Etikett("Für ${tage(anzahlTage)}")
+                Regler(anzahlTage, 1..7, 1, { anzahlTage = it })
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Etikett("Preis", Modifier.weight(1f))
+                    Text(
+                        "${zahl(preis)} Credits" + if (hoechst > 0) " · höchstens ${zahl(hoechst)}" else "",
+                        style = Schrift.Winzig.copy(fontFamily = Schrift.Mono),
+                        color = Farben.TextLeise,
+                    )
+                }
+                Regler(preis, 0..maxOf(1, hoechst), maxOf(10, Math.round((if (hoechst > 0) hoechst else 100) / 100.0).toInt() * 10), { preis = it })
+                Knopf(if (sendet) "Wird eingestellt …" else "In den Markt stellen", {
+                    val f = fahrzeug ?: return@Knopf
+                    tun("Das Einstellen ging nicht.") { welt.wege.leiheAnbieten(it, f.id, anzahlTage, preis) }
+                    fahrzeug = null
+                }, art = Knopfart.Haupt, aktiv = !sendet && fahrzeug != null)
+            }
         }
 
         if (s.gesuche.isNotEmpty()) {
-            Ueberschrift("Gesucht")
-            Leisesatz("Andere suchen ein Fahrzeug, das du hast — schick eines hin und verdiene die Miete.", winzig = true)
+            Ueberschrift("Gesucht", Modifier.padding(top = Abstand.Klein))
+            Leisesatz("Das brauchen andere — hinschicken, Preis kassieren, kommt allein zurück.", winzig = true)
             s.gesuche.forEach { g ->
                 val passende = zustand.fahrzeuge.filter { f ->
                     f.lage == "Wache" && !f.geliehen && zustand.vorlage(f.vorlageId)?.kategorie == g.kategorie
                 }
                 var wahl by remember(g.id) { mutableStateOf<WeltFahrzeug?>(null) }
-                Weltkasten {
-                    Text(g.kategorie, style = Schrift.MonoKlein, color = Farben.Text)
-                    Namenssatz("${angebotstext(g.tage, g.preis, g.entfernungKm)} · ${g.wache} · von ", g.von, g.vonBenutzername)
-                    if (passende.size > 1) Auswahl("Fahrzeug", passende, wahl ?: passende.first(), { "${it.funkrufname} · ${it.typ}" }, { wahl = it })
-                    Knopf("Hinschicken", {
-                        val f = wahl ?: passende.firstOrNull() ?: run {
-                            fehler = "Gerade steht kein passendes Fahrzeug auf einer deiner Wachen."
-                            return@Knopf
+                Leihzeile(
+                    inhalt = {
+                        Text(g.kategorie, style = Schrift.MonoKlein, color = Farben.Text)
+                        Text(angebotstext(g.tage, g.preis, g.entfernungKm), style = Schrift.Klein, color = Farben.TextLeise)
+                        Namenssatz("${g.wache} · ", g.von ?: "eine Leitstelle", g.vonBenutzername)
+                        when {
+                            passende.size > 1 -> Auswahl("Fahrzeug", passende, wahl ?: passende.first(), { "${it.funkrufname} · ${it.typ}" }, { wahl = it })
+                            passende.isEmpty() -> Text("Dein passendes Fahrzeug ist gerade unterwegs.", style = Schrift.Winzig, color = Farben.SignalHell)
                         }
-                        tun("Das Hinschicken ging nicht.") { welt.wege.gesuchBedienen(it, g.id, f.id); welt.betriebLaden() }
-                    }, kompakt = true, aktiv = !sendet && passende.isNotEmpty())
-                }
+                    },
+                    griffe = {
+                        Knopf("Hinschicken", {
+                            val f = wahl ?: passende.firstOrNull() ?: run {
+                                fehler = "Gerade steht kein passendes Fahrzeug auf einer deiner Wachen."
+                                return@Knopf
+                            }
+                            tun("Das Hinschicken ging nicht.") { welt.wege.gesuchBedienen(it, g.id, f.id); welt.betriebLaden() }
+                        }, kompakt = true, aktiv = !sendet && passende.isNotEmpty())
+                    },
+                )
             }
         }
 
         if (s.eingestellt.isNotEmpty()) {
-            Ueberschrift("Im Markt")
+            Ueberschrift("Im Markt", Modifier.padding(top = Abstand.Klein))
             s.eingestellt.forEach { a ->
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
+                Leihzeile(
+                    wartet = true,
+                    inhalt = {
                         Text(a.funkrufname, style = Schrift.MonoKlein, color = Farben.Text)
-                        Leisesatz("${a.typ} · ${angebotstext(a.tage, a.preis, a.entfernungKm)}" + if (!a.verfuegbar) " · gerade im Einsatz" else "", winzig = true)
-                    }
-                    Knopf("Zurückziehen", { tun("Das ging nicht.") { welt.wege.leiheZuruecknehmen(it, a.id) } }, kompakt = true, art = Knopfart.Leise, aktiv = !sendet)
-                }
+                        Text("${a.typ} · ${angebotstext(a.tage, a.preis, a.entfernungKm)}", style = Schrift.Klein, color = Farben.TextLeise)
+                        if (!a.verfuegbar) {
+                            Text("Gerade unterwegs — solange greift niemand darauf zu.", style = Schrift.Winzig, color = Farben.SignalHell)
+                        }
+                    },
+                    griffe = {
+                        Knopf("Zurückziehen", { tun("Das ging nicht.") { welt.wege.leiheZuruecknehmen(it, a.id) } }, kompakt = true, art = Knopfart.Leise, aktiv = !sendet)
+                    },
+                )
             }
         }
         if (s.verliehen.isNotEmpty()) {
-            Ueberschrift("Verliehen")
+            Ueberschrift("Verliehen", Modifier.padding(top = Abstand.Klein))
             s.verliehen.forEach { f ->
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
+                Leihzeile(
+                    inhalt = {
                         Text(f.funkrufname, style = Schrift.MonoKlein, color = Farben.Text)
-                        Namenssatz("${f.typ} · bei ", f.gegenueber, f.gegenueberBenutzername, " · ${f.wache}")
-                    }
-                    Text(rest(f.bis), style = Schrift.Winzig.copy(fontFamily = Schrift.Mono), color = Farben.TextSehrLeise)
-                }
+                        Namenssatz("${f.typ} · bei ", f.gegenueber ?: "einer Leitstelle", f.gegenueberBenutzername, " · ${f.wache}", winzig = false)
+                    },
+                    griffe = {
+                        Text(rest(f.bis), style = Schrift.Winzig.copy(fontFamily = Schrift.Mono), color = Farben.TextSehrLeise)
+                    },
+                )
             }
         }
+    }
+}
+
+/** Eine Zeile des Leihmarkts — `.leihe__zeile.flaeche--marke`: Amberkante links, Griffe rechts. */
+@Composable
+private fun Leihzeile(
+    wartet: Boolean = false,
+    inhalt: @Composable ColumnScope.() -> Unit,
+    griffe: @Composable () -> Unit,
+) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(Rundung.Normal)
+            .flaeche()
+            .flaechenmarke(wartet = wartet)
+            .padding(start = Abstand.Normal, end = Abstand.Klein, top = Abstand.Klein, bottom = Abstand.Klein),
+    ) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Abstand.Haar), content = inhalt)
+        Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(Abstand.Winzig)) { griffe() }
+    }
+}
+
+/** Überschrift mit „Öffnen“/„Schließen“ daneben — `.leihe__blockkopf`. */
+@Composable
+private fun Blockkopf(titel: String, offen: Boolean, beiDruck: () -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(top = Abstand.Klein)) {
+        Ueberschrift(titel, Modifier.weight(1f))
+        Knopf(if (offen) "Schließen" else "Öffnen", beiDruck, kompakt = true, art = Knopfart.Leise)
     }
 }
 

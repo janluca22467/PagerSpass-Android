@@ -1,7 +1,15 @@
 package de.pagerspass.pagerspass.ansichten.welt
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import de.pagerspass.pagerspass.ui.bausteine.Reiter
+import de.pagerspass.pagerspass.ui.bausteine.Reiterreihe
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -128,8 +136,10 @@ fun LagenSeite(welt: Welt, zustand: Weltzustand, werkbank: Werkbank, karte: Welt
         return
     }
 
-    Umbruchreihe {
-        Sieb.entries.forEach { s -> Pille(s.wort, sieb == s, { sieb = s }, zahl = gesiebt(s).size) }
+    // Das Sieb ist eine Reiterreihe wie im Web (`.reiter` mit Zahl), keine Pillen:
+    // Es teilt dieselbe Liste in Zustände, es filtert nicht nach Belieben.
+    Reiterreihe(Modifier.padding(bottom = Abstand.Klein)) {
+        Sieb.entries.forEach { s -> Reiter(s.wort, sieb == s, { sieb = s }, marke = gesiebt(s).size) }
     }
 
     val liste = gesiebt(sieb)
@@ -148,9 +158,13 @@ fun LagenSeite(welt: Welt, zustand: Weltzustand, werkbank: Werkbank, karte: Welt
     }
 
     gruppen.forEach { (titel, leer, eintraege) ->
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
             Ueberschrift(titel)
-            if (eintraege.isNotEmpty()) Weltmarke("${eintraege.size}")
+            if (eintraege.isNotEmpty()) Weltmarke("${eintraege.size}", Farben.TextLeise)
         }
         if (eintraege.isEmpty()) Leisesatz(leer, winzig = true)
         eintraege.forEach { lage ->
@@ -214,59 +228,96 @@ private fun Lagenzeile(
     val ereignis = lage.eventId?.let { id -> zustand.events.firstOrNull { it.id == id } }
     val fristMs = fahrt.restMs(lage.verfaelltUm) ?: Long.MAX_VALUE
 
-    Weltkasten(an = offen, randfarbe = if (meine) Farben.AmberTief else null) {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(Abstand.Normal),
-            verticalAlignment = Alignment.Top,
-            modifier = Modifier.fillMaxWidth().clickable(onClick = beiDruck),
+    // `.listenwahl` mit dem Balken in der Farbe der Priorität; die eigene Lage
+    // trägt den Hauch Amber, eine gedeckte tritt zurück.
+    Listenwahl(
+        an = offen,
+        beiDruck = beiDruck,
+        balken = farbe,
+        modifier = Modifier
+            .alpha(if (gedeckt(lage)) 0.6f else 1f)
+            .then(if (meine && !offen) Modifier.background(Farben.HauchAmber, Rundung.Klein) else Modifier),
+    ) {
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .align(Alignment.Top)
+                .padding(top = 1.dp)
+                .then(
+                    if (lage.ausGrosslage) Modifier.border(2.dp, Farben.Signal, CircleShape).padding(3.dp)
+                    else Modifier,
+                )
+                .size(20.dp)
+                .background(farbe, CircleShape),
         ) {
-            Box(
-                contentAlignment = Alignment.Center,
-                modifier = Modifier
-                    .size(26.dp)
-                    .background(if (lage.ausGrosslage) Farben.Signal else farbe.copy(alpha = 0.18f), Rundung.Winzig),
-            ) {
-                Text("${lage.prioritaet}", style = Schrift.MonoKlein.copy(fontWeight = FontWeight.Bold), color = if (lage.ausGrosslage) Farben.AufFarbe else farbe)
-            }
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text("${lage.prioritaet}", style = Schrift.Winzig.copy(fontFamily = Schrift.Mono, fontWeight = FontWeight.Bold), color = Farben.AufFarbe)
+        }
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Abstand.Haar)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (lage.eigene) {
+                    Box(Modifier.padding(end = Abstand.Haar).size(6.dp).background(Farben.Amber, CircleShape))
+                }
                 Text(
-                    (if (lage.eigene) "● " else "") + lage.stichwort,
+                    lage.stichwort,
                     style = Schrift.MonoKlein.copy(fontWeight = FontWeight.Bold),
-                    color = if (erledigt) Farben.TextLeise else Farben.Text,
+                    color = when {
+                        lage.prioritaet >= 3 -> Farben.SignalHell
+                        lage.prioritaet == 2 -> Farben.Amber
+                        else -> Farben.Text
+                    },
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
-                if (ereignis != null || lage.istTageslage || lage.nachgefordert) {
-                    Umbruchreihe {
-                        ereignis?.let { Weltmarke(it.titel, it.farbe?.let(::farbeAus) ?: Farben.ViolettHell) }
-                        if (lage.istTageslage) Weltmarke("Täglich", Farben.AmberHell)
-                        if (lage.nachgefordert) Weltmarke("Nachforderung", Farben.SignalHell)
-                    }
+            }
+            if (ereignis != null || lage.istTageslage || lage.nachgefordert) {
+                Umbruchreihe {
+                    ereignis?.let { Weltmarke(it.titel, it.farbe?.let(::farbeAus) ?: Farben.Amber) }
+                    if (lage.istTageslage) Weltmarke("Täglich", Farben.AmberHell)
+                    if (lage.nachgefordert) Weltmarke("Nachforderung", Farben.OrangeHell)
                 }
-                Text(
-                    "${lage.adresse} · ${entfernungText(lage.entfernungMeter)}",
-                    style = Schrift.Winzig.copy(fontFamily = Schrift.Mono),
-                    color = Farben.TextSehrLeise,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
             }
-            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(deckungstext(lage), style = Schrift.MonoKlein.copy(fontWeight = FontWeight.Bold), color = if (gedeckt(lage)) Farben.GruenHell else Farben.Text)
-                Text("${zahl(lage.verguetung)} $WAEHRUNG", style = Schrift.Winzig.copy(fontFamily = Schrift.Mono), color = Farben.Amber)
-                Text(
-                    if (erledigt) arbeitRest(fahrt, lage.arbeitBis) ?: "fertig" else restText(fahrt, lage),
-                    style = Schrift.Winzig.copy(fontFamily = Schrift.Mono),
-                    color = when {
-                        erledigt -> Farben.TextSehrLeise
-                        fristMs <= 10 * 60_000 -> Farben.SignalHell
-                        fristMs <= 25 * 60_000 -> Farben.Amber
-                        else -> Farben.TextSehrLeise
-                    },
-                )
-            }
+            Text(
+                "${lage.adresse} · ${entfernungText(lage.entfernungMeter)}",
+                style = Schrift.MonoKlein,
+                color = Farben.TextLeise,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
-        if (offen) Lagenauswahl(welt, zustand, lage, beiErledigt)
+        Column(
+            horizontalAlignment = Alignment.End,
+            verticalArrangement = Arrangement.spacedBy(Abstand.Haar),
+            modifier = Modifier.align(Alignment.Top),
+        ) {
+            Text(deckungstext(lage), style = Schrift.Winzig.copy(fontFamily = Schrift.Mono), color = if (gedeckt(lage)) Farben.FmsFrei else Farben.Text)
+            Text("${zahl(lage.verguetung)} $WAEHRUNG", style = Schrift.Winzig.copy(fontFamily = Schrift.Mono), color = Farben.AmberHell)
+            Text(
+                if (erledigt) arbeitRest(fahrt, lage.arbeitBis) ?: "fertig" else restText(fahrt, lage),
+                style = Schrift.Winzig.copy(
+                    fontFamily = Schrift.Mono,
+                    fontWeight = if (!erledigt && fristMs <= 10 * 60_000) FontWeight.ExtraBold else FontWeight.Normal,
+                ),
+                color = when {
+                    erledigt -> Farben.TextSehrLeise
+                    fristMs <= 10 * 60_000 -> Farben.SignalHell
+                    fristMs <= 25 * 60_000 -> Farben.Amber
+                    else -> Farben.TextSehrLeise
+                },
+            )
+        }
+    }
+    if (offen) {
+        // Die Auswahl hängt eingerückt unter ihrer Zeile, mit dem Strich in Amber.
+        Column(
+            verticalArrangement = Arrangement.spacedBy(Abstand.Klein),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = Abstand.Normal)
+                .drawBehind { drawLine(Farben.AmberTief, Offset(0f, 0f), Offset(0f, size.height), 2.dp.toPx()) }
+                .padding(start = Abstand.Klein, end = Abstand.Klein, top = Abstand.Klein, bottom = Abstand.Normal),
+        ) {
+            Lagenauswahl(welt, zustand, lage, beiErledigt)
+        }
     }
 }
 
@@ -286,6 +337,7 @@ private fun Lagenauswahl(welt: Welt, zustand: Weltzustand, lage: WeltLage, beiEr
     var fehler by remember(lage.id) { mutableStateOf<String?>(null) }
     var sendet by remember { mutableStateOf(false) }
     var entlaesst by remember { mutableStateOf(false) }
+    var entlassfehler by remember(lage.id) { mutableStateOf<String?>(null) }
     var bricht by remember { mutableStateOf<String?>(null) }
     var freigabeGefragt by remember(lage.id) { mutableStateOf(false) }
     var nachalarmOffen by remember(lage.id) { mutableStateOf(false) }
@@ -331,15 +383,15 @@ private fun Lagenauswahl(welt: Welt, zustand: Weltzustand, lage: WeltLage, beiEr
     if (gefordert.isNotEmpty()) {
         val gewaehlte = (auswahl?.sofort.orEmpty() + auswahl?.vormerkbar.orEmpty()).filter { it.id in angehakt }
         Umbruchreihe {
-            Text("Gebraucht", style = Schrift.Winzig, color = Farben.TextSehrLeise, modifier = Modifier.padding(top = 2.dp))
+            Text("GEBRAUCHT", style = Schrift.Winzig, color = Farben.TextSehrLeise, modifier = Modifier.padding(top = 2.dp))
             gefordert.forEach { k ->
                 val da = lage.fehlt == null || gewaehlte.any { k in bringt(zustand, it, gefordert) }
-                Weltmarke(k, if (da) Farben.GruenHell else Farben.TextLeise, gefuellt = da)
+                Weltmarke(k, if (da) Farben.FmsFrei else Farben.TextSehrLeise)
             }
         }
     }
     if ((lage.eingetroffen ?: 0) > 0 && lage.fehlt != null) {
-        Text(lage.fehlt, style = Schrift.Klein, color = Farben.Amber)
+        Text(lage.fehlt, style = Schrift.Klein, color = Farben.SignalHell)
     }
 
     // ---------------------------------------------------------- Beteiligte
@@ -375,7 +427,7 @@ private fun Lagenauswahl(welt: Welt, zustand: Weltzustand, lage: WeltLage, beiEr
                             else -> "Anfahrt"
                         },
                         when (art) {
-                            "vorOrt" -> Farben.GruenHell
+                            "vorOrt" -> Farben.FmsFrei
                             "nachalarm" -> Farben.TextSehrLeise
                             else -> Farben.Amber
                         },
@@ -385,19 +437,18 @@ private fun Lagenauswahl(welt: Welt, zustand: Weltzustand, lage: WeltLage, beiEr
                         "nachalarm" -> if (f.lage == "VorOrt") arbeitRestKurz(fahrt, f.ankunftUm) else "anderer Einsatz"
                         else -> fahrt.restMinuten(f.ankunftUm)?.let { "noch $it min" }.orEmpty()
                     }
-                    if (rest.isNotEmpty()) Text(rest, style = Schrift.Winzig, color = Farben.TextSehrLeise)
+                    if (rest.isNotEmpty()) Text(rest, style = Schrift.Klein, color = Farben.TextLeise)
                     if (art == "anfahrt" || art == "alarmiert") {
                         Knopf(
                             if (bricht == f.id) "Dreht um …" else "Abbrechen",
                             {
                                 bricht = f.id
                                 bereich.launch {
-                                    fehler = welt.anfahrtAbbrechen(f.id)
+                                    entlassfehler = welt.anfahrtAbbrechen(f.id)
                                     bricht = null
                                 }
                             },
                             kompakt = true,
-                            art = Knopfart.Leise,
                             aktiv = bricht == null && !entlaesst,
                         )
                     }
@@ -409,13 +460,15 @@ private fun Lagenauswahl(welt: Welt, zustand: Weltzustand, lage: WeltLage, beiEr
             {
                 entlaesst = true
                 bereich.launch {
-                    fehler = welt.ausLageEntlassen(lage.id)
+                    entlassfehler = welt.ausLageEntlassen(lage.id)
                     entlaesst = false
                 }
             },
             kompakt = true,
+            breit = true,
             aktiv = !entlaesst && bricht == null,
         )
+        Warnsatz(entlassfehler)
     }
 
     if (!erledigt && gedeckt(lage)) {
@@ -430,7 +483,6 @@ private fun Lagenauswahl(welt: Welt, zustand: Weltzustand, lage: WeltLage, beiEr
                 "Abgerechnet und bezahlt. Ein nachgerücktes Fahrzeug arbeitet noch ($it), dann rückt es ein."
             } ?: "Abgerechnet und bezahlt — deine Fahrzeuge rücken ein.",
         )
-        Warnsatz(fehler)
         return
     }
 
@@ -444,7 +496,7 @@ private fun Lagenauswahl(welt: Welt, zustand: Weltzustand, lage: WeltLage, beiEr
         sofort.isEmpty() && vormerk.isEmpty() -> Warnsatz("Keines deiner einsatzbereiten Fahrzeuge passt zu dieser Lage.")
         else -> {
             if (sofort.size + vormerk.size >= 8) {
-                Feld(wert = suche, beiAenderung = { suche = it }, platzhalter = "Rufname, Typ, Fähigkeit …")
+                Feld(wert = suche, beiAenderung = { suche = it }, platzhalter = "⌕  Rufname, Typ, Fähigkeit …")
             }
             val sichtbar = sofort.filter(::passtZurSuche)
             val sichtbarVormerk = vormerk.filter(::passtZurSuche)
@@ -463,15 +515,7 @@ private fun Lagenauswahl(welt: Welt, zustand: Weltzustand, lage: WeltLage, beiEr
                     color = Farben.TextSehrLeise,
                     modifier = Modifier.weight(1f),
                 )
-                if (sichtbar.isNotEmpty()) {
-                    val alle = sichtbar.all { it.id in angehakt }
-                    Knopf(
-                        if (alle) "Keine" else "Alle ${sichtbar.size}",
-                        { angehakt = if (alle) angehakt - sichtbar.map { it.id }.toSet() else angehakt + sichtbar.map { it.id } },
-                        kompakt = true,
-                        art = Knopfart.Leise,
-                    )
-                }
+                AlleWaehlen(sichtbar.map { it.id }, angehakt) { angehakt = it }
             }
 
             // Die Züge — ein Griff statt fünf. Die Zahl sagt, wie viele des Zuges in Frage kommen.
@@ -503,19 +547,47 @@ private fun Lagenauswahl(welt: Welt, zustand: Weltzustand, lage: WeltLage, beiEr
                 }
             }
             val vonSucheWeg = sofort.size + vormerk.size - sichtbar.size - sichtbarVormerk.size
-            if (vonSucheWeg > 0) Leisesatz("$vonSucheWeg weitere passen nicht zur Suche.", winzig = true)
+            if (vonSucheWeg > 0) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
+                    Leisesatz(
+                        if (vonSucheWeg == 1) "Ein Fahrzeug passt nicht zur Suche." else "$vonSucheWeg Fahrzeuge passen nicht zur Suche.",
+                        Modifier.weight(1f),
+                        winzig = true,
+                    )
+                    Knopf("Suche zurücksetzen", { suche = "" }, kompakt = true, art = Knopfart.Leise)
+                }
+            }
             val verborgen = auswahl.sofort.size - sofort.size
-            if (verborgen > 0) Leisesatz("$verborgen einsatzbereite Fahrzeuge anderer Organisationen sind ausgeblendet.", winzig = true)
-
-            if (vormerk.isNotEmpty()) {
-                Knopf(
-                    (if (nachalarmOffen) "▾ " else "▸ ") + "Nachalarmieren (${vormerk.size})",
-                    { nachalarmOffen = !nachalarmOffen },
-                    kompakt = true,
-                    art = Knopfart.Leise,
+            if (verborgen > 0) {
+                Leisesatz(
+                    if (verborgen == 1) "Ein weiteres Fahrzeug passt hier nicht." else "$verborgen weitere Fahrzeuge passen hier nicht.",
+                    winzig = true,
                 )
+            }
+            val werkstatt = zustand.fahrzeuge.count { it.verschlissen || it.inWerkstatt }
+            if (werkstatt > 0) {
+                Leisesatz(
+                    if (werkstatt == 1) "Ein Fahrzeug ist verschlissen oder in der Werkstatt — siehe Fahrzeuge."
+                    else "$werkstatt Fahrzeuge sind verschlissen oder in der Werkstatt — siehe Fahrzeuge.",
+                    winzig = true,
+                )
+            }
+
+            // Ein `<details>`: zu, bis man es braucht — gebundene Fahrzeuge sind
+            // der Ausweg, nicht die Regel.
+            if (sichtbarVormerk.isNotEmpty()) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .defaultMinSize(minHeight = 44.dp)
+                        .clickable { nachalarmOffen = !nachalarmOffen },
+                ) {
+                    Text((if (nachalarmOffen) "▾ " else "▸ ") + "Nachalarmieren (${sichtbarVormerk.size})", style = Schrift.Klein, color = Farben.Text)
+                    Text("gebunden — fahren, sobald frei", style = Schrift.Winzig, color = Farben.TextSehrLeise)
+                }
                 if (nachalarmOffen) {
-                    Leisesatz("Diese arbeiten noch an anderen Stellen und fahren danach hierher.", winzig = true)
                     sichtbarVormerk.forEach { f ->
                         Wagenzeile(zustand, f, lage, gefordert, f.id in angehakt, vormerken = true) {
                             angehakt = if (f.id in angehakt) angehakt - f.id else angehakt + f.id
@@ -527,8 +599,9 @@ private fun Lagenauswahl(welt: Welt, zustand: Weltzustand, lage: WeltLage, beiEr
             val nSofort = auswahl.sofort.count { it.id in angehakt }
             val nSpaeter = auswahl.vormerkbar.count { it.id in angehakt }
             val wort = if (unterwegs.isNotEmpty()) "Nachalarmieren" else "Alarmieren"
+            Warnsatz(fehler)
             val aufschrift = when {
-                sendet -> "Wird alarmiert …"
+                sendet -> "Alarmiert …"
                 nSpaeter == 0 -> "$wort ($nSofort)"
                 nSofort == 0 -> "Vormerken ($nSpaeter)"
                 else -> "$wort ($nSofort) + vormerken ($nSpaeter)"
@@ -550,43 +623,54 @@ private fun Lagenauswahl(welt: Welt, zustand: Weltzustand, lage: WeltLage, beiEr
                         }
                     }
                 },
-                art = Knopfart.Alarm,
+                art = Knopfart.Haupt,
                 breit = true,
-                aktiv = !sendet && angehakt.isNotEmpty(),
-            )
-        }
-    }
-
-    val werkstatt = zustand.fahrzeuge.count { it.verschlissen || it.inWerkstatt }
-    if (werkstatt > 0) {
-        Leisesatz(
-            "$werkstatt ${if (werkstatt == 1) "Fahrzeug steht" else "Fahrzeuge stehen"} nicht zur Wahl — verschlissen oder in der Werkstatt.",
-            winzig = true,
-        )
-    }
-
-    // Die Freigabe: Die Lage liegt bis dahin allein bei mir. Endgültig.
-    if (lage.zustaendig && !lage.freigegeben) {
-        if (freigabeGefragt) {
-            Rueckfrage(
-                frage = "Für alle freigeben? Dann darf jede Leitstelle hinfahren — zurücknehmen lässt es sich nicht.",
-                ja = "Freigeben",
-                beiJa = {
-                    sendet = true
-                    bereich.launch {
-                        fehler = welt.freigeben(lage.id)
-                        sendet = false
-                        if (fehler == null) freigabeGefragt = false
-                    }
-                },
-                beiNein = { freigabeGefragt = false },
                 aktiv = !sendet,
             )
-        } else {
-            Knopf("Für alle freigeben", { freigabeGefragt = true }, kompakt = true, art = Knopfart.Leise)
         }
     }
-    Warnsatz(fehler)
+    if (auswahl == null || (sofort.isEmpty() && vormerk.isEmpty())) Warnsatz(fehler)
+
+    // Die Freigabe: Die Lage liegt bis dahin allein bei mir. Endgültig — darum
+    // fragt derselbe Platz einmal nach („Wirklich freigeben“ / „Nein“).
+    if (lage.zustaendig && !lage.freigegeben) {
+        Leisesatz("Freigegeben sehen sie alle — zurücknehmen geht nicht.", winzig = true)
+        if (!freigabeGefragt) {
+            Knopf("Für alle freigeben", { freigabeGefragt = true }, kompakt = true, art = Knopfart.Leise, aktiv = !sendet)
+        } else {
+            Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
+                Knopf(
+                    if (sendet) "Gibt frei …" else "Wirklich freigeben",
+                    {
+                        sendet = true
+                        bereich.launch {
+                            fehler = welt.freigeben(lage.id)
+                            sendet = false
+                            if (fehler == null) freigabeGefragt = false
+                        }
+                    },
+                    kompakt = true,
+                    aktiv = !sendet,
+                )
+                Knopf("Nein", { freigabeGefragt = false }, kompakt = true, art = Knopfart.Leise)
+            }
+        }
+    }
+}
+
+/** „noch 3 min“ an einem Fahrzeug, das anderswo arbeitet — `arbeitRestVon`. */
+private fun arbeitRestVon(fahrt: Weltfahrt, bis: String?): String? {
+    val ms = fahrt.restMs(bis) ?: return null
+    if (ms <= 0) return "gleich fertig"
+    val min = Math.ceil(ms / 60_000.0).toInt()
+    return if (min <= 1) "unter 1 min" else "noch $min min"
+}
+
+/** „auf Anfahrt · noch 4 min“ — `standText`. */
+private fun standText(fahrt: Weltfahrt, f: WeltFahrzeug): String {
+    if (f.lage == "VorOrt") return "vor Ort"
+    val wort = if (fahrt.ruecktAus(f.lage, f.losUm)) "rückt aus" else "auf Anfahrt"
+    return fahrt.restMinuten(f.ankunftUm)?.let { "$wort · noch $it min" } ?: wort
 }
 
 private fun arbeitRestKurz(fahrt: Weltfahrt, bis: String?): String {
@@ -624,20 +708,18 @@ private fun Wagenzeile(
                 }
                 Umbruchreihe {
                     Text(entfernungText(weite), style = Schrift.Winzig.copy(fontFamily = Schrift.Mono), color = Farben.TextSehrLeise)
+                    if (fremd) Weltmarke(zustand.bereichVonFahrzeug(f).orEmpty(), Farben.BlauHell)
+                    bringt.forEach { Weltmarke(it, Farben.FmsFrei) }
+                    if (!vormerken && f.lage == "Rueckfahrt") Text("rückt ein", style = Schrift.Winzig, color = Farben.TextLeise)
                     if (vormerken) {
                         Text(
-                            if (f.lage == "VorOrt") "arbeitet noch — fährt danach hierher"
-                            else "${if (fahrt.ruecktAus(f.lage, f.losUm)) "rückt aus" else "auf Anfahrt"} zu anderem Einsatz — fährt danach hierher",
+                            if (f.lage == "VorOrt") "arbeitet noch" + arbeitRestVon(fahrt, f.ankunftUm).let { if (it != null) " ($it)" else "" } +
+                                " — fährt danach hierher"
+                            else standText(fahrt, f) + " zu anderem Einsatz — fährt danach hierher",
                             style = Schrift.Winzig,
-                            color = Farben.TextSehrLeise,
+                            color = Farben.AmberHell,
                         )
                     }
-                    if (f.lage == "Rueckfahrt") Weltmarke("rückt ein", Farben.TextSehrLeise)
-                    if (f.lage == "Bereitstellung") Weltmarke("aus dem Bereitstellungsraum", Farben.Violett)
-                    if (fremd) Weltmarke("anderer Bereich", Farben.TextSehrLeise)
-                    if (f.geliehen) Weltmarke("geliehen", Farben.BlauHell)
-                    bringt.forEach { Weltmarke(it, Farben.GruenHell) }
-                    if (f.werkstattFaellig) Weltmarke("Werkstatt bald", Farben.Amber)
                 }
             }
         }

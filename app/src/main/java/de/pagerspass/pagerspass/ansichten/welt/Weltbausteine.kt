@@ -10,6 +10,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Size
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -296,4 +300,52 @@ fun Wahlzeile(
         }
         Box(Modifier.weight(1f)) { inhalt() }
     }
+}
+
+/**
+ * Eine Zeile, die auswählt — `.listenwahl` aus `base.css`.
+ *
+ * Fläche mit Rand, links ein Balken von drei Punkten; gewählt trägt sie Amber
+ * ringsum und den Hauch darunter. Anders als die `Wahlzeile` ohne Haken: Hier
+ * wird eines aus vielen gewählt, nicht mehreres angekreuzt.
+ */
+@Composable
+fun Listenwahl(
+    an: Boolean,
+    beiDruck: () -> Unit,
+    modifier: Modifier = Modifier,
+    balken: Color? = null,
+    inhalt: @Composable RowScope.() -> Unit,
+) {
+    val balkenfarbe = balken ?: if (an) Farben.Amber else Farben.RandHell
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(Abstand.Normal),
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier
+            .fillMaxWidth()
+            .defaultMinSize(minHeight = 44.dp)
+            .clip(Rundung.Klein)
+            .background(if (an) Farben.HauchAmber else Farben.Flaeche)
+            .border(1.dp, if (an) Farben.Amber else Farben.Rand, Rundung.Klein)
+            .drawBehind { drawRect(balkenfarbe, size = Size(3.dp.toPx(), size.height)) }
+            .clickable(onClick = beiDruck)
+            .padding(start = Abstand.Normal + 2.dp, end = Abstand.Normal, top = Abstand.Klein, bottom = Abstand.Klein),
+        content = inhalt,
+    )
+}
+
+/**
+ * „Alle wählen (n)“ / „Auswahl aufheben“ — `AlleWaehlen.vue`. Erst ab zwei
+ * Fahrzeugen: Bei einem ist der Haken selbst der kürzere Weg.
+ */
+@Composable
+fun AlleWaehlen(ids: List<String>, angehakt: Set<String>, beiSetzen: (Set<String>) -> Unit) {
+    if (ids.size <= 1) return
+    val alle = ids.all { it in angehakt }
+    Knopf(
+        if (alle) "Auswahl aufheben" else "Alle wählen (${ids.size})",
+        { beiSetzen(if (alle) angehakt - ids.toSet() else angehakt + ids) },
+        art = Knopfart.Leise,
+        kompakt = true,
+    )
 }

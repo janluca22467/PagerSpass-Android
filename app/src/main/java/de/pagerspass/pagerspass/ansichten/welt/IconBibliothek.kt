@@ -123,7 +123,7 @@ fun IconpackWahl() {
         }
     }
 
-    Ueberschrift("Fahrzeug-Icons")
+    Ueberschrift("Fahrzeug-Icons", Modifier.padding(top = Abstand.Klein))
     Leisesatz("Nur du siehst sie — auf deiner Karte gelten sie für alle Fahrzeuge.", winzig = true)
     val aktiv = packs.firstOrNull { it.aktiv }?.id
     Pillenreihe {
@@ -139,14 +139,14 @@ fun IconpackWahl() {
     }
     Leisesatz(
         if (packs.isEmpty()) {
-            "Du hast noch kein Pack. Du musst nicht alle Fahrzeuge bebildern — ein einziges reicht."
+            "Du hast noch kein Pack. Du musst nicht alle Fahrzeuge malen — ein einziges reicht."
         } else {
             "Ein Pack ersetzt nur, was es hinterlegt — der Rest bleibt gezeichnet."
         },
         winzig = true,
     )
     Warnsatz(fehler)
-    Knopf("Icon-Packs verwalten", { bibliothek = true }, kompakt = true, art = Knopfart.Leise)
+    Knopf(if (packs.isEmpty()) "Pack anlegen" else "Icons bearbeiten", { bibliothek = true }, kompakt = true)
 
     if (bibliothek) {
         Dialog(

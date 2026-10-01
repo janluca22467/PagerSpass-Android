@@ -142,6 +142,13 @@ class Werkbank {
     var offenerPunkt by mutableStateOf<String?>(null)
     var gelaendeFuer by mutableStateOf<String?>(null)
 
+    /**
+     * Ob gerade ein Gelände aufgezogen wird — `ziehtAuf` in `BauBlende.vue`.
+     * Eigener Stand und nicht „Ecken vorhanden“: Wer „Zeichnen“ drückte und
+     * noch keinen Punkt gesetzt hat, zeichnet trotzdem schon.
+     */
+    var ziehtAuf by mutableStateOf(false)
+
     fun umschalten(was: Werkzeug) {
         if (seite == was) {
             seite = null

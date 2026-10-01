@@ -132,10 +132,11 @@ fun wachenfarbe(art: String): Color = when (art) {
     else -> orgFarbe(organisationenFuer(art).firstOrNull())
 }
 
+/** Die Farbe einer Priorität — `.weltlage--prio1..3` in `welt.css`: Blau, Orange, Rot. */
 fun prioFarbe(prioritaet: Int): Color = when {
     prioritaet >= 3 -> Farben.Signal
-    prioritaet == 2 -> Farben.Amber
-    else -> Color(0xFF2F9E44)
+    prioritaet == 2 -> Farben.FmsAnfahrt
+    else -> Farben.Blau
 }
 
 /** Die FMS-Farbe einer Plakette — dieselbe Staffel wie im Rundenspiel. */

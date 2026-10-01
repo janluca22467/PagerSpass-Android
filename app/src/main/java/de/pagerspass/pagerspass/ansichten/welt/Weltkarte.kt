@@ -145,6 +145,13 @@ class Weltebenen {
     var fremde by mutableStateOf(true)
     var fremdeWachen by mutableStateOf(true)
     var grosslage by mutableStateOf(true)
+
+    /**
+     * Die Kartenansicht, sobald sie bekannt ist — hier und nicht in der Karte,
+     * weil die Einstellungen sie ebenfalls wählen (`EinstellungBlende.vue`,
+     * Abschnitt „Karte“) und die Karte darunter sofort mitgehen soll.
+     */
+    var stil by mutableStateOf<Kartenstil?>(null)
 }
 
 /** Was ein Tipp auf die Karte gerade bedeutet. */
@@ -196,10 +203,12 @@ fun Weltkarte(
     val messer = rememberTextMeasurer()
 
     var freigabe by remember { mutableStateOf<String?>("laedt") }
-    var stil by remember { mutableStateOf(Kartenstil.Dunkel) }
+    val stil = ebenen.stil ?: Kartenstil.Dunkel
     LaunchedEffect(Unit) {
         freigabe = ablage.karteFreigabe()
-        stil = Kartenstil.entries.firstOrNull { it.name == ablage.karteStil() } ?: Kartenstil.Dunkel
+        if (ebenen.stil == null) {
+            ebenen.stil = Kartenstil.entries.firstOrNull { it.name == ablage.karteStil() } ?: Kartenstil.Dunkel
+        }
     }
     // Das Icon-Pack, das auf dieser Karte gilt — einmal beim Aufbau; eine neue
     // Wahl in den Einstellungen lädt es selbst nach.
@@ -621,7 +630,7 @@ fun Weltkarte(
                             color = if (s == stil) Farben.Amber else Farben.Text,
                             modifier = Modifier
                                 .clickable {
-                                    stil = s
+                                    ebenen.stil = s
                                     stilwahl = false
                                     bereich.launch { ablage.karteStilSetzen(s.name) }
                                 }
