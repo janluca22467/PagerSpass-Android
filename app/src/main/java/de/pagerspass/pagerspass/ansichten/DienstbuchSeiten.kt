@@ -258,9 +258,12 @@ private fun Uebersicht(
         ),
     )
 
-    Abschnitt(
+    // Karten mit Kopf (`.db-karte`) — Titel in Versalien, rechts der Weg weiter.
+    Buchkarte(
         "Zuletzt gefahren",
-        weiterweg = if (schichten.isNotEmpty()) {
+        dicht = schichten.isNotEmpty(),
+        abstandInnen = 0.dp,
+        kopfweg = if (schichten.isNotEmpty()) {
             { Textweg("alle ${schichten.size}", { beiReiter(1) }) }
         } else {
             null
@@ -271,7 +274,10 @@ private fun Uebersicht(
                 Knopf("Erste Schicht fahren", beiDienst, art = Knopfart.Haupt)
             }
         } else {
-            schichten.take(5).forEach { Schichtzeile(it, null, beiDruck = { beiSchicht(it.code) }) }
+            val fuenf = schichten.take(5)
+            fuenf.forEachIndexed { i, s ->
+                Schichtzeile(s, null, beiDruck = { beiSchicht(s.code) }, letzte = i == fuenf.lastIndex)
+            }
         }
     }
 
@@ -291,11 +297,9 @@ private fun Uebersicht(
             }
         }
         if (rekorde.isNotEmpty()) {
-            Abschnitt("Persönliche Rekorde") {
-                Kasten(abstandInnen = Abstand.Klein) {
-                    rekorde.forEach { (name, zusatz, wert) ->
-                        Wertzeile(listOfNotNull(name, zusatz).joinToString(" · "), wert)
-                    }
+            Buchkarte("Persönliche Rekorde") {
+                rekorde.forEach { (name, zusatz, wert) ->
+                    Wertzeile(listOfNotNull(name, zusatz).joinToString(" · "), wert)
                 }
             }
         }
@@ -303,11 +307,12 @@ private fun Uebersicht(
 
     if (daten.abzeichen.isNotEmpty()) {
         val erreicht = daten.abzeichen.count { it.erreicht }
-        Abschnitt(
-            "Abzeichen $erreicht / ${daten.abzeichen.size}",
-            weiterweg = { Textweg("alle", { beiReiter(3) }) },
+        Buchkarte(
+            "Abzeichen",
+            zahl = "${zahl(erreicht)} / ${zahl(daten.abzeichen.size)}",
+            kopfweg = { Textweg("alle", { beiReiter(3) }) },
         ) {
-            Kasten(abstandInnen = Abstand.Klein) {
+            Column(verticalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
                 Fortschritt(anteil = erreicht.toFloat() / daten.abzeichen.size)
                 val vorschau = daten.abzeichen
                     .filter { it.erreicht && it.erreichtAm != null }
@@ -330,8 +335,8 @@ private fun Uebersicht(
     val orgs = daten.garage?.proOrganisation.orEmpty()
     if (orgs.isNotEmpty()) {
         val spitze = orgs.maxOf { it.erfahrung }.coerceAtLeast(1)
-        Abschnitt("Erfahrung je Organisation") {
-            Kasten(abstandInnen = Abstand.Klein) {
+        Buchkarte("Erfahrung je Organisation") {
+            Column(verticalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
                 orgs.forEach { p ->
                     Balkenzeile(
                         name = ORG_NAME[p.organisation] ?: p.organisation,
@@ -344,17 +349,26 @@ private fun Uebersicht(
         }
     }
 
+    // Die Garage als Wink — amber, wenn Gutscheine warten.
     val gutscheine = daten.garage?.offeneWahlen ?: 0
-    Wegzeile(
-        titel = "Garage",
-        unterzeile = daten.garage?.let { g ->
-            "${g.fahrzeuge.size} Fahrzeuge" +
-                if (gutscheine > 0) " · $gutscheine Gutschein${if (gutscheine == 1) "" else "e"} offen" else ""
-        } ?: "Dein Fuhrpark",
-        zeichen = Zeichen.Fahrzeug,
-        marke = gutscheine,
-        beiDruck = beiGarage,
-    )
+    Buchwink(
+        zeichen = listOf("M3 10.5 12 4l9 6.5", "M5 10.5V20h14v-9.5", "M8.5 20v-6h7v6"),
+        wartet = gutscheine > 0,
+        modifier = Modifier.clickable(role = Role.Button, onClick = beiGarage),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Garage", style = Schrift.Normal.copy(fontWeight = FontWeight.Bold), color = Farben.Text)
+                SehrLeise(
+                    daten.garage?.let { g ->
+                        "${g.fahrzeuge.size} Fahrzeuge" +
+                            if (gutscheine > 0) " · $gutscheine Gutschein${if (gutscheine == 1) "" else "e"} offen" else ""
+                    } ?: "Dein Fuhrpark",
+                )
+            }
+            Text("›", style = Schrift.Gross, color = Farben.TextLeise)
+        }
+    }
 }
 
 /**
@@ -399,10 +413,10 @@ private fun Hilfsfristverlauf(
     val serien = (if (eigene.punkte.isNotEmpty()) listOf(eigene) else emptyList()) + freunde
     val alle = serien.flatMap { it.punkte }
 
-    Abschnitt("Hilfsfrist im Verlauf") {
+    Buchkarte("Ø Hilfsfrist · letzte Schichten") {
         if (alle.size < 2) {
             Leerhinweis("Nach zwei Schichten mit Einsätzen steht hier, wie sich deine Hilfsfrist entwickelt.")
-            return@Abschnitt
+            return@Buchkarte
         }
         val hoechst = (Math.ceil(alle.maxOf { it.sekunden } / 60.0) * 60.0).coerceAtLeast(60.0)
         val tMin = alle.minOf { it.zeit }
@@ -411,7 +425,7 @@ private fun Hilfsfristverlauf(
         // wie das Schildchen im Web (`HilfsfristVerlauf.vue`).
         var aktiv by remember(verlauf, mitglieder) { mutableStateOf<Pair<Serie, Punkt>?>(null) }
 
-        Kasten(abstandInnen = Abstand.Klein) {
+        Column(verticalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
             Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
                 Column(
                     verticalArrangement = Arrangement.SpaceBetween,
@@ -721,13 +735,19 @@ private fun schichtenauszug(liste: List<Schichtzeile>, organisation: (Schichtzei
  * Organisation, wie im Web (TASK-149).
  */
 @Composable
-private fun Schichtzeile(schicht: Schichtzeile, organisation: String?, beiDruck: () -> Unit) {
+private fun Schichtzeile(
+    schicht: Schichtzeile,
+    organisation: String?,
+    beiDruck: () -> Unit,
+    /** Gesetzt, wenn die Zeile in einer Karte steht: randlos, mit Trennstrich bis auf die letzte. */
+    letzte: Boolean? = null,
+) {
     Row(
         horizontalArrangement = Arrangement.spacedBy(Abstand.Normal),
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
-            .flaeche(ecke = 9.dp)
+            .then(if (letzte == null) Modifier.flaeche(ecke = 9.dp) else Modifier.zeilenstrich(letzte))
             .clickable(role = Role.Button, onClick = beiDruck)
             .padding(horizontal = Abstand.Normal, vertical = Abstand.Klein),
     ) {
@@ -826,7 +846,7 @@ private fun Laufbahn(konto: Konto?, daten: Dienstbuchdaten) {
             Etikett("Deine Laufbahn")
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    aktuell?.bezeichnung ?: konto.rang,
+                    (aktuell?.bezeichnung ?: konto.rang).replace("/", "/\u200b"),
                     style = Schrift.Titel,
                     color = Farben.Text,
                     modifier = Modifier.weight(1f),
@@ -882,7 +902,7 @@ private fun Laufbahn(konto: Konto?, daten: Dienstbuchdaten) {
     }
 
     daten.tagesschicht?.let { t ->
-        Abschnitt("Schicht des Tages", weiterweg = t.landkreis?.let { { SehrLeise(it) } }) {
+        Buchkarte("Schicht des Tages", zahl = t.landkreis) {
             SehrLeise(
                 "Heute gefahren: ${t.gefahren} — " + when {
                     t.eigenerPlatz != null -> "du stehst auf Platz ${t.eigenerPlatz}."
@@ -900,7 +920,7 @@ private fun Laufbahn(konto: Konto?, daten: Dienstbuchdaten) {
 
     if (daten.saison.isNotEmpty()) {
         val monat = DateTimeFormatter.ofPattern("LLLL", Locale.GERMAN).format(java.time.LocalDate.now())
-        Abschnitt("Saisonwertung", weiterweg = { SehrLeise(monat.replaceFirstChar { it.uppercase() }) }) {
+        Buchkarte("Saisonwertung", zahl = monat.replaceFirstChar { it.uppercase() }) {
             if (konto != null && daten.saison.none { it.istEigenerEintrag }) {
                 SehrLeise("Du stehst diesen Monat noch nicht unter den ersten ${daten.saison.size}.")
             }
@@ -909,7 +929,7 @@ private fun Laufbahn(konto: Konto?, daten: Dienstbuchdaten) {
     }
 
     if (daten.bestenliste.isNotEmpty()) {
-        Abschnitt("Bestenliste", weiterweg = { SehrLeise("aller Zeiten") }) {
+        Buchkarte("Bestenliste", zahl = "aller Zeiten") {
             if (konto != null && daten.bestenliste.none { it.istEigenerEintrag }) {
                 SehrLeise("Du stehst noch nicht unter den ersten ${daten.bestenliste.size}.")
             }
@@ -923,9 +943,9 @@ private fun Laufbahn(konto: Konto?, daten: Dienstbuchdaten) {
 
     val statistik = daten.statistik
     if (statistik != null && statistik.spieler.isNotEmpty()) {
-        Abschnitt(
+        Buchkarte(
             "Mit wem du gefahren bist",
-            weiterweg = { SehrLeise("${statistik.runden} ${if (statistik.runden == 1) "Schicht" else "Schichten"}") },
+            zahl = "${statistik.runden} ${if (statistik.runden == 1) "Schicht" else "Schichten"}",
         ) {
             statistik.spieler.forEach { Bilanzzeile(it) }
         }
@@ -999,40 +1019,23 @@ private fun Stufenkarte(r: Rang, konto: Konto, gaben: List<Gabe>, anteil: Float?
     }
 }
 
-/** Eine Rangliste — Platz, Name, Wert; die eigene Zeile hervorgehoben, die ersten drei mit Medaille. */
+/**
+ * Eine Rangliste (`.db-rangliste`) — Platz im Kreis, Gold, Silber, Bronze für die
+ * ersten drei, die eigene Zeile in Amber mit Kante.
+ */
 @Composable
 private fun Rangliste(zeilen: List<Pair<Triple<Int, String, String>, Boolean>>) {
-    Kasten(abstandInnen = Abstand.Winzig) {
-        zeilen.forEach { (z, eigen) ->
+    Column {
+        zeilen.forEachIndexed { i, (z, eigen) ->
             val (platz, name, wert) = z
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(Abstand.Normal),
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(if (eigen) Farben.HauchAmber else Color.Transparent, Rundung.Winzig)
-                    .padding(horizontal = Abstand.Winzig, vertical = Abstand.Haar),
-            ) {
-                Text(
-                    when (platz) {
-                        1 -> "🥇"
-                        2 -> "🥈"
-                        3 -> "🥉"
-                        else -> "$platz"
-                    },
-                    style = Schrift.MonoKlein,
-                    color = Farben.TextLeise,
-                    modifier = Modifier.width(32.dp),
-                )
+            Rangzeile(platz = platz, wert = wert, letzte = i == zeilen.lastIndex, eigen = eigen) {
                 Text(
                     name,
                     style = Schrift.Klein,
-                    color = if (eigen) Farben.AmberHell else Farben.Text,
+                    color = if (eigen) Farben.Amber else Farben.Text,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f),
                 )
-                Text(wert, style = Schrift.MonoKlein, color = Farben.Text)
             }
         }
     }
@@ -1113,7 +1116,7 @@ private fun Abzeichenwand(
 
     val zuletzt = abzeichen.filter { it.erreicht && it.erreichtAm != null }.sortedByDescending { it.erreichtAm }.take(8)
     if (zuletzt.isNotEmpty()) {
-        Abschnitt("Zuletzt erreicht") {
+        Buchkarte("Zuletzt erreicht") {
             zuletzt.forEach { Abzeichenzeile(it, it.id in vitrine, beiVitrine) }
         }
     }
@@ -1253,15 +1256,15 @@ private fun Auswertung(stand: Werkstand, beiPremium: () -> Unit, beiLaden: () ->
             }
 
             if (w.verlauf.isNotEmpty()) {
-                Abschnitt("Schichten je Woche") {
+                Buchkarte("Die letzten Wochen") {
                     Wochenbild(w.verlauf)
                 }
             }
 
             if (w.fahrzeuge.isNotEmpty()) {
                 val spitze = w.fahrzeuge.maxOf { it.schichten }.coerceAtLeast(1)
-                Abschnitt("Womit du fährst") {
-                    Kasten(abstandInnen = Abstand.Klein) {
+                Buchkarte("Womit du fährst") {
+                    Column(verticalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
                         w.fahrzeuge.forEach { f ->
                             Balkenzeile(
                                 f.typ,
