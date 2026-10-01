@@ -49,15 +49,10 @@ import de.pagerspass.pagerspass.ui.theme.Schrift
 
 /**
  * Der Melder im Dienst — der erste Reiter der Handyansicht im Web
- * (`FahrzeugView.vue`, `reiter === 'melder'`), hier über dem FMS-Feld.
- *
- * <b>Warum dort.</b> Melder und Statusgeber sind die zwei Geräte, mit denen
- * eine Besatzung antwortet: Der eine weckt, der andere meldet. Der Reiter heißt
- * „Status" und trägt das Melderzeichen — das Gerät gehört an diese Stelle.
- *
- * Darüber die Bauart (`MelderToggle.vue`): Piepser, Alarm-App oder „Im Funk".
- * Nur als Piepser steht hier ein Gerät; die Alarm-App liegt beim Alarm über
- * allem, und „Im Funk" steht der Alarm auf dem Funkgerät im Funk-Reiter.
+ * (`FahrzeugView.vue`, `reiter === 'melder'`). Er steht nur bei der Bauart
+ * „DME"; die Alarm-App liegt beim Alarm über allem, und „Im Funk" trägt der erste
+ * Reiter das Funkgerät (`Funkdisplay`). Die Wahl selbst steht im Kopf
+ * (`Melderwahl`).
  */
 @Composable
 fun ColumnScope.Dienstmelder(
@@ -68,14 +63,6 @@ fun ColumnScope.Dienstmelder(
     val zusammenhang = LocalContext.current
     val geraet = remember { Meldergeraet.bereit(zusammenhang) }
 
-    Ueberschrift("Melder")
-    Segment(
-        seiten = listOf("dme", "app", "funk"),
-        gewaehlt = geraet.bauart,
-        beiWahl = { geraet.bauartSetzen(it) },
-        aufschrift = { when (it) { "dme" -> "DME"; "app" -> "App"; else -> "Im Funk" } },
-        modifier = Modifier.fillMaxWidth(),
-    )
     when (geraet.bauart) {
         "dme" -> Melderschacht(
             // Der laufende Alarm steht in der Blende darüber; hier bleibt das
@@ -209,6 +196,31 @@ fun Funkdisplay(
 
 private fun lerpRot(puls: Float): Color =
     androidx.compose.ui.graphics.lerp(Color(0xFF9E1F18), Color(0xFFE5352B), puls)
+
+/**
+ * Die Melderwahl — `MelderToggle.vue`: Piepser, Alarm-App oder „Im Funk". Sie steht
+ * im Fahrzeugkopf und nicht im Melder-Reiter, denn bei „App" gibt es diesen Reiter
+ * gar nicht — die Wahl wäre sonst unerreichbar.
+ */
+@Composable
+fun Melderwahl(modifier: Modifier = Modifier) {
+    val zusammenhang = LocalContext.current
+    val geraet = remember { Meldergeraet.bereit(zusammenhang) }
+    Segment(
+        seiten = listOf("dme", "app", "funk"),
+        gewaehlt = geraet.bauart,
+        beiWahl = { geraet.bauartSetzen(it) },
+        aufschrift = { when (it) { "dme" -> "DME"; "app" -> "App"; else -> "Im Funk" } },
+        modifier = modifier,
+    )
+}
+
+/** Die gewählte Bauart — `dme`, `app` oder `funk`. */
+@Composable
+fun melderbauart(): String {
+    val zusammenhang = LocalContext.current
+    return remember { Meldergeraet.bereit(zusammenhang) }.bauart
+}
 
 /** Ob der Alarm auf dem Funkgerät steht (Bauart „Im Funk") — für Reiter und Leiste. */
 @Composable

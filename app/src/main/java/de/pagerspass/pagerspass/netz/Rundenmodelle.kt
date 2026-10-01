@@ -97,6 +97,8 @@ data class Raumzustand(
     val uebergabe: Uebergabe? = null,
     /** Seit wann die einzige Leitstelle ohne Verbindung ist. */
     val leitstelleVerwaistSeit: String? = null,
+    /** Ob die KI-Leitstelle gerade disponiert — eine leise Zeile im Fahrzeug. */
+    val kiLeitstelleWirksam: Boolean = false,
 ) {
     val inLobby: Boolean get() = state == "Lobby"
     val laeuft: Boolean get() = state == "Laeuft"
@@ -349,6 +351,17 @@ data class Rundenfahrzeug(
     val ausserDienstBis: String? = null,
     val wiederherstellungBis: String? = null,
     val notarztBei: String? = null,
+    // ---------------------------------------------- seit Web 5.0.0.26 (v6)
+    /** Die Stellen der Besatzung, die unbesetzt geblieben sind — leer im Regelfall. */
+    val besatzungsluecken: List<Besatzungsluecke> = emptyList(),
+    /** Bis dahin arbeitet der Hakenarm des WLF; vorher ist Status 3 gesperrt. */
+    val aufsattelnBis: String? = null,
+    /** Patientenaufnahme nach Status 7 bzw. Übergabe nach Status 8 — mit Beginn. */
+    val patientAufnahmeBis: String? = null,
+    val patientUebergabeBis: String? = null,
+    val patientVorgangSeit: String? = null,
+    /** Seit wann die Leitstelle um das Wort bittet — das FMS-Zeichen J. */
+    val sprechaufforderungSeit: String? = null,
 )
 
 /** Ein Punkt auf der Karte. */
@@ -423,6 +436,29 @@ data class Einsatz(
     val terminUm: String? = null,
     val zielklinikVorgabe: String? = null,
     val eingangUm: String = "",
+    // ---------------------------------------------- seit Web 5.0.0.26 (v6)
+    /** FwSim — `null`, solange keine Feuerwehrbesatzung eines Menschen vor Ort war. */
+    val feuerwehr: Fwlage? = null,
+    /** Die Personen einer Polizeilage — leer ohne eingeschaltete Simulation. */
+    val beteiligte: List<Beteiligter> = emptyList(),
+    val chronologie: List<Chronikeintrag> = emptyList(),
+    val lagemeldungen: List<Lagemeldungseintrag> = emptyList(),
+    val atemschutztrupps: List<Atemschutztrupp> = emptyList(),
+    val offeneNachforderungen: List<OffeneNachforderung> = emptyList(),
+    val offeneNachforderungenRd: List<OffeneNachforderung> = emptyList(),
+    val objektName: String? = null,
+    val objektartText: String? = null,
+    val objektBetroffene: Int = 0,
+    val objektHinweise: List<String> = emptyList(),
+    val gefahrgutlage: Boolean = false,
+    val gefahrstoff: String? = null,
+    val messtruppVorOrt: Boolean = false,
+    /** `Ortsnetz`, `OffeneEntnahme`, `Keine` — erst gesetzt, wenn gemeldet. */
+    val wasserlage: String? = null,
+    val wasserbedarfProMinute: Double = 0.0,
+    val erstAlarmUm: String? = null,
+    val brandflaecheHektar: Double = 0.0,
+    val brandflaecheHoechstHektar: Double = 0.0,
 ) {
     val offen: Boolean get() = state == "Offen"
     val abgeschlossen: Boolean get() = state == "Abgeschlossen"
@@ -455,6 +491,27 @@ data class ManvPatient(
     val massnahmen: List<Patientenmassnahme>? = null,
     val verdachtsdiagnose: String? = null,
     val diagnose: String? = null,
+    // ---------------------------------------------- seit Web 5.0.0.26 (v6)
+    /** Wer an ihm arbeitet — ein Rettungsmittel und ein Notarzt. */
+    val behandlerVehicleId: String? = null,
+    val behandler: String? = null,
+    val notarztVehicleId: String? = null,
+    val notarzt: String? = null,
+    val notarztNachgefordert: Boolean = false,
+    val alter: Int? = null,
+    /** `w` oder `m`. */
+    val geschlecht: String? = null,
+    /** Die Messungen mit Alter und Trend — ersetzt `werte` am neueren Server. */
+    val messwerte: List<Messwert>? = null,
+    val massnahmeLaeuft: String? = null,
+    val massnahmeFertigUm: String? = null,
+    /** `null` am älteren Server — dann zählt die App die Werte selbst. */
+    val gemessen: Int? = null,
+    val mindestensGemessen: Int? = null,
+    val stabilisiert: Boolean = false,
+    val monitor: Patientenmonitor? = null,
+    val verlaufsbogen: List<Patientenvermerk>? = null,
+    val gespraech: List<Patientenaeusserung>? = null,
 )
 
 /** Verletztenablage oder Behandlungsplatz an einer Lage. */
@@ -493,6 +550,14 @@ data class Aufgabe(
     val begonnen: Boolean = true,
     val entfallen: Boolean = false,
     val wartetAuf: String? = null,
+    // ---------------------------------------------- seit Web 5.0.0.26 (v6)
+    val rang: Int = 0,
+    /** Ob die Aufgabe dem Rettungsdienst gehört — für das Tablet der EL RD. */
+    val rettungsdienst: Boolean = false,
+    /** Vom Server gerechnet: Das Mittel fehlt an der ganzen Einsatzstelle. */
+    val mittelFehlt: Boolean = false,
+    val kraefteFehlen: Boolean = false,
+    val mindestkraefte: Int = 0,
 )
 
 /** Ein Sektor des Suchgebiets — acht à 45 Grad. */
