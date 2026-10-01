@@ -14,8 +14,8 @@ android {
         applicationId = "de.pagerspass.pagerspass"
         minSdk = 28
         targetSdk = 37
-        versionCode = 38
-        versionName = "5.1.0.0"
+        versionCode = 39
+        versionName = "5.2.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
