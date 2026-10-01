@@ -38,7 +38,9 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
-import de.pagerspass.pagerspass.ansichten.melder.Melderbild
+import de.pagerspass.pagerspass.ansichten.melder.Melderschacht
+import de.pagerspass.pagerspass.ansichten.melder.einsatzort
+import de.pagerspass.pagerspass.ansichten.melder.fahrzeugort
 import de.pagerspass.pagerspass.melder.Melderbauplan
 import de.pagerspass.pagerspass.melder.Meldergeraet
 import de.pagerspass.pagerspass.melder.Melderkatalog
@@ -61,8 +63,16 @@ import de.pagerspass.pagerspass.netz.Begleitergeraete
  *
  * <b>Zwei Gestalten, wie im Web</b> (`MelderToggle.vue`): Als Piepser (`dme`)
  * steht das gewählte Gerät da — quittiert wird an seiner Quittierstelle oder am
- * Knopf darunter. Als Alarm-App (und „Im Funk", das am Handy kein Funkdisplay
- * hat) liegt die Meldung in großer Schrift über allem.
+ * Knopf darunter. Als Alarm-App liegt die Meldung in großer Schrift über allem.
+ *
+ * <b>„Im Funk" gibt es keine Blende</b> (`FunkgeraetVoll.vue`): Der Alarm steht
+ * auf dem Display des Funkgeräts im Funk-Reiter (`Funkdisplay`), so wie ein
+ * TETRA-Handgerät im echten Leben alarmiert — der Ton kommt trotzdem von hier.
+ * Am Begleiter bleibt es bei der Blende: Dort hat das Handy kein Funkgerät.
+ *
+ * <b>Jede Meldung geht in den Speicher des Geräts</b> ([Melderspeicher]) —
+ * auch die weggetippte. Ein Piepser speichert, was er empfangen hat, nicht,
+ * was man gelesen hat.
  */
 @Composable
 fun Melderblende(
@@ -71,9 +81,16 @@ fun Melderblende(
     beiWegtippen: () -> Unit,
     /** Am Begleiter: der Gerätestand des Rechners, der hier gespiegelt wird. */
     geraete: Begleitergeraete? = null,
+    /** Der Raumzustand — für den Einsatzort auf dem Alarmmonitor. */
+    raum: de.pagerspass.pagerspass.netz.Raumzustand? = null,
+    /** Die eigene Spielerkennung — wo das eigene Fahrzeug steht. */
+    eigeneKennung: String = "",
+    /** Annehmen und Status 3 in einem; ohne Angabe quittiert die Taste nur. */
+    beiAusruecken: (() -> Unit)? = null,
 ) {
     val zusammenhang = LocalContext.current
     val geraet = remember { Meldergeraet.bereit(zusammenhang) }
+    val speicher = remember { de.pagerspass.pagerspass.melder.Melderspeicher.bereit(zusammenhang) }
 
     // Was gilt: am Begleiter der Stand des Rechners, sonst die Wahl dieses Geräts.
     val bauart = geraete?.bauart ?: geraet.bauart
@@ -85,7 +102,10 @@ fun Melderblende(
     // Der Ton, bis jemand reagiert — der gewählte Melderton auf dem Alarmkanal,
     // und die Vibration, wenn die Alarmierungsart sie will.
     LaunchedEffect(alarm.incidentId) {
-        if (art.ton) Melderspieler.starten(zusammenhang, ton, alarm.prioritaet.coerceIn(1, 3))
+        speicher.aufnehmen(alarm)
+        // Ein ausgeschaltetes Gerät schweigt — die Meldung steht trotzdem da.
+        val aus = geraete == null && de.pagerspass.pagerspass.melder.Meldermenue.geraetAus
+        if (art.ton && !aus) Melderspieler.starten(zusammenhang, ton, alarm.prioritaet.coerceIn(1, 3))
         if (art.vibration) Melderspieler.vibrieren(zusammenhang)
     }
 
@@ -104,6 +124,9 @@ fun Melderblende(
         animationSpec = infiniteRepeatable(tween(700), RepeatMode.Reverse),
         label = "alarm-glut",
     )
+
+    // „Im Funk": Ton ja, Blende nein — die Meldung steht auf dem Funkgerät.
+    if (bauart == "funk" && geraete == null) return
 
     Dialog(
         onDismissRequest = beiWegtippen,
@@ -128,6 +151,9 @@ fun Melderblende(
                     plan = if (geraete == null) geraet.eigenerPlan().takeIf { bauform.startsWith("eigen:") } else null,
                     beiQuittieren = beiQuittieren,
                     beiWegtippen = beiWegtippen,
+                    beiAusruecken = beiAusruecken,
+                    ziel = einsatzort(raum, alarm.incidentId),
+                    standort = fahrzeugort(raum, eigeneKennung),
                 )
                 return@Box
             }
@@ -229,6 +255,9 @@ private fun Geraeteblende(
     plan: Melderbauplan?,
     beiQuittieren: () -> Unit,
     beiWegtippen: () -> Unit,
+    beiAusruecken: (() -> Unit)? = null,
+    ziel: Pair<Double, Double>? = null,
+    standort: Pair<Double, Double>? = null,
 ) {
     val quer = Melderkatalog.bauform(bauform)?.quer == true || (plan != null && plan.breite > plan.hoehe)
     Column(
@@ -241,13 +270,20 @@ private fun Geraeteblende(
             style = Schrift.Etikett.copy(letterSpacing = 0.3.em),
             color = Farben.SignalHell,
         )
-        Melderbild(
+        // Das Gerät selbst, bedienbar: Seine Tasten quittieren, blättern durch
+        // eine lange Meldung, der Monitor zeigt den Einsatzort auf der Karte.
+        Melderschacht(
+            alarm = alarm,
             bauform = bauform,
             gesicht = gesicht,
-            alarm = alarm,
             plan = plan,
+            ziel = ziel,
+            standort = standort,
             beiQuittieren = beiQuittieren,
-            modifier = Modifier.widthIn(max = if (quer) 460.dp else 300.dp).heightIn(max = 440.dp),
+            beiAusruecken = beiAusruecken,
+            mitSpeicher = false,
+            hoechstbreite = if (quer) 460.dp else 300.dp,
+            modifier = Modifier.heightIn(max = 480.dp),
         )
         Knopf(
             aufschrift = "Alarm quittieren",

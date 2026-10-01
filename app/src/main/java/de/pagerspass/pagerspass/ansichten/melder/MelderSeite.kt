@@ -158,16 +158,22 @@ fun MelderSeite(
         // ------------------------------------------------------ Vorschau
         val bauform = geraet.wirksameBauform()
         val plan = geraet.eigenerPlan().takeIf { bauform.startsWith("eigen:") }
+        // Das Gerät, bedienbar wie im Dienst: Tasten, Gerätemenü (Premium),
+        // Speicher — hier lernt man es kennen, bevor der erste Alarm kommt.
         Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxWidth()) {
             val quer = Melderkatalog.bauform(bauform)?.quer == true || (plan != null && plan.breite > plan.hoehe)
-            Melderbild(
+            Melderschacht(
+                alarm = if (probe) PROBEALARM else null,
                 bauform = bauform,
                 gesicht = geraet.gesicht,
-                alarm = if (probe) PROBEALARM else null,
                 plan = plan,
+                kennung = "PROBE",
                 beiQuittieren = { probe = false; Melderspieler.stoppen("probe"); Melderspieler.vibrationAus() },
-                modifier = Modifier.widthIn(max = if (quer) 380.dp else 230.dp).heightIn(max = 380.dp),
+                hoechstbreite = if (quer) 380.dp else 230.dp,
             )
+        }
+        if (premium) {
+            SehrLeise("Die Tasten am Gerät sind echt: Die mittlere öffnet das Gerätemenü — Alarmierung, Profile, Lautstärke, Ton, Meldungen.")
         }
         Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
             Knopf(

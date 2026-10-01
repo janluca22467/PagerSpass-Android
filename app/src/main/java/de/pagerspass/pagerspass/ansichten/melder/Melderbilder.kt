@@ -60,6 +60,18 @@ data class Melderanzeige(
     val meldebild: String = "",
     val einheiten: String = "",
     val zusatz: String? = null,
+    /**
+     * Das offene Gerätemenü — dann zeigt jedes Display, das Zeilen führt, die
+     * Menüzeilen mit dem Auswahlbalken statt der Meldung (siehe [Maler.zeilen]).
+     * Der Schirm gehört immer genau einer Sache.
+     */
+    val menue: de.pagerspass.pagerspass.melder.Menuebild? = null,
+    /**
+     * Die Aufschriften der Tasten, die mit der Lage wechseln (`mittelwort` im
+     * Web): „QUITT" im Alarm, „WÄHLEN" im Menü, „MENÜ" in Ruhe. Schlüssel sind
+     * die Aufgaben der Tasten; was fehlt, trägt die Aufschrift der Zeichnung.
+     */
+    val tasten: Map<String, String> = emptyMap(),
 ) {
     companion object {
         fun aus(alarm: Alarmmeldung?, laeuft: Boolean, ruhe: String = "BEREIT"): Melderanzeige {
@@ -135,6 +147,77 @@ private fun quittierflaechen(bauform: String): List<Rect> = when (bauform) {
 }
 
 /**
+ * Die Tasten jedes Gehäuses und was sie tun — in Hundertsteln der Breite.
+ *
+ * <b>Die Aufgaben sind dieselben wie am selbst gebauten Melder</b>
+ * (`Bauteil.aufgabe`): `mitte` (quittiert im Alarm, wählt im Menü, öffnet es in
+ * Ruhe), `hoch`/`runter` (blättern, im Menü den Balken bewegen), `zurueck`,
+ * `vor`, `speicher`, `quittieren`, `ausruecken`, `lauter`/`leiser`, `abriss`,
+ * `stop`. Welche Taste welche Aufgabe trägt, steht beim jeweiligen Gerät des
+ * Webs (`DmePager.vue`, `KlassikMelder.vue`, …) — hier nur ihre Lage.
+ *
+ * Die Reihenfolge zählt: Die erste Fläche, die den Tipp trifft, gewinnt.
+ */
+internal fun tastenflaechen(bauform: String): List<Pair<String, Rect>> = when (bauform) {
+    "klassik" -> listOf(
+        "mitte" to Rect(10f, 72f, 82f, 98f),
+        "hoch" to Rect(14f, 104f, 38f, 116f),
+        "runter" to Rect(54f, 104f, 78f, 116f),
+    )
+    "farbe" -> listOf(
+        "links" to Rect(8f, 120f, 48f, 142f),
+        "rechts" to Rect(52f, 120f, 92f, 142f),
+        "hoch" to Rect(12f, 145f, 34f, 159f),
+        "runter" to Rect(66f, 145f, 88f, 159f),
+        "speicher" to Rect(35f, 148f, 65f, 158f),
+        "lauter" to Rect(94f, 40f, 100f, 60f),
+        "leiser" to Rect(94f, 62f, 100f, 82f),
+    )
+    "fax" -> listOf(
+        "abriss" to Rect(14f, 0f, 86f, 52f),
+        "stop" to Rect(64f, 63f, 88f, 76f),
+    )
+    "quad" -> listOf(
+        "mitte" to Rect(6f, 0f, 40f, 11f),
+        "hoch" to Rect(54f, 0f, 72f, 11f),
+        "runter" to Rect(72f, 0f, 90f, 11f),
+    )
+    "lamellen" -> listOf(
+        "mitte" to Rect(72f, 58f, 90f, 98f),
+        "hoch" to Rect(69f, 100f, 81f, 111f),
+        "runter" to Rect(81f, 100f, 93f, 111f),
+    )
+    "leucht" -> listOf(
+        "hoch" to Rect(74f, 10f, 88f, 24f),
+        "runter" to Rect(74f, 26f, 88f, 40f),
+        "zurueck" to Rect(16f, 44f, 32f, 57f),
+        "quittieren" to Rect(32f, 43f, 50f, 58f),
+        "vor" to Rect(50f, 44f, 66f, 57f),
+    )
+    "bogen" -> listOf(
+        "mitte" to Rect(10f, 100f, 50f, 138f),
+        "zurueck" to Rect(50f, 100f, 90f, 138f),
+        "hoch" to Rect(28f, 0f, 50f, 8f),
+        "runter" to Rect(50f, 0f, 72f, 8f),
+    )
+    "uhr" -> listOf(
+        "quittieren" to Rect(16f, 88f, 50f, 108f),
+        "ausruecken" to Rect(50f, 88f, 84f, 108f),
+        "hoch" to Rect(90f, 43f, 100f, 61f),
+        "runter" to Rect(90f, 76f, 100f, 94f),
+    )
+    "monitor" -> listOf(
+        "quittieren" to Rect(6f, 44f, 44f, 53f),
+    )
+    else -> listOf(
+        "hoch" to Rect(8f, 106f, 32f, 124f),
+        "mitte" to Rect(32f, 104f, 68f, 126f),
+        "runter" to Rect(68f, 106f, 92f, 124f),
+        "speicher" to Rect(18f, 129f, 82f, 143f),
+    )
+}
+
+/**
  * Der Melder als Bild — eines der zehn Gehäuse oder der selbst gebaute.
  *
  * <b>Mit Canvas gezeichnet, nicht aus Bildern.</b> Die Gehäuse des Webs sind
@@ -156,11 +239,23 @@ fun Melderbild(
     laeuft: Boolean = alarm != null,
     plan: Melderbauplan? = null,
     beiQuittieren: (() -> Unit)? = null,
+    /**
+     * Was das Display zeigt, wenn nicht einfach die Meldung — das Menü, das
+     * Ruhebild mit Kennung, eine geblätterte Meldung (siehe `Melderschacht`).
+     */
+    anzeigeVorgabe: Melderanzeige? = null,
+    /**
+     * Ein Tipp auf eine Taste des Gehäuses, mit ihrer Aufgabe (siehe
+     * [tastenflaechen]). Ist er gesetzt, bedient das Bild das Gerät; sonst
+     * zählt nur die Quittierstelle.
+     */
+    beiTaste: ((String) -> Unit)? = null,
 ) {
     val messer = rememberTextMeasurer()
     val palette = Melderkatalog.palette(gesicht)
-    val anzeige = Melderanzeige.aus(alarm, laeuft)
+    val anzeige = anzeigeVorgabe ?: Melderanzeige.aus(alarm, laeuft)
     val tipp by rememberUpdatedState(beiQuittieren)
+    val taste by rememberUpdatedState(beiTaste)
 
     val puls = if (laeuft) {
         val lauf = rememberInfiniteTransition(label = "melderpuls")
@@ -183,6 +278,25 @@ fun Melderbild(
             .semantics { contentDescription = name }
             .pointerInput(bauform, plan) {
                 detectTapGestures { p ->
+                    taste?.let { aufTaste ->
+                        val aufgabe = if (plan != null) {
+                            val r = planRahmen(plan)
+                            val u = size.width / r.width
+                            plan.teile.filter { it.aufgabe != "keine" && it.aufgabe != "offen" }.firstOrNull { t ->
+                                Rect((t.x - r.left) * u, (t.y - r.top) * u, (t.x + t.breite - r.left) * u, (t.y + t.hoehe - r.top) * u)
+                                    .inflate(4f).contains(p)
+                            }?.aufgabe
+                        } else {
+                            val u = size.width / 100f
+                            tastenflaechen(bauform).firstOrNull { (_, f) ->
+                                Rect(f.left * u, f.top * u, f.right * u, f.bottom * u).inflate(4f).contains(p)
+                            }?.first
+                        }
+                        if (aufgabe != null) {
+                            aufTaste(aufgabe)
+                            return@detectTapGestures
+                        }
+                    }
                     val aufruf = tipp ?: return@detectTapGestures
                     val treffer = if (plan != null) {
                         val r = planRahmen(plan)
@@ -206,6 +320,7 @@ fun Melderbild(
             return@Canvas
         }
         val m = Maler(this, messer, 100f)
+        m.menue = anzeige.menue
         when (bauform) {
             "klassik" -> m.klassik(palette, anzeige, puls)
             "farbe" -> m.farbe(palette, anzeige, puls)
@@ -293,10 +408,37 @@ private class Maler(val d: DrawScope, val messer: TextMeasurer, einheiten: Float
         d.drawText(satz, topLeft = Offset(links, y * u))
     }
 
-    /** So viele Zeilen, wie in die Höhe passen — die erste auf Wunsch fett. */
+    /** Das offene Gerätemenü — dann zeigt [zeilen] die Menüzeilen statt der übergebenen. */
+    var menue: de.pagerspass.pagerspass.melder.Menuebild? = null
+
+    /**
+     * So viele Zeilen, wie in die Höhe passen — die erste auf Wunsch fett.
+     *
+     * <b>Steht das Menü offen, zeichnet dieselbe Stelle das Menü</b>: mit dem
+     * Balken auf der gewählten Zeile, und die Liste rollt darunter durch, damit
+     * der Balken im Bild bleibt (`useMenueBlick` im Web). So bekommt jedes
+     * Gehäuse sein Menü auf seinem eigenen Glas, ohne dass zehn Zeichnungen es
+     * einzeln kennen müssten.
+     */
     fun zeilen(liste: List<String>, x: Float, y: Float, w: Float, h: Float, groesse: Float, farbe: Color, kopfFett: Boolean = true, mono: Boolean = true) {
         val abstand = groesse * 1.32f
         val passen = (h / abstand).toInt().coerceAtLeast(1)
+        menue?.let { m ->
+            val anfang = (m.auswahl - passen + 1).coerceAtLeast(0)
+                .coerceAtMost((m.eintraege.size - passen).coerceAtLeast(0))
+            val hell = farbe.red * 0.3f + farbe.green * 0.59f + farbe.blue * 0.11f > 0.5f
+            val invers = if (hell) Color(0xFF0B0D10) else Color(0xFFF4F8FC)
+            m.eintraege.drop(anfang).take(passen).forEachIndexed { i, e ->
+                val zy = y + i * abstand
+                val gewaehlt = anfang + i == m.auswahl
+                if (gewaehlt) kasten(x - 0.4f, zy - groesse * 0.08f, w + 0.8f, abstand, farbe, groesse * 0.15f)
+                val tinte = if (gewaehlt) invers else farbe
+                val wertBreite = if (e.wert.isBlank()) 0f else minOf(w * 0.4f, e.wert.length * groesse * 0.62f + 0.5f)
+                text(e.name, x, zy, w - wertBreite, groesse, tinte, fett = gewaehlt, mono = mono)
+                if (wertBreite > 0f) text(e.wert, x + w - wertBreite, zy, wertBreite, groesse, tinte, mono = mono)
+            }
+            return
+        }
         liste.take(passen).forEachIndexed { i, z ->
             text(z, x, y + i * abstand, w, groesse, farbe, fett = kopfFett && i == 0, mono = mono)
         }
@@ -361,7 +503,7 @@ private fun Maler.dienst(p: Melderpalette, a: Melderanzeige, puls: Float) {
 
     val grau = p.gehTief
     taste(10f, 108f, 20f, 14f, grau, "▲", p.aufGehaeuse)
-    taste(34f, 106f, 32f, 18f, if (a.alarm) lerp(SIGNALORANGE, Color(0xFFFFC04D), puls) else grau, if (a.alarm) "QUITT" else "OK", if (a.alarm) Color(0xFF1A1200) else p.aufGehaeuse, 4.6f)
+    taste(34f, 106f, 32f, 18f, if (a.alarm) lerp(SIGNALORANGE, Color(0xFFFFC04D), puls) else grau, a.tasten["mitte"] ?: if (a.alarm) "QUITT" else "OK", if (a.alarm) Color(0xFF1A1200) else p.aufGehaeuse, 4.6f)
     taste(70f, 108f, 20f, 14f, grau, "▼", p.aufGehaeuse)
     taste(20f, 131f, 60f, 10f, grau, "SPEICHER", p.aufGehaeuse, 3.6f)
     kreis(10f, 150f, 1.6f, p.gehRand)
@@ -379,7 +521,7 @@ private fun Maler.klassik(p: Melderpalette, a: Melderanzeige, puls: Float) {
     zeilen(a.zeilen, 13f, 23f, 66f, 38f, 5f, p.lcdTinte)
     val gelb = Color(0xFFF2C300)
     if (a.alarm) kasten(8f, 70f, 76f, 30f, gelb.copy(alpha = 0.2f + 0.3f * puls), 15f)
-    taste(10f, 72f, 72f, 26f, gelb, if (a.alarm) "QUITTIEREN" else "", Color(0xFF2A2000), 5f, 13f)
+    taste(10f, 72f, 72f, 26f, gelb, a.tasten["mitte"] ?: if (a.alarm) "QUITTIEREN" else "", Color(0xFF2A2000), 5f, 13f)
     taste(14f, 104f, 24f, 12f, p.gehTief, "▲", p.aufGehaeuse)
     taste(54f, 104f, 24f, 12f, p.gehTief, "▼", p.aufGehaeuse)
 }
@@ -400,9 +542,15 @@ private fun Maler.farbe(p: Melderpalette, a: Melderanzeige, puls: Float) {
     text(if (a.alarm || a.stichwort != "BEREIT") a.stichwort else "BEREIT", 14f, 25.5f, 72f, 6.4f, Color.White, fett = true)
     zeilen(a.zeilen.drop(1).ifEmpty { a.zeilen }, 14f, 40f, 72f, 66f, 4.8f, Color(0xFFE7EDF5), kopfFett = false, mono = false)
 
-    taste(8f, 120f, 40f, 22f, Color(0xFF2F9E44), "ANNEHMEN", Color.White, 4.2f, 8f)
-    taste(52f, 120f, 40f, 22f, Color(0xFFC92A2A), "ABLEHNEN", Color.White, 4.2f, 8f)
+    taste(8f, 120f, 40f, 22f, Color(0xFF2F9E44), a.tasten["links"] ?: "ANNEHMEN", Color.White, 4.2f, 8f)
+    taste(52f, 120f, 40f, 22f, Color(0xFFC92A2A), a.tasten["rechts"] ?: "ABLEHNEN", Color.White, 4.2f, 8f)
+    // Das Steuerkreuz unter den Softkeys: ▲▼ blättern, die Mitte ist der Speicher.
+    taste(14f, 147f, 18f, 10f, p.gehTief, "▲", p.aufGehaeuse, 3.6f, 3f)
+    taste(68f, 147f, 18f, 10f, p.gehTief, "▼", p.aufGehaeuse, 3.6f, 3f)
     kasten(35f, 152f, 30f, 3.5f, p.gehTief, 2f)
+    // Die beiden Wippen an der Flanke: lauter und leiser.
+    kasten(96.5f, 42f, 2.4f, 16f, p.gehTief, 1f)
+    kasten(96.5f, 64f, 2.4f, 16f, p.gehTief, 1f)
     leuchte(50f, 164f, 2.6f, puls, a.alarm)
 }
 
@@ -456,9 +604,9 @@ private fun Maler.fax(p: Melderpalette, a: Melderanzeige, puls: Float) {
 
 /** Der Quermelder — Querformat, gefaste Ecken, die Tasten oben auf dem Rücken. */
 private fun Maler.quad(p: Melderpalette, a: Melderanzeige, puls: Float) {
-    taste(8f, 1.5f, 30f, 7f, if (a.alarm) lerp(SIGNALORANGE, Color(0xFFFFC04D), puls) else p.gehTief, "", p.aufGehaeuse, ecke = 2f)
-    taste(56f, 2.5f, 14f, 6f, p.gehTief, "", p.aufGehaeuse, ecke = 2f)
-    taste(74f, 2.5f, 14f, 6f, p.gehTief, "", p.aufGehaeuse, ecke = 2f)
+    taste(8f, 1.5f, 30f, 7f, if (a.alarm) lerp(SIGNALORANGE, Color(0xFFFFC04D), puls) else p.gehTief, a.tasten["mitte"].orEmpty(), if (a.alarm) Color(0xFF1A1200) else p.aufGehaeuse, 3f, ecke = 2f)
+    taste(56f, 2.5f, 14f, 6f, p.gehTief, "▲", p.aufGehaeuse, 2.8f, ecke = 2f)
+    taste(74f, 2.5f, 14f, 6f, p.gehTief, "▼", p.aufGehaeuse, 2.8f, ecke = 2f)
     val fase = 5f
     fun koerper(farbe: Brush) {
         val pf = Path().apply {
@@ -505,6 +653,9 @@ private fun Maler.lamellen(p: Melderpalette, a: Melderanzeige, puls: Float) {
     val rot = if (a.alarm) lerp(Color(0xFFC62828), Color(0xFFFF5A4D), puls) else Color(0xFFA32020)
     taste(72f, 58f, 18f, 40f, rot, "", Color.White, ecke = 4f)
     kasten(78f, 76f, 6f, 1.2f, Color.White.copy(alpha = 0.7f), 0.6f)
+    a.tasten["mitte"]?.let { text(it, 70f, 88f, 22f, 3f, Color.White.copy(alpha = 0.85f), fett = true, mitte = true) }
+    taste(71f, 101f, 9f, 8f, p.gehTief, "▲", p.aufGehaeuse, 3.2f, 2f)
+    taste(82f, 101f, 9f, 8f, p.gehTief, "▼", p.aufGehaeuse, 3.2f, 2f)
     for (i in 0 until 5) kasten(30f, 110f + i * 4.4f, 40f, 1.8f, Color.Black.copy(alpha = 0.5f), 0.9f)
     text("LM 4", 40f, 133f, 20f, 3.4f, p.aufGehaeuse.copy(alpha = 0.6f), fett = true, mitte = true)
     leuchte(22f, 116f, 2.4f, puls, a.alarm)
@@ -551,8 +702,8 @@ private fun Maler.bogen(p: Melderpalette, a: Melderanzeige, puls: Float) {
         }
         text(aufschrift, x0, 115f, 36f, 3.8f, if (farbe.red > 0.8f) Color(0xFF1A1200) else p.aufGehaeuse, fett = true, mitte = true)
     }
-    bogentaste(true, if (a.alarm) lerp(SIGNALORANGE, Color(0xFFFFC04D), puls) else p.gehTief, "QUITT")
-    bogentaste(false, p.gehTief, "MENÜ")
+    bogentaste(true, if (a.alarm) lerp(SIGNALORANGE, Color(0xFFFFC04D), puls) else p.gehTief, a.tasten["mitte"] ?: "QUITT")
+    bogentaste(false, p.gehTief, a.tasten["zurueck"] ?: "MENÜ")
     gitter(34f, 142f, 32f, 12f, 3, 8, Color.Black.copy(alpha = 0.5f))
     leuchte(50f, 10f, 1.8f, puls, a.alarm)
 }
@@ -629,6 +780,7 @@ internal fun DrawScope.eigenerMelder(plan: Melderbauplan, a: Melderanzeige, mess
     val m = Maler(this, messer, r.width)
     translate(-r.left * m.u, -r.top * m.u) {
         val tm = Maler(this, messer, r.width)
+        tm.menue = a.menue
         // Was außerhalb des Gehäuses liegt (Antenne, Clip), kommt zuerst — dahinter.
         val (aussen, innen) = plan.teile.partition { t -> t.art in setOf("antenne", "clip") }
         aussen.forEach { tm.teil(it, a, puls, plan) }
