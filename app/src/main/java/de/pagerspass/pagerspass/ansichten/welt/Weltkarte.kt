@@ -673,7 +673,7 @@ fun Weltkarte(
                     .padding(Abstand.Gross),
             ) {
                 Text(
-                    text = "Die Kartenkacheln kommen von CARTO und Esri — dabei geht deine IP-Adresse an deren Server.",
+                    text = "Die gezeichnete Karte kommt von unserem eigenen Kartenserver in Deutschland. Das Luftbild der Satelliten- und Hybridansicht lädt die App direkt bei Esri in den USA; dabei erhält Esri deine IP-Adresse und den Ausschnitt.",
                     style = Schrift.Klein,
                     color = Farben.Text,
                 )

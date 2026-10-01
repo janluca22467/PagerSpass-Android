@@ -91,6 +91,11 @@ import kotlin.math.tan
  * <b>Kacheln erst nach Einwilligung.</b> Dieselbe Regel wie im Web
  * (Datenschutzerklärung Ziffer 11): Ohne „ja" wird kein einziger Kachel-Abruf
  * gemacht; Marker, Strecken und Radien stehen trotzdem auf dunklem Grund.
+ *
+ * <b>Zwei Quellen, wie im Web</b> (`web/src/recht/kartenfreigabe.ts`): Die
+ * gezeichneten Ansichten und die Beschriftung im Hybrid kommen vom eigenen
+ * Kachelserver karte.pagerspass.de (OpenStreetMap-Daten, nur Europa — außerhalb
+ * bleibt die Karte leer); das Luftbild weiter von Esri.
  */
 enum class Kartenstil(
     val titel: String,
@@ -102,12 +107,12 @@ enum class Kartenstil(
     Dunkel(
         "Dunkel",
         19,
-        "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png?key=$CARTO",
+        eigeneKachel("dunkel"),
     ),
     Hell(
         "Hell",
         19,
-        "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}@2x.png?key=$CARTO",
+        eigeneKachel("hell"),
     ),
     Satellit(
         "Satellit",
@@ -119,21 +124,20 @@ enum class Kartenstil(
         "Hybrid",
         18,
         "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-        "https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}@2x.png?key=$CARTO",
+        eigeneKachel("beschriftung"),
     ),
     ;
 
     fun url(vorlage: String, z: Int, x: Int, y: Int): String = vorlage
-        .replace("{s}", "abcd"[abs(x + y) % 4].toString())
         .replace("{z}", z.toString())
         .replace("{x}", x.toString())
         .replace("{y}", y.toString())
 
     val attribution: String
         get() = when (this) {
-            Dunkel, Hell -> "© OpenStreetMap, © CARTO"
+            Dunkel, Hell -> "© OpenStreetMap-Mitwirkende, © OpenMapTiles"
             Satellit -> "© Esri, Maxar, Earthstar Geographics"
-            Hybrid -> "© Esri, Maxar, © OpenStreetMap, © CARTO"
+            Hybrid -> "© Esri, Maxar, © OpenStreetMap-Mitwirkende, © OpenMapTiles"
         }
 }
 
@@ -142,7 +146,22 @@ enum class Kartenstil(
  * Der Parameter heißt `key`: Mit `api_key` kommt HTTP 200 und eine
  * Wasserzeichen-Kachel, kein Fehler.
  */
-private const val CARTO = "cb1_25ox_1_9cb7568fd1c075dddbb1b974"
+/**
+ * Der eigene Kachelserver — dieselbe feste Adresse wie im Web, mit demselben
+ * Zwischenspeicher. Kein `{s}` mehr: Er spricht HTTP/2, alle Kacheln laufen über
+ * eine Verbindung. Immer `@2x`, weil Handybildschirme durchweg scharf sind.
+ */
+private const val KACHELSERVER = "https://karte.pagerspass.de/styles"
+
+/**
+ * Das Zählwerk aus `kartenfreigabe.ts` (`KACHEL_FASSUNG`). Mit dem Web zusammen
+ * hochzählen, wenn falsche Kacheln in den Speichern liegen: Eine neue Zahl ist eine
+ * neue Adresse, und die hat niemand im Speicher.
+ */
+private const val KACHEL_FASSUNG = "2"
+
+private fun eigeneKachel(ansicht: String) =
+    "$KACHELSERVER/$ansicht/{z}/{x}/{y}@2x.png?v=$KACHEL_FASSUNG"
 
 /**
  * Der Kachelspeicher — lädt einmal, hält die letzten Kacheln, meldet sich über
@@ -731,7 +750,7 @@ fun Lagekarte(
                     .padding(Abstand.Gross),
             ) {
                 Text(
-                    text = "Die Kartenkacheln kommen von CARTO und Esri — dabei geht deine IP-Adresse an deren Server.",
+                    text = "Die gezeichnete Karte kommt von unserem eigenen Kartenserver in Deutschland. Das Luftbild der Satelliten- und Hybridansicht lädt die App direkt bei Esri in den USA; dabei erhält Esri deine IP-Adresse und den Ausschnitt.",
                     style = Schrift.Klein,
                     color = Farben.Text,
                 )
