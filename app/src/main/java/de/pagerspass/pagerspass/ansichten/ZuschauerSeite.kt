@@ -23,8 +23,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import de.pagerspass.pagerspass.mobil.Rundenstand
@@ -46,7 +44,7 @@ import de.pagerspass.pagerspass.ui.karte.Lagekarte
 import de.pagerspass.pagerspass.ui.theme.Abstand
 import de.pagerspass.pagerspass.ui.theme.Farben
 import de.pagerspass.pagerspass.ui.theme.Schrift
-import de.pagerspass.pagerspass.ui.theme.raster
+import de.pagerspass.pagerspass.ui.theme.seitengrund
 
 /**
  * Der Zuschauerplatz — dieselben Bausteine wie die Leitstelle, nur ohne
@@ -72,8 +70,7 @@ fun ZuschauerSeite(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .drawBehind { drawRect(Brush.verticalGradient(listOf(Farben.Bg, Farben.BgTief))) }
-            .raster(),
+            .seitengrund(),
     ) {
         // Kopf — Verlassen, Marke, Leitstelle, Zahlen.
         Row(

@@ -128,6 +128,19 @@ object Farben {
     val OrgThw = Color(0xFF1552D1)
     val OrgPolizei = Color(0xFF2F9E44)
 
+    /**
+     * Die Farbe einer Organisation zu ihrem Namen, wie ihn der Server schickt
+     * („Feuerwehr", „Rettungsdienst", „Thw", „Polizei"). Ein unbekannter Name
+     * bekommt die leise Textfarbe statt einer geratenen.
+     */
+    fun org(organisation: String): Color = when (organisation.lowercase()) {
+        "feuerwehr" -> OrgFeuerwehr
+        "rettungsdienst" -> OrgRettungsdienst
+        "thw" -> OrgThw
+        "polizei" -> OrgPolizei
+        else -> TextLeise
+    }
+
     // ----------------------------------------------- Die Hilfsorganisationen
 
     val HiorgDrk = Color(0xFFD64550)

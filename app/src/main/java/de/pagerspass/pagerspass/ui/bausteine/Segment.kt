@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Icon
@@ -14,7 +15,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
@@ -26,6 +30,7 @@ import de.pagerspass.pagerspass.ui.theme.Farben
 import de.pagerspass.pagerspass.ui.theme.Rundung
 import de.pagerspass.pagerspass.ui.theme.Schrift
 import de.pagerspass.pagerspass.ui.theme.Ziel
+import de.pagerspass.pagerspass.ui.theme.kapsel
 
 /**
  * Der Umschalter — zwei oder drei Seiten derselben Sache.
@@ -70,6 +75,19 @@ fun <T> Segment(
                     .weight(1f)
                     .defaultMinSize(minWidth = Ziel.Kompakt, minHeight = Ziel.Kompakt)
                     .background(if (an) Farben.FlaecheAktiv else Color.Transparent, Rundung.Rund)
+                    // Er ist ein Reiter im Kleinen — und trägt deshalb seit dem
+                    // Tabletlook denselben Amberstrich an der Unterkante.
+                    .drawBehind {
+                        if (!an) return@drawBehind
+                        val strich = 2.dp.toPx()
+                        val einzug = size.height / 2f
+                        drawLine(
+                            color = Farben.Amber,
+                            start = Offset(einzug, size.height - strich / 2f),
+                            end = Offset(size.width - einzug, size.height - strich / 2f),
+                            strokeWidth = strich,
+                        )
+                    }
                     .clickable(
                         onClick = { beiWahl(seite) },
                         role = Role.Tab,
@@ -85,7 +103,71 @@ fun <T> Segment(
                         fontWeight = FontWeight.Bold,
                         letterSpacing = 0.08.em,
                     ),
-                    color = if (an) Farben.Amber else Farben.TextSehrLeise,
+                    color = if (an) Farben.Text else Farben.TextSehrLeise,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Die Kapselreihe — Reiter als Pillen in einer eingelassenen Kapsel.
+ *
+ * Die Kopfzeile der modernen Fahrzeugliste und der Umschalter Funkverkehr /
+ * Handfunkgerät im Web (01.10.2026): Die Reihe liegt als dunkle Kapsel in der
+ * Fläche, die gewählte Seite hebt sich als Pille mit Amberhauch und Amberrand
+ * heraus. Anders als der Umschalter darf eine Seite gesperrt sein — sie steht
+ * dann leise da und sagt in ihrer Aufschrift, warum.
+ */
+@Composable
+fun <T> Kapselreihe(
+    seiten: List<T>,
+    gewaehlt: T,
+    beiWahl: (T) -> Unit,
+    modifier: Modifier = Modifier,
+    aufschrift: (T) -> String = { it.toString() },
+    gesperrt: (T) -> Boolean = { false },
+) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(Abstand.Winzig),
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier
+            .fillMaxWidth()
+            .kapsel()
+            .padding(Abstand.Winzig),
+    ) {
+        seiten.forEach { seite ->
+            val an = seite == gewaehlt
+            val zu = gesperrt(seite)
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .weight(1f)
+                    .defaultMinSize(minHeight = 36.dp)
+                    .background(
+                        if (an) lerp(Farben.FlaecheHoch, Farben.Amber, 0.18f) else Color.Transparent,
+                        Rundung.Rund,
+                    )
+                    .border(1.dp, if (an) Farben.Amber.copy(alpha = 0.55f) else Color.Transparent, Rundung.Rund)
+                    .clickable(
+                        enabled = !zu,
+                        onClick = { beiWahl(seite) },
+                        role = Role.Tab,
+                        indication = null,
+                        interactionSource = null,
+                    )
+                    .padding(horizontal = Abstand.Normal),
+            ) {
+                Text(
+                    text = aufschrift(seite),
+                    style = Schrift.Klein.copy(fontWeight = FontWeight.SemiBold),
+                    color = when {
+                        zu -> Farben.TextSehrLeise
+                        an -> Farben.Text
+                        else -> Farben.TextLeise
+                    },
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )

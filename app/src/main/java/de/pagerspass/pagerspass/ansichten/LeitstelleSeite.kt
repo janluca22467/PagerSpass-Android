@@ -1,18 +1,27 @@
 package de.pagerspass.pagerspass.ansichten
 
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -23,9 +32,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import de.pagerspass.pagerspass.mobil.Rundenstand
@@ -38,7 +49,6 @@ import de.pagerspass.pagerspass.netz.Stichwort
 import de.pagerspass.pagerspass.ui.bausteine.Blende
 import de.pagerspass.pagerspass.ui.bausteine.Dialogbreite
 import de.pagerspass.pagerspass.ui.bausteine.Feld
-import de.pagerspass.pagerspass.ui.bausteine.Hakenzeile
 import de.pagerspass.pagerspass.ui.bausteine.Kasten
 import de.pagerspass.pagerspass.ui.bausteine.Knopf
 import de.pagerspass.pagerspass.ui.bausteine.Knopfart
@@ -46,18 +56,21 @@ import de.pagerspass.pagerspass.ui.bausteine.Ladezeile
 import de.pagerspass.pagerspass.ui.bausteine.Leerhinweis
 import de.pagerspass.pagerspass.ui.bausteine.Marke
 import de.pagerspass.pagerspass.ui.bausteine.Pille
+import de.pagerspass.pagerspass.ui.bausteine.Pillenreihe
 import de.pagerspass.pagerspass.ui.bausteine.Reiter
 import de.pagerspass.pagerspass.ui.bausteine.Reiterreihe
-import de.pagerspass.pagerspass.ui.bausteine.Pillenreihe
+import de.pagerspass.pagerspass.ui.bausteine.RunderHaken
 import de.pagerspass.pagerspass.ui.bausteine.SehrLeise
 import de.pagerspass.pagerspass.ui.bausteine.Teil
 import de.pagerspass.pagerspass.ui.bausteine.Teilleiste
 import de.pagerspass.pagerspass.ui.bausteine.Ueberschrift
 import de.pagerspass.pagerspass.ui.theme.Abstand
 import de.pagerspass.pagerspass.ui.theme.Farben
+import de.pagerspass.pagerspass.ui.theme.Rundung
 import de.pagerspass.pagerspass.ui.theme.Schrift
 import de.pagerspass.pagerspass.ui.theme.flaeche
-import de.pagerspass.pagerspass.ui.theme.raster
+import de.pagerspass.pagerspass.ui.theme.kopfverlauf
+import de.pagerspass.pagerspass.ui.theme.seitengrund
 import de.pagerspass.pagerspass.ui.zeichen.Zeichen
 
 /**
@@ -113,8 +126,7 @@ fun LeitstelleSeite(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .drawBehind { drawRect(Brush.verticalGradient(listOf(Farben.Bg, Farben.BgTief))) }
-            .raster(),
+            .seitengrund(),
     ) {
         Leitstellenkopf(raum, oben, beiVerlassen)
 
@@ -287,7 +299,7 @@ private fun Leitstellenkopf(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
-            .background(Brush.verticalGradient(listOf(Farben.FlaecheHoch, Farben.Flaeche)))
+            .kopfverlauf()
             .drawBehind {
                 val strich = 1.dp.toPx()
                 drawLine(
@@ -316,9 +328,114 @@ private fun Leitstellenkopf(
                 ).joinToString(" · ").ifBlank { "…" },
                 mono = true,
             )
+            if (raum != null) Lagepillen(raum, Modifier.padding(top = Abstand.Winzig))
         }
 
         Knopf("Verlassen", beiVerlassen, art = Knopfart.Gefahr, kompakt = true)
+    }
+}
+
+/**
+ * Die Lagezahlen — drei kleine Pillen statt einer Tafel (Web, 01.10.2026).
+ *
+ * Punkt · Zahl · Wort. Bei null sind sie grau und treten zurück; wartet etwas,
+ * werden sie rot, und bei „unquittiert" pulsiert der Punkt. „frei" trägt einen
+ * grünen Punkt und wird amber, wenn kein Fahrzeug mehr frei ist.
+ */
+@Composable
+private fun Lagepillen(raum: Raumzustand, modifier: Modifier = Modifier) {
+    val offen = raum.incidents.count { it.state == "Offen" }
+    val unquittiert = raum.vehicles.count { it.alarmOffen }
+    val fahrzeuge = raum.vehicles.size
+    val frei = raum.vehicles.count { it.status in 1..2 }
+
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(Abstand.Winzig),
+        verticalArrangement = Arrangement.spacedBy(Abstand.Winzig),
+        modifier = modifier,
+    ) {
+        Lagezahlpille(
+            zahl = offen.toString(),
+            wort = "offen",
+            farbe = if (offen > 0) Farben.SignalHell else null,
+        )
+        Lagezahlpille(
+            zahl = unquittiert.toString(),
+            wort = "unquittiert",
+            farbe = if (unquittiert > 0) Farben.SignalHell else null,
+            puls = unquittiert > 0,
+        )
+        Lagezahlpille(
+            zahl = "$frei/$fahrzeuge",
+            wort = "frei",
+            farbe = if (fahrzeuge > 0 && frei == 0) Farben.AmberHell else Farben.GruenHell,
+            nurPunkt = fahrzeuge == 0 || frei > 0,
+        )
+    }
+}
+
+/**
+ * Eine Lagezahlpille.
+ *
+ * @param farbe `null` = ruhig (grau). Sonst trägt die Pille die Farbe in Punkt,
+ *   Zahl und Hauch.
+ * @param nurPunkt Nur der Punkt farbig, die Pille bleibt ruhig — „frei" im
+ *   Regelfall.
+ */
+@Composable
+private fun Lagezahlpille(
+    zahl: String,
+    wort: String,
+    farbe: Color?,
+    puls: Boolean = false,
+    nurPunkt: Boolean = false,
+) {
+    val laut = farbe != null && !nurPunkt
+    val punktfarbe = farbe ?: Farben.TextSehrLeise
+    val deckkraft = if (puls) {
+        val takt = rememberInfiniteTransition(label = "lagepuls")
+        val wert by takt.animateFloat(
+            initialValue = 1f,
+            targetValue = 0.3f,
+            animationSpec = infiniteRepeatable(tween(600), RepeatMode.Reverse),
+            label = "lagepuls-punkt",
+        )
+        wert
+    } else {
+        1f
+    }
+
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(Abstand.Winzig),
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .background(
+                if (laut) punktfarbe.copy(alpha = 0.12f) else Color.White.copy(alpha = 0.05f),
+                Rundung.Rund,
+            )
+            .border(
+                1.dp,
+                if (laut) punktfarbe.copy(alpha = 0.45f) else Color.White.copy(alpha = 0.08f),
+                Rundung.Rund,
+            )
+            .padding(horizontal = Abstand.Klein, vertical = 1.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(6.dp)
+                .alpha(deckkraft)
+                .background(punktfarbe, CircleShape),
+        )
+        Text(
+            text = zahl,
+            style = Schrift.Winzig.copy(fontFamily = Schrift.Mono, fontWeight = FontWeight.Bold),
+            color = if (laut) punktfarbe else Farben.TextLeise,
+        )
+        Text(
+            text = wort,
+            style = Schrift.Winzig,
+            color = if (laut) punktfarbe else Farben.TextSehrLeise,
+        )
     }
 }
 
@@ -731,14 +848,20 @@ private fun Alarmblende(
             val an = fahrzeug.id in gewaehlt
             val verfuegbar = fahrzeug.status in 1..2 && fahrzeug.einsatzId == null
 
-            Hakenzeile(
-                text = "${fahrzeug.funkrufname} · ${fahrzeug.typ}" +
-                    if (!verfuegbar) " — ${fahrzeug.statusText}" else "",
-                an = an,
-                beiWechsel = { neu ->
-                    gewaehlt = if (neu) gewaehlt + fahrzeug.id else gewaehlt - fahrzeug.id
-                },
-            )
+            // Fahrzeugkarten wie im Tableau (Web, 01.10.2026): Statusquadrat,
+            // Leuchtleiste, runder Haken, amberner Rand bei Auswahl. Nicht
+            // Verfügbares steht gedämpft, bleibt aber wählbar — nachalarmieren
+            // ist eine Entscheidung der Leitstelle, nicht des Dialogs.
+            Box(modifier = Modifier.alpha(if (verfuegbar || an) 1f else 0.6f)) {
+                Dienstfahrzeugzeile(
+                    fahrzeug = fahrzeug,
+                    gewaehlt = an,
+                    beiDruck = {
+                        gewaehlt = if (an) gewaehlt - fahrzeug.id else gewaehlt + fahrzeug.id
+                    },
+                    hinten = { RunderHaken(an) },
+                )
+            }
         }
 
         if (fahrzeuge.isEmpty()) {
