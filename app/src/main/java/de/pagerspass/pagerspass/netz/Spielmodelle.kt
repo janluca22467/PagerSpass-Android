@@ -843,6 +843,8 @@ data class OeffentlicheRunde(
     val leitstelleBesetzt: Boolean = false,
     /** Ein selbst gebauter Ausrückebereich — die Runde ist nicht gewertet. */
     val sandkasten: Boolean = false,
+    /** Die Runde wird übertragen — wer beitritt, wird gefragt (v6). */
+    val streamermodus: Boolean = false,
 )
 
 /** Ein Platz auf der Tagesliste der Schicht des Tages. */

@@ -106,6 +106,12 @@ fun Seitenkopf(
     modifier: Modifier = Modifier,
     unterzeile: String? = null,
     knoepfe: @Composable (() -> Unit)? = null,
+    /**
+     * Das Etikett über dem Titel — „Runden", „Ausrüstung". Jede Listenseite des Web
+     * trägt eines; ohne es beginnt die Überschrift eine halbe Zeile weiter oben, und
+     * beim Blättern von Seite zu Seite springt der Titel.
+     */
+    etikett: String? = null,
 ) {
     Row(
         horizontalArrangement = Arrangement.spacedBy(Abstand.Normal),
@@ -122,6 +128,7 @@ fun Seitenkopf(
             // gewählt. Ohne Deckel lief er in der Schlagzeilengröße rechts aus
             // dem Bild; die Spalte hat `weight(1f)`, aber Text ohne `maxLines`
             // wächst über seine Spalte hinaus, statt umzubrechen.
+            if (etikett != null) Etikett(etikett)
             Text(
                 text = titel,
                 style = Schrift.Schlagzeile,

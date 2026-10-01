@@ -1163,6 +1163,7 @@ private fun Angemeldet(
                         runde.zuschauen(code, stand.konto?.anzeigename.orEmpty())
                     },
                     beiZurueck = { steuerung.popBackStack() },
+                    beiUebungen = { steuerung.navigate(UNTERSEITE_UEBUNGEN) },
                 )
             }
 
