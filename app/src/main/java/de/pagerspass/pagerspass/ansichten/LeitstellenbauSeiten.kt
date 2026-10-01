@@ -35,7 +35,6 @@ import de.pagerspass.pagerspass.netz.PRAEFIX_HIORG
 import de.pagerspass.pagerspass.netz.PRAEFIX_ORG
 import de.pagerspass.pagerspass.netz.Vorlageneinstellungen
 import de.pagerspass.pagerspass.netz.Wachenwahl
-import de.pagerspass.pagerspass.netz.bundeslandname
 import de.pagerspass.pagerspass.netz.istEigeneWache
 import de.pagerspass.pagerspass.ui.bausteine.Abschnitt
 import de.pagerspass.pagerspass.ui.bausteine.Bereich
@@ -203,6 +202,10 @@ fun LeitstelleEditorSeite(
             val kreis = kreise.firstOrNull { it.id == v.landkreisId }
             val abzug = stand.kreiswachen.inhalt.orEmpty()
             val gewaehlt = v.wachen.associateBy { it.kennung }
+            // Der Staat des Kreises — ohne Kreis Deutschland. Er entscheidet, welche
+            // Fahrzeuge zur Wahl stehen (in Tirol kein HLF 20) und wie Rufnamen klingen.
+            val staat = werkstaatVon(kreis?.bundesland)
+            val vorlagenImStaat = katalog?.fahrzeuge.orEmpty().filter { it.imStaat(staat) }
 
             fun wahlAendern(kennung: String, neu: (Wachenwahl) -> Wachenwahl) =
                 beiAendern(v.copy(wachen = v.wachen.map { if (it.kennung == kennung) neu(it) else it }))
@@ -459,7 +462,7 @@ fun LeitstelleEditorSeite(
             }
 
             // ------------------------------------------ Feste Fahrzeugrufnamen
-            FesteRufnamen(v, abzug, katalog?.fahrzeuge.orEmpty(), beiAendern, ::art)
+            FesteRufnamen(v, abzug, vorlagenImStaat, beiAendern, ::art)
 
             // ------------------------------------------------------- Rufnamen
             val beispielzug = v.wachen.firstOrNull()?.zugnummer ?: 1
@@ -467,6 +470,8 @@ fun LeitstelleEditorSeite(
             fun vorgabewort(s: String) = PRAEFIX_ORG[s] ?: PRAEFIX_HIORG[s] ?: "Einheit"
             fun kennzahl(f: Fahrzeugvorlage) = v.kennzahlen[f.id]?.trim()?.ifBlank { null } ?: f.kennzahl
             fun landeswort(f: Fahrzeugvorlage, s: String): String {
+                // Jenseits der Grenze ruft das Fahrzeug selbst — „Tank", „Pumpe", „Christophorus".
+                if (staat != "Deutschland") return f.rufwort ?: f.typ
                 if (kreis?.bundesland != "NordrheinWestfalen" || f.organisation != "Rettungsdienst") return vorgabewort(s)
                 return when (kennzahl(f)) {
                     "82" -> "Notarzt"
@@ -478,6 +483,9 @@ fun LeitstelleEditorSeite(
                 if (f == null) return "—"
                 val wort = v.rufnamenpraefixe[s]?.trim()?.ifBlank { null } ?: landeswort(f, s)
                 val ort = v.ort.trim().ifBlank { "Heidefeld" }
+                // Österreich und die Schweiz: Wort und Wehr, ohne Kennzahl — „Tank Hall".
+                // Wie ein Land die Nummern anhängt, entscheidet der Server.
+                if (staat != "Deutschland") return if (f.organisation == "Polizei") "$ort 1" else "$wort $ort"
                 return if (f.organisation == "Polizei") "$wort ${kennzahl(f)}/1" else "$wort $ort $beispielzug/${kennzahl(f)}/1"
             }
 
@@ -486,7 +494,7 @@ fun LeitstelleEditorSeite(
                 val traeger = (abzug.map { it.traeger } + v.wachen.mapNotNull { it.traeger })
                     .filter { it != "Keine" && it.isNotBlank() }.distinct()
                 (ORGANISATIONEN + traeger).forEach { s ->
-                    val beispiel = katalog?.fahrzeuge?.firstOrNull { schluessel(it) == s }
+                    val beispiel = vorlagenImStaat.firstOrNull { schluessel(it) == s }
                     Column(verticalArrangement = Arrangement.spacedBy(Abstand.Haar)) {
                         Feld(
                             v.rufnamenpraefixe[s].orEmpty(),
@@ -507,7 +515,7 @@ fun LeitstelleEditorSeite(
                         "Fähigkeiten, nie über diese Zahl. Leer lassen heißt „wie im Katalog\".",
                 )
                 var kategorie by rememberSaveable { mutableStateOf<String?>(null) }
-                val gruppen = katalog?.fahrzeuge.orEmpty().sortedBy { it.typ }.groupBy { it.kategorie }.toList().sortedBy { it.first }
+                val gruppen = vorlagenImStaat.sortedBy { it.typ }.groupBy { it.kategorie }.toList().sortedBy { it.first }
                 Pillenreihe {
                     gruppen.forEach { (k, l) ->
                         Pille(k.ifBlank { "Sonstige" }, kategorie == k, { kategorie = if (kategorie == k) null else k }, zahl = l.size)
@@ -571,8 +579,7 @@ fun LeitstelleEditorSeite(
             when {
                 w == "kreis" -> Wahlblende(
                     titel = "Landkreis",
-                    gruppen = kreise.groupBy { it.bundesland }.toList().sortedBy { bundeslandname(it.first) }
-                        .map { (land, l) -> bundeslandname(land) to l.sortedBy { it.name } },
+                    gruppen = werkKreisgruppen(kreise),
                     aufschrift = { it.name },
                     unterschrift = { if (it.hatDaten) "${it.wachen} Wachen" else "ohne Wachendaten" },
                     gewaehlt = kreis,

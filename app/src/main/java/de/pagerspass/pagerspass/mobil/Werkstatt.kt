@@ -29,6 +29,9 @@ import de.pagerspass.pagerspass.netz.Startkachel
 import de.pagerspass.pagerspass.netz.Szenario
 import de.pagerspass.pagerspass.netz.Szenariozeile
 import de.pagerspass.pagerspass.netz.Tagesschicht
+import de.pagerspass.pagerspass.netz.Theorieurteil
+import de.pagerspass.pagerspass.netz.einrichtungsauszug
+import de.pagerspass.pagerspass.netz.theorieAbgeben
 import de.pagerspass.pagerspass.netz.Uebungsfahrt
 import de.pagerspass.pagerspass.netz.Vorlageninhalt
 import de.pagerspass.pagerspass.netz.Vorlagenzeile
@@ -61,7 +64,8 @@ import kotlinx.coroutines.launch
  */
 class Werkstatt(anwendung: Application) : AndroidViewModel(anwendung) {
 
-    private val wege = Werkwege(Netz(Ablage(anwendung)))
+    private val netz = Netz(Ablage(anwendung))
+    private val wege = Werkwege(netz)
 
     private val _stand = MutableStateFlow(Werkstand())
     val stand: StateFlow<Werkstand> = _stand.asStateFlow()
@@ -238,11 +242,50 @@ class Werkstatt(anwendung: Application) : AndroidViewModel(anwendung) {
 
     // --------------------------------------------------------------- Lehrgang
 
-    fun lehrgaengeLaden(neu: Boolean = false) = laden(
-        holen = { _stand.value.lehrgaenge },
-        setzen = { b -> _stand.update { it.copy(lehrgaenge = b) } },
-        nurWennNoetig = !neu,
-    ) { wege.lehrgaenge(kennung()) }
+    fun lehrgaengeLaden(neu: Boolean = false) {
+        laden(
+            holen = { _stand.value.lehrgaenge },
+            setzen = { b -> _stand.update { it.copy(lehrgaenge = b) } },
+            nurWennNoetig = !neu,
+        ) { wege.lehrgaenge(kennung()) }
+        // Die Spielrolle aus dem Einrichtungsbogen entscheidet, welcher Lehrgang
+        // „Dein Einstieg" heißt. Fehlt sie (älterer Server, Bogen offen), gilt die
+        // Leitstelle — wie im Web.
+        if (_stand.value.spielrolle == null) viewModelScope.launch {
+            val k = konto?.kennung ?: return@launch
+            val rolle = runCatching { netz.einrichtungsauszug(k).spielrolle }.getOrNull()
+            _stand.update { it.copy(spielrolle = rolle ?: "") }
+        }
+    }
+
+    /**
+     * Eine Übung ist durch — jede Karte saß einmal. Abgehakt wird wie Lesestoff;
+     * ein Fehlschlag steht als Satz da, statt still zu verschwinden.
+     */
+    fun uebungGeschafft(lehrgang: Lehrgang, modul: Lehrgangsmodul) = viewModelScope.launch {
+        runCatching { wege.modulErledigen(lehrgang.id, modul.id, kennung()) }
+            .onFailure { f -> _stand.update { it.copy(fehler = f.message ?: "Die Übung ließ sich nicht abhaken.") } }
+        lehrgaengeLaden(neu = true)
+    }
+
+    /**
+     * Gibt eine Wissensprüfung ab. Ausgewertet wird auf dem Server, der die
+     * richtigen Antworten als einziger kennt; das Urteil geht an die Seite zurück.
+     */
+    fun theorieAbgeben(
+        lehrgang: Lehrgang,
+        modul: Lehrgangsmodul,
+        antworten: Map<String, Int>,
+        beiUrteil: (Theorieurteil) -> Unit,
+    ) = viewModelScope.launch {
+        if (_stand.value.laeuft) return@launch
+        _stand.update { it.copy(laeuft = true, fehler = null) }
+        runCatching { netz.theorieAbgeben(lehrgang.id, modul.id, kennung(), antworten) }
+            .onSuccess { beiUrteil(it) }
+            .onFailure { f -> _stand.update { it.copy(fehler = f.message ?: "Die Prüfung ließ sich nicht abgeben.") } }
+        _stand.update { it.copy(laeuft = false) }
+        lehrgaengeLaden(neu = true)
+    }
 
     /** Lesestoff abhaken — nachdem die Wikiseite geöffnet ist, so wie im Web. */
     fun modulGelesen(lehrgang: Lehrgang, modul: Lehrgangsmodul) = viewModelScope.launch {
@@ -576,6 +619,8 @@ data class Werkstand(
     val vitrine: List<String> = emptyList(),
     val vitrinenmeldung: String? = null,
     val lehrgaenge: Bereich<List<Lehrgang>> = Bereich(),
+    /** Die Spielrolle aus dem Einrichtungsbogen — `null` ungeholt, leer unbekannt. */
+    val spielrolle: String? = null,
     val szenarien: Bereich<List<Szenariozeile>> = Bereich(),
     val uebungsverlauf: List<Uebungsfahrt> = emptyList(),
     /** Der Entwurf im Übungseditor. */

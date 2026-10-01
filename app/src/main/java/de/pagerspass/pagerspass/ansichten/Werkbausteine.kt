@@ -6,7 +6,11 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.Icon
+import androidx.compose.ui.unit.em
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -428,3 +432,142 @@ fun dauerMitEinheit(sekunden: Double): String {
 /** Eine Kommazahl, deutsch, eine Stelle. */
 fun kommazahl(wert: Double): String =
     if (wert % 1.0 == 0.0) wert.toInt().toString() else "%.1f".format(java.util.Locale.GERMANY, wert)
+
+// ------------------------------------------------------- Dienstbuch-Stil (v6)
+
+/**
+ * Eine Kennzahl der Tafel im Dienstbuch-Stil des Webs (`.db-kennzahl`): Zeichen
+ * und Etikett in einer Zeile, darunter der Wert groß und die Zeile, die ihn
+ * einordnet.
+ *
+ * <b>Neben `Kennzahlkachel` und nicht an ihrer Stelle</b>, weil die Kachel mit
+ * der Kante links im Dienstbuch steht und dort ihren eigenen Gang geht. Am Handy
+ * trägt die Kachel des Webs keine Ecke in Farbe — die Farbe steht im Zeichen.
+ */
+@Composable
+fun Tafelkachel(
+    etikett: String,
+    wert: String,
+    unter: String,
+    zeichenpfad: String,
+    modifier: Modifier = Modifier,
+    farbe: Color = Farben.Amber,
+) {
+    Column(
+        modifier = modifier
+            .flaeche()
+            .padding(horizontal = Abstand.Normal, vertical = Abstand.Klein),
+    ) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .size(26.dp)
+                    .background(farbe.copy(alpha = 0.16f), Rundung.Winzig),
+            ) {
+                pfadzeichen(zeichenpfad, gefuellt = false)?.let {
+                    Icon(it, contentDescription = null, tint = farbe, modifier = Modifier.size(16.dp))
+                }
+            }
+            Text(
+                etikett.uppercase(),
+                style = Schrift.Winzig.copy(fontWeight = FontWeight.Bold, letterSpacing = 0.03.em),
+                color = Farben.TextLeise,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Text(
+            wert,
+            style = Schrift.Schlagzeile.copy(fontFamily = Schrift.Mono, fontWeight = FontWeight.ExtraBold),
+            color = Farben.Text,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = Abstand.Winzig),
+        )
+        Text(
+            unter,
+            style = Schrift.Winzig,
+            color = Farben.TextSehrLeise,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+/**
+ * Eine Karte mit Kopfleiste (`.db-karte` im Web): Titel in Versalien, daneben
+ * eine leise Zahl, darunter der Inhalt mit eigenem Polster.
+ */
+@Composable
+fun Buchkarte(
+    titel: String,
+    modifier: Modifier = Modifier,
+    zahl: Int? = null,
+    inhalt: @Composable ColumnScope.() -> Unit,
+) {
+    Column(modifier = modifier.fillMaxWidth().flaeche()) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .defaultMinSize(minHeight = Ziel.Kompakt)
+                .drawBehind {
+                    val strich = 1.dp.toPx()
+                    drawLine(
+                        color = Farben.Rand,
+                        start = Offset(0f, size.height - strich / 2f),
+                        end = Offset(size.width, size.height - strich / 2f),
+                        strokeWidth = strich,
+                    )
+                }
+                .padding(horizontal = Abstand.Gross, vertical = Abstand.Klein),
+        ) {
+            Text(
+                titel.uppercase(),
+                style = Schrift.Klein.copy(fontWeight = FontWeight.Bold, letterSpacing = 0.08.em),
+                color = Farben.TextLeise,
+            )
+            if (zahl != null) Text(zahl.toString(), style = Schrift.MonoKlein, color = Farben.TextSehrLeise)
+        }
+        Column(
+            verticalArrangement = Arrangement.spacedBy(Abstand.Klein),
+            modifier = Modifier.fillMaxWidth().padding(Abstand.Gross),
+            content = inhalt,
+        )
+    }
+}
+
+/**
+ * Der grüne Lernbalken der Lehrgänge (`.balken`): sechs Punkte hoch, Grün für
+ * das, was schon sitzt. Daneben, wenn gegeben, die Zahl zum Nachrechnen.
+ */
+@Composable
+fun Lernbalken(anteil: Float, modifier: Modifier = Modifier, text: String? = null) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier.fillMaxWidth(),
+    ) {
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .height(6.dp)
+                .background(Farben.Rand, Rundung.Rund),
+        ) {
+            if (anteil > 0f) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(anteil.coerceIn(0f, 1f))
+                        .fillMaxHeight()
+                        .background(Farben.Gruen, Rundung.Rund),
+                )
+            }
+        }
+        if (text != null) Text(text, style = Schrift.MonoKlein, color = Farben.TextSehrLeise)
+    }
+}
