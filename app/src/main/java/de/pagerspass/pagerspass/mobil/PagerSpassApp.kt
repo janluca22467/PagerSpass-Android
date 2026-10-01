@@ -150,6 +150,8 @@ fun PagerSpassApp(
     // App — und genau so ist er gemeint.
     var zweiFaktor by rememberSaveable { mutableStateOf<Pair<String, String>?>(null) }
 
+    androidx.compose.runtime.SideEffect { de.pagerspass.pagerspass.ansichten.Markenzusatz.server = stand.server }
+
     Box(modifier = Modifier.fillMaxSize().background(Farben.Bg)) {
         when {
             // Noch nichts wissen ist ein eigener Zustand — siehe oben.
@@ -597,6 +599,7 @@ private fun Angemeldet(
     val browser = LocalUriHandler.current
     var loeschenOffen by remember { mutableStateOf(false) }
     val kontostand by sitzung.kontodienst.stand.collectAsStateWithLifecycle()
+    val einrichtung by sitzung.einrichtungsdienst.stand.collectAsStateWithLifecycle()
 
     // Der Melder dieses Geräts erfährt Stufe und Abo, sobald das Konto da ist —
     // eine Bauform oder ein Ton, der nicht (mehr) offensteht, fällt zurück.
@@ -669,6 +672,11 @@ private fun Angemeldet(
                     beiKatalog = { sitzung.katalogSicherstellen() },
                     beiUmbenennen = { sitzung.umbenennen(it) },
                     beiBesetzen = { kreis -> sitzung.raumEroeffnen(kreis?.id) },
+                    beiBesetzenMit = { kreis, leitstelle, bereich ->
+                        sitzung.raumEroeffnen(kreis?.id, leitstelle, bereich)
+                    },
+                    leitstellen = daten.katalog.inhalt?.leitstellen.orEmpty(),
+                    staaten = daten.katalog.inhalt?.staaten.orEmpty(),
                     beiAusbildung = { sitzung.ausbildungEroeffnen() },
                     beiBeitreten = { code ->
                         runde.beitreten(code, stand.konto?.anzeigename.orEmpty())
@@ -971,6 +979,11 @@ private fun Angemeldet(
                     beiMitteilungen = { steuerung.navigate(UNTERSEITE_MITTEILUNGEN) },
                     beiBegleiter = { steuerung.navigate(UNTERSEITE_BEGLEITER) },
                     beiMelder = { steuerung.navigate(UNTERSEITE_MELDER) },
+                    einrichtung = einrichtung,
+                    einrichtungsdienst = sitzung.einrichtungsdienst,
+                    beiProfilAnsehen = stand.konto?.benutzername?.takeIf { it.isNotBlank() }?.let { name ->
+                        { profilOeffnen(name) }
+                    },
                 )
             }
 
@@ -1160,6 +1173,7 @@ private fun Angemeldet(
                         runde.zuschauen(code, stand.konto?.anzeigename.orEmpty())
                     },
                     beiZurueck = { steuerung.popBackStack() },
+                    beiUebungen = { steuerung.navigate(UNTERSEITE_UEBUNGEN) },
                 )
             }
 
@@ -1282,18 +1296,38 @@ private fun Angemeldet(
         if (stand.konto != null) sitzung.kontodienst.postfachLaden()
     }
 
+    // Bogen und Maßnahmenübersicht einmal je Konto — still; ohne sie gibt es nichts zu fragen.
+    LaunchedEffect(stand.konto?.kennung) {
+        if (stand.konto != null) sitzung.einrichtungsdienst.laden()
+    }
+
     // Die Pflichtfragen in der Reihenfolge des Webs: erst der Rechtsstand (oben im
-    // Rahmen), dann die Aufzeichnung, dann die Adresse. Eine nach der anderen.
-    when {
-        stand.rechtsstandOffen || stand.konto == null -> Unit
-        stand.konto.analyseZustimmung == null ->
+    // Rahmen), dann die Aufzeichnung, dann die Adresse, dann das Alter. Eine nach
+    // der anderen — zwei Dialoge übereinander beantwortet niemand.
+    val pflichtfrageOffen = when {
+        stand.rechtsstandOffen || stand.konto == null -> stand.konto != null
+        stand.konto.analyseZustimmung == null -> {
             de.pagerspass.pagerspass.ansichten.Analyseblende(kontostand, sitzung.kontodienst)
-        kontostand.emailFehlt || kontostand.emailBestaetigungOffen ->
+            true
+        }
+        kontostand.emailFehlt || kontostand.emailBestaetigungOffen -> {
             de.pagerspass.pagerspass.ansichten.EmailPflichtblende(
                 kontostand,
                 sitzung.kontodienst,
                 beiAbmelden = { sitzung.abmelden() },
             )
+            true
+        }
+        altersFrageOffen(stand.konto.altersstand) -> {
+            de.pagerspass.pagerspass.ansichten.Altersfreigabeblende(
+                wartet = stand.konto.altersstand == "WartetAufEltern",
+                stand = einrichtung,
+                dienst = sitzung.einrichtungsdienst,
+                beiAbmelden = { sitzung.abmelden() },
+            )
+            true
+        }
+        else -> false
     }
     de.pagerspass.pagerspass.ansichten.Geschenkblende(kontostand, sitzung.kontodienst)
 
@@ -1368,15 +1402,31 @@ private fun Angemeldet(
 
     // Verwarnungen zuerst, dann Verwaltungsnachrichten — eine nach der
     // anderen, bis alle bestätigt sind. Wie die Dialoge des Web.
-    daten.verwarnungen.firstOrNull()?.let { v ->
+    // Erst wenn die Pflichtfragen vom Tisch sind — wie `offeneVerwarnung` im Web.
+    daten.verwarnungen.firstOrNull()?.takeIf { !pflichtfrageOffen }?.let { v ->
         Verwarnungsblende(
             verwarnung = v,
             beiBestaetigen = { sitzung.verwarnungBestaetigen(v.nr) },
         )
-    } ?: daten.adminNachrichten.firstOrNull()?.let { n ->
+    } ?: daten.adminNachrichten.firstOrNull()?.takeIf { !pflichtfrageOffen }?.let { n ->
         AdminNachrichtblende(
             nachricht = n,
             beiBestaetigen = { sitzung.adminNachrichtBestaetigen(n.nr) },
+        )
+    }
+
+    // Der Einrichtungsbogen — zuletzt in der Reihe, nach allem, was nicht warten
+    // kann. Nie mitten in einer Runde: Dieser Zweig steht ohnehin nur ohne Raum.
+    if (
+        !pflichtfrageOffen &&
+        einrichtung.bogenOffen &&
+        daten.verwarnungen.isEmpty() &&
+        daten.adminNachrichten.isEmpty()
+    ) {
+        de.pagerspass.pagerspass.ansichten.Einrichtungsblende(
+            stand = einrichtung,
+            dienst = sitzung.einrichtungsdienst,
+            beiLehrgang = { runCatching { steuerung.navigate(UNTERSEITE_LEHRGANG) } },
         )
     }
 }

@@ -89,6 +89,12 @@ fun StartSeite(
     beiKatalog: () -> Unit = {},
     beiUmbenennen: (String) -> Unit = {},
     beiBesetzen: (Landkreis?) -> Unit = {},
+    /** Besetzen mit Leitstelle und Bereich (v6) — ohne Angabe gilt `beiBesetzen`. */
+    beiBesetzenMit: ((Landkreis?, String?, Boolean) -> Unit)? = null,
+    /** Welche Leitstelle für welche Kreise disponiert — für Wahl und Fußnote. */
+    leitstellen: List<de.pagerspass.pagerspass.netz.Katalogleitstelle> = emptyList(),
+    /** Was Deutschland, Österreich und die Schweiz anders nennen. */
+    staaten: List<de.pagerspass.pagerspass.netz.Staatsprofil> = emptyList(),
     beiAusbildung: () -> Unit = {},
     beiBeitreten: (String) -> Unit = {},
     beiZuschauen: (String) -> Unit = {},
@@ -124,17 +130,7 @@ fun StartSeite(
     var umbenennen by remember { mutableStateOf(false) }
     var name by remember(konto?.anzeigename) { mutableStateOf(konto?.anzeigename.orEmpty()) }
 
-    // Die Wahl überlebt das Drehen des Geräts, aber nicht das Beenden — wie im
-    // Web, wo sie im Formular steht und nicht am Konto.
-    var bundesland by rememberSaveable { mutableStateOf<String?>(null) }
-    var landkreisId by rememberSaveable { mutableStateOf<String?>(null) }
-    var offeneWahl by remember { mutableStateOf<Wahl?>(null) }
     var raumcode by rememberSaveable { mutableStateOf("") }
-
-    val laender = remember(landkreise) { landkreise.bundeslaender() }
-    val landkreis = remember(landkreisId, landkreise) {
-        landkreise.firstOrNull { it.id == landkreisId }
-    }
 
     Seite(modifier = modifier, unterrand = unterrand) {
         Empfangszeile()
@@ -152,15 +148,30 @@ fun StartSeite(
             },
         )
 
-        // Betreibermitteilungen als Karten — wie auf dem Startbildschirm des
-        // Web. „Gelesen" ist rein lokal; einen Server-Zustand gibt es nicht.
-        mitteilungen.filter { it.id !in gelesen }.forEach { m ->
-            Karte(titel = m.titel, zeichen = Zeichen.Forum, text = m.text, knoepfe = {
-                if (m.link != null) {
-                    Knopf(m.linkText ?: "Öffnen", { beiLink(m.link) }, kompakt = true)
-                }
-                Knopf("Gelesen", { beiGelesen(m.id) }, art = Knopfart.Leise, kompakt = true)
-            }) {}
+        // Die Reihenfolge des Web: Einweisung (Pflicht oder Hinweis), Einladungen,
+        // Mitteilungen, Umfrage — was sofort in eine Schicht führt, zuerst.
+        val einweisung = konto?.einweisungOffen == true
+        val zusammenhang = androidx.compose.ui.platform.LocalContext.current
+        var hinweisWeg by remember(konto?.kennung) {
+            mutableStateOf(
+                konto == null ||
+                    de.pagerspass.pagerspass.mobil.Geraeteeinstellungen.ausbildungHinweisWeg(zusammenhang, konto.kennung),
+            )
+        }
+        val ausbildungHinweis = !einweisung && konto != null && konto.erfahrung == 0 && !hinweisWeg
+        if (einweisung || ausbildungHinweis) {
+            Einweisung(
+                beiStart = beiAusbildung,
+                laeuft = laeuft,
+                pflicht = einweisung,
+                beiLehrgang = { beiStartweg(Startweg.Lehrgang) },
+                beiWeg = {
+                    konto?.let {
+                        de.pagerspass.pagerspass.mobil.Geraeteeinstellungen.ausbildungHinweisWegnehmen(zusammenhang, it.kennung)
+                    }
+                    hinweisWeg = true
+                },
+            )
         }
 
         // Rundeneinladungen — dieselbe Bauform. Annehmen tritt sofort bei.
@@ -184,67 +195,33 @@ fun StartSeite(
             ) {}
         }
 
+        // Betreibermitteilungen als Karten — wie auf dem Startbildschirm des
+        // Web. „Gelesen" ist rein lokal; einen Server-Zustand gibt es nicht.
+        mitteilungen.filter { it.id !in gelesen }.forEach { m ->
+            Karte(titel = m.titel, zeichen = Zeichen.Forum, text = m.text, knoepfe = {
+                if (m.link != null) {
+                    Knopf(m.linkText ?: "Öffnen", { beiLink(m.link) }, kompakt = true)
+                }
+                Knopf("Gelesen", { beiGelesen(m.id) }, art = Knopfart.Leise, kompakt = true)
+            }) {}
+        }
+
         zusatz()
 
-        val einweisung = konto?.einweisungOffen == true
-        if (einweisung) Einweisung(beiStart = beiAusbildung, laeuft = laeuft)
 
         if (!einweisung) {
             Ueberschrift("Schicht starten")
 
-            Karte(
-                titel = "Dienst aufnehmen",
-                zeichen = Zeichen.Leitstelle,
-                text = "Du übernimmst die Leitstelle und bekommst einen Raumcode zum Weitergeben.",
-                haupt = true,
-                knoepfe = {
-                    Knopf(
-                        aufschrift = "Leitstelle besetzen",
-                        beiDruck = { beiBesetzen(landkreis) },
-                        art = Knopfart.Haupt,
-                        aktiv = !laeuft && landkreis != null,
-                    )
-                    vorlagen?.invoke()
+            DienstaufnahmeKarte(
+                landkreise = landkreise,
+                leitstellen = leitstellen,
+                staaten = staaten,
+                laeuft = laeuft,
+                beiBesetzen = { kreis, leitstelle, bereich ->
+                    beiBesetzenMit?.invoke(kreis, leitstelle, bereich) ?: beiBesetzen(kreis)
                 },
-            ) {
-                if (landkreise.isEmpty()) {
-                    // Der Katalog ist das Größte, was die App lädt (401 Kreise).
-                    // Solange er unterwegs ist, stehen hier keine leeren
-                    // Auswahlfelder, die aussehen, als gäbe es nichts zu wählen.
-                    Ladezeile("Landkreise werden geladen …")
-                } else {
-                    Wahlfeld(
-                        etikett = "Bundesland",
-                        wert = bundesland?.let { bundeslandname(it) },
-                        beiDruck = { offeneWahl = Wahl.Bundesland },
-                    )
-                    Wahlfeld(
-                        etikett = "Landkreis",
-                        wert = landkreis?.aufschrift,
-                        beiDruck = { offeneWahl = Wahl.Landkreis },
-                        aktiv = bundesland != null,
-                        platzhalter = if (bundesland == null) {
-                            "Zuerst ein Bundesland wählen"
-                        } else {
-                            "Bitte wählen"
-                        },
-                    )
-
-                    // Der Hinweis steht bei der Wahl und nicht als Fußnote
-                    // darunter. Im Web stand er weiter unten und wurde wie eine
-                    // Fehlermeldung gelesen: „du hast falsch gewählt" statt
-                    // „hier ist die Karte erfunden".
-                    if (landkreis != null && !landkreis.hatDaten) {
-                        Text(
-                            text = "Für diesen Kreis liegen keine echten Wachen- und " +
-                                "Straßendaten vor. Die Runde läuft im erfundenen " +
-                                "Standardbereich — spielbar, aber nicht die echte Karte.",
-                            style = Schrift.Klein,
-                            color = Farben.AmberHell,
-                        )
-                    }
-                }
-            }
+                vorlagen = vorlagen,
+            )
 
             // Die zweite Karte: beitreten statt eröffnen. Sie stand im Web
             // gleichberechtigt neben der ersten — wer verabredet ist, kommt
@@ -278,7 +255,7 @@ fun StartSeite(
                 )
             }
 
-            Ueberschrift("Menü")
+            Ueberschrift("Mehr im Spiel")
         }
 
         Startweg.menue(einweisung, konto?.premiumAktiv == true).forEach { eintrag ->
@@ -306,55 +283,8 @@ fun StartSeite(
         Fuss(beta = beta, version = version, beiRechtstext = beiRechtstext, knoepfe = fussknoepfe)
     }
 
-    when (offeneWahl) {
-        Wahl.Bundesland -> Wahlblende(
-            titel = "Bundesland",
-            gruppen = listOf(null to laender),
-            // Angezeigt wird der lesbare Name, gerechnet wird mit dem rohen:
-            // Der Kreis trägt `RheinlandPfalz`, nicht „Rheinland-Pfalz".
-            aufschrift = { bundeslandname(it) },
-            gewaehlt = bundesland,
-            beiWahl = { gewaehlt ->
-                bundesland = gewaehlt
-                // Der Kreis gehört zum Land. Wer das Land wechselt, hat keinen
-                // Kreis mehr — ihn stehen zu lassen hieße, mit einem Kreis zu
-                // besetzen, der im gewählten Land gar nicht vorkommt.
-                landkreisId = null
-                offeneWahl = null
-            },
-            beiSchliessen = { offeneWahl = null },
-            suchbar = laender.size > 8,
-        )
-
-        Wahl.Landkreis -> {
-            val (mitDaten, ohneDaten) = landkreise.nachBundesland(bundesland.orEmpty())
-            Wahlblende(
-                titel = bundesland?.let { bundeslandname(it) } ?: "Landkreis",
-                gruppen = listOf("Mit echten Wachen" to mitDaten, "Ohne Geodaten" to ohneDaten),
-                aufschrift = { it.aufschrift },
-                unterschrift = { kreis ->
-                    if (kreis.hatDaten) {
-                        "${kreis.wachen} Wachen · bis ${kreis.maxSpieler} Spieler"
-                    } else {
-                        "erfundener Standardbereich"
-                    }
-                },
-                gewaehlt = landkreis,
-                beiWahl = {
-                    landkreisId = it.id
-                    offeneWahl = null
-                },
-                beiSchliessen = { offeneWahl = null },
-                suchbar = true,
-            )
-        }
-
-        null -> Unit
-    }
 }
 
-/** Welche Auswahl gerade offen ist. */
-private enum class Wahl { Bundesland, Landkreis }
 
 /**
  * Die Empfangszeile des Startbildschirms.
@@ -515,7 +445,14 @@ private fun Dienstausweis(
  * ließe, wäre keine Pflicht, und der Server wiese jede andere Runde ohnehin ab.
  */
 @Composable
-private fun Einweisung(beiStart: () -> Unit, laeuft: Boolean, modifier: Modifier = Modifier) {
+private fun Einweisung(
+    beiStart: () -> Unit,
+    laeuft: Boolean,
+    modifier: Modifier = Modifier,
+    pflicht: Boolean = true,
+    beiLehrgang: (() -> Unit)? = null,
+    beiWeg: (() -> Unit)? = null,
+) {
     Column(
         verticalArrangement = Arrangement.spacedBy(Abstand.Normal),
         modifier = modifier
@@ -524,19 +461,33 @@ private fun Einweisung(beiStart: () -> Unit, laeuft: Boolean, modifier: Modifier
             .flaechenmarke(wartet = true)
             .padding(horizontal = Abstand.Gross, vertical = Abstand.Normal),
     ) {
-        Text(text = "Zuerst die Ausbildungsschicht", style = Schrift.Gross, color = Farben.Text)
+        Text(
+            text = if (pflicht) "Zuerst die Ausbildungsschicht" else "Zum ersten Mal in einer Leitstelle?",
+            style = Schrift.Gross,
+            color = Farben.Text,
+        )
         Text(
             text = "Die Ausbildungsschicht erklärt dir Melder, FMS, Notruf und Funk in rund " +
-                "zwanzig Minuten — allein, mit Bot-Besatzungen, ohne Wertung. Sie gehört für " +
-                "jedes neue Konto an den Anfang; danach stehen alle Runden offen.",
+                "zwanzig Minuten — allein, mit Bot-Besatzungen, ohne Wertung." +
+                if (pflicht) {
+                    " Sie gehört für jedes neue Konto an den Anfang; danach stehen alle Runden offen. " +
+                        "Wer lieber liest, besteht stattdessen einen Grundlagen-Lehrgang — Leitstelle " +
+                        "oder Fahrzeug — und ist damit ebenso durch."
+                } else {
+                    ""
+                },
             style = Schrift.Klein,
             color = Farben.TextSehrLeise,
         )
+        if (pflicht && beiLehrgang != null) Textweg("Zu den Lehrgängen", beiLehrgang)
         Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
             // Nicht „Ausbildungsschicht starten": Der Menüweg darunter heißt so,
             // und zwei Knöpfe mit demselben Wort auf einem Bildschirm sind für
             // jede Suche zwei Treffer, von denen einer der falsche ist.
             Knopf("Ausbildung starten", beiStart, art = Knopfart.Haupt, aktiv = !laeuft)
+            if (!pflicht && beiWeg != null) {
+                Knopf("Nicht mehr anzeigen", beiWeg, art = Knopfart.Leise)
+            }
         }
     }
 }
@@ -671,13 +622,13 @@ enum class Startweg {
                 Eintrag(
                     weg = Lehrgang,
                     titel = "Lehrgang",
-                    unterzeile = "Lesen, üben, prüfen",
+                    unterzeile = "Lesen, üben, prüfen — mit Zeugnis am Ende",
                     zeichen = Zeichen.Wiki,
                 ),
                 Eintrag(
                     weg = Welt,
-                    titel = "World",
-                    unterzeile = "Eine Karte, alle Leitstellen",
+                    titel = "PagerSpass - World",
+                    unterzeile = "Eine Karte, alle Leitstellen, jede Woche ein Großeinsatz",
                     zeichen = Zeichen.Welt,
                     schild = if (premium) null else "Premium",
                 ),
@@ -690,7 +641,7 @@ enum class Startweg {
                 Eintrag(
                     weg = Leitstellenbau,
                     titel = "Leitstellenbau",
-                    unterzeile = "Eigene Wachen, Plätze und Rufnamen",
+                    unterzeile = "Eigene Wachen, Plätze und Rufnamen — ohne Wertung",
                     zeichen = Zeichen.Karte,
                 ),
             )

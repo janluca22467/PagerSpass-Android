@@ -94,14 +94,18 @@ fun <T> Segment(
                         indication = null,
                         interactionSource = null,
                     )
-                    .padding(horizontal = Abstand.Normal),
+                    .padding(horizontal = Abstand.Klein),
             ) {
+                // Klarschrift auf der kleinen Stufe (mobil.css, Durchsicht vom
+                // 29.09.2026): „Im Dienst", „Öffentlich", „Beiträge" sind Wörter,
+                // keine Kennungen. Die gesperrten Mono-Versalien waren am Rechner die
+                // Antwort auf „drei Wörter auf 390 Punkte" — am Handy teilen sich die
+                // Seiten die Zeile, und die Frage stellt sich nicht mehr.
                 Text(
-                    text = aufschrift(seite).uppercase(),
-                    style = Schrift.Winzig.copy(
-                        fontFamily = Schrift.Mono,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 0.08.em,
+                    text = aufschrift(seite),
+                    style = Schrift.Klein.copy(
+                        fontWeight = FontWeight.SemiBold,
+                        lineHeight = Schrift.KLEIN * Schrift.ZEILE_KNAPP,
                     ),
                     color = if (an) Farben.Text else Farben.TextSehrLeise,
                     maxLines = 1,

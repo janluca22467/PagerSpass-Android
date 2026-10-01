@@ -21,8 +21,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -31,7 +31,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import de.pagerspass.pagerspass.ui.theme.Abstand
 import de.pagerspass.pagerspass.ui.theme.Dauer
-import de.pagerspass.pagerspass.ui.theme.Erhebung
 import de.pagerspass.pagerspass.ui.theme.Farben
 import de.pagerspass.pagerspass.ui.theme.Rundung
 import de.pagerspass.pagerspass.ui.theme.Schrift
@@ -196,22 +195,9 @@ private fun Knopfrahmen(
             .scale(stauchung)
             .then(if (breit) Modifier.fillMaxWidth() else Modifier)
             .defaultMinSize(minHeight = hoehe)
-            // Der Schein des Hauptknopfs ist Licht in der Akzentfarbe, kein
-            // Schatten — und er geht mit, wenn der Knopf gesperrt ist. Im Web
-            // blieb er stehen, und „Bauen für 4.000" leuchtete gesperrt genauso
-            // wie offen; man tippte darauf.
-            .then(
-                if (art == Knopfart.Haupt && aktiv) {
-                    Modifier.shadow(
-                        elevation = Erhebung.Hebt,
-                        shape = Rundung.Klein,
-                        ambientColor = Farben.Amber,
-                        spotColor = Farben.Amber,
-                    )
-                } else {
-                    Modifier
-                }
-            )
+            // Kein Schein mehr unter dem Hauptknopf (v6, „Schwarz und Orange"):
+            // Die Fläche ist die Aussage. Ein Leuchten darunter war Zierrat, und
+            // gesperrt leuchtete es im Web sogar weiter.
             .background(farben.flaeche, Rundung.Klein)
             .border(1.dp, farben.rand, Rundung.Klein)
             .clickable(
@@ -260,7 +246,7 @@ private fun knopffarben(art: Knopfart, aktiv: Boolean, gedrueckt: Boolean): Knop
 
     val grund = when (art) {
         Knopfart.Normal -> Knopffarben(Farben.FlaecheHoch, Farben.RandHell, Farben.Text)
-        Knopfart.Haupt -> Knopffarben(Farben.Amber, Farben.Amber, Farben.AufAmber)
+        Knopfart.Haupt -> Knopffarben(Farben.Amber, Farben.Amber, Farben.AufFarbe)
         Knopfart.Alarm -> Knopffarben(Farben.Signal, Farben.SignalHell, Color.White)
         Knopfart.Leise -> Knopffarben(Color.Transparent, Farben.Rand, Farben.TextLeise)
         Knopfart.Gefahr -> Knopffarben(Farben.FlaecheHoch, Farben.SignalTief, Farben.SignalHell)
@@ -269,11 +255,13 @@ private fun knopffarben(art: Knopfart, aktiv: Boolean, gedrueckt: Boolean): Knop
     // Der gedrückte Zustand am Handy: hellere Fläche, amberfarbener Rand. Bei
     // Haupt und Alarm bleibt die Fläche, wie sie ist — sie *ist* schon die
     // Rückmeldung, und ein Amber, das beim Drücken grau wird, sieht kaputt aus.
-    val gehalten = gedrueckt && aktiv && art != Knopfart.Haupt && art != Knopfart.Alarm
-    val farben = if (gehalten) {
-        grund.copy(flaeche = Farben.FlaecheAktiv, rand = Farben.AmberTief)
-    } else {
-        grund
+    val voll = art == Knopfart.Haupt || art == Knopfart.Alarm
+    val farben = when {
+        gedrueckt && aktiv && !voll -> grund.copy(flaeche = Farben.FlaecheAktiv, rand = Farben.AmberTief)
+        // Eine volle Fläche wird beim Drücken dunkler statt grau (`brightness(0.88)`
+        // in mobil.css) — sonst stünde die dunkle Aufschrift auf dunklem Grund.
+        gedrueckt && aktiv -> grund.copy(flaeche = lerp(grund.flaeche, Color.Black, 0.12f))
+        else -> grund
     }
 
     return if (aktiv) farben else farben.copy(

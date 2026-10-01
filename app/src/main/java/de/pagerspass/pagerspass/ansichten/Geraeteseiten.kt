@@ -5,6 +5,7 @@ import android.content.Intent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -46,7 +47,7 @@ import java.io.File
 // ------------------------------------------------------------ Deine Bedienung
 
 /**
- * „Deine Bedienung“ — die beiden Geräteeinstellungen aus `KontoView.vue`.
+ * Die Geräteeinstellungen aus „Spiel & Bedienung“ in `KontoView.vue` — Eingabeweg, Fahrzeugkennung, Fahrzeugkatalog.
  *
  * Der Eingabeweg stand im Web einmal unten in der Dienstbuch-Übersicht, wo ihn
  * niemand als Einstellung suchte; hier steht er bei den übrigen. Beide gelten
@@ -57,33 +58,52 @@ fun Bedienungskarte() {
     val zusammenhang = LocalContext.current
     val weg by eingabewegState()
     val form by kennungsformState()
+    val staat by de.pagerspass.pagerspass.mobil.katalogstaatState()
 
-    Karte(
-        titel = "Deine Bedienung",
-        zeichen = Zeichen.Handy,
-        text = "Diese beiden Einstellungen gelten nur auf diesem Gerät.",
-    ) {
-        Etikett("Notrufabfrage · Eingabeweg")
-        Leise("Wie du Rückfragen am Telefon stellst.")
+    // Drei Gerätekarten wie in „Spiel & Bedienung" im Web (v6) — je eine Frage,
+    // je eine Wahl. Vorher stand alles in einer Karte „Deine Bedienung".
+    Karte(titel = "Notrufabfrage", zeichen = Zeichen.Notruf, text = "Wie du Rückfragen am Telefon stellst.") {
+        Etikett("Eingabeweg")
         Pillenreihe {
-            listOf("fragen" to "Fragen antippen", "tippen" to "Selbst tippen", "sprechen" to "Sprechen").forEach { (id, wort) ->
+            listOf("fragen" to "Fragen anklicken", "tippen" to "Selbst tippen", "sprechen" to "Sprechen").forEach { (id, wort) ->
                 Pille(wort, weg == id, { Geraeteeinstellungen.eingabewegSetzen(zusammenhang, id) })
             }
         }
         SehrLeise(WEG_ERKLAERUNG[weg].orEmpty())
+    }
 
-        Etikett("Fahrzeugkennung · Darstellung")
-        Leise("Wie Fahrzeuge in deinen Listen und auf der Karte heißen.")
+    Karte(titel = "Fahrzeugkennung", zeichen = Zeichen.Fahrzeug, text = "Wie Fahrzeuge in deinen Listen heißen.") {
+        Etikett("Darstellung")
         Pillenreihe {
             listOf(
                 "kennzahl" to "Kennzahl — 1/44/1",
                 "typ" to "Fahrzeugtyp — 1/HLF 20-1",
-                "orga" to "Träger und Kreis — RD-Celle-1/83/1",
+                "orga" to "Träger und Kreis — RK-Celle-3/91/1",
             ).forEach { (id, wort) ->
                 Pille(wort, form == id, { Geraeteeinstellungen.kennungsformSetzen(zusammenhang, id) })
             }
         }
         SehrLeise(KENNUNG_ERKLAERUNG[form].orEmpty())
+    }
+
+    Karte(
+        titel = "Fahrzeugkatalog",
+        zeichen = Zeichen.Karte,
+        text = "Aus welchem Land Autohaus und Garage ihre Fahrzeuge zeigen. Stellt sich von selbst auf " +
+            "das Land der Runde, in der du spielst.",
+    ) {
+        de.pagerspass.pagerspass.ui.bausteine.Segment(
+            seiten = de.pagerspass.pagerspass.netz.Staaten.ALLE,
+            gewaehlt = staat,
+            beiWahl = { Geraeteeinstellungen.katalogstaatSetzen(zusammenhang, it) },
+            aufschrift = { de.pagerspass.pagerspass.netz.Staaten.kurz(it) },
+            modifier = androidx.compose.ui.Modifier.fillMaxWidth(),
+        )
+        SehrLeise(
+            "Jeder Fahrzeuggutschein gilt in jedem der drei Länder einmal: Bekommst du einen, darfst du " +
+                "dir ein deutsches, ein österreichisches und ein schweizerisches Fahrzeug aussuchen — aber " +
+                "nicht drei aus demselben Land.",
+        )
     }
 }
 

@@ -1,5 +1,18 @@
 package de.pagerspass.pagerspass.ansichten
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import de.pagerspass.pagerspass.ui.bausteine.Fortschritt
+import de.pagerspass.pagerspass.ui.bausteine.Hakenzeile
+import de.pagerspass.pagerspass.ui.bausteine.Leise
+import de.pagerspass.pagerspass.ui.bausteine.Segment
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -64,75 +77,191 @@ fun OeffentlicheRundenSeite(
     beiBeitreten: (String) -> Unit = {},
     beiZuschauen: (String) -> Unit = {},
     beiZurueck: () -> Unit = {},
+    /** „Eine Übung vorbereiten" im leeren Fall — ohne Angabe bleibt der Knopf weg. */
+    beiUebungen: (() -> Unit)? = null,
 ) {
-    LaunchedEffect(Unit) { beiLaden() }
+    // Die Liste zieht von selbst nach, alle acht Sekunden wie im Web — wer eine
+    // volle Runde sieht, soll den freien Platz bemerken, ohne neu zu laden.
+    LaunchedEffect(Unit) {
+        while (true) {
+            beiLaden()
+            kotlinx.coroutines.delay(8_000)
+        }
+    }
+
+    var zustand by rememberSaveable { mutableStateOf("alle") }
+    var nurFreie by rememberSaveable { mutableStateOf(false) }
+    val runden = stand.inhalt.orEmpty()
 
     Seite(modifier = modifier, unterrand = unterrand) {
         Seitenkopf(
+            etikett = "Runden",
             titel = "Öffentliche Runden",
-            unterzeile = "Wo gerade jemand Verstärkung sucht",
-            knoepfe = { Knopf("Zurück", beiZurueck, art = Knopfart.Leise, kompakt = true) },
+            unterzeile = "Runden, deren Leitstelle sie für Fremde geöffnet hat. Einen Raumcode gibst " +
+                "du auf dem Start ein.",
+            knoepfe = { Livezeichen() },
         )
 
+        // Drei Zahlen, bevor man liest: ob sich das Stöbern gerade lohnt.
+        val geladen = stand.inhalt != null
+        val offen = runden.count { it.state != "Beendet" }
+        val imDienst = runden.count { it.state == "Laeuft" }
+        val frei = runden.filter { beitretbar(it) }.sumOf { it.freiePlaetze }
+        Kennzahltafel(
+            listOf(
+                { m -> Kennzahlkachel("Offen", if (geladen) "$offen" else "–", "öffentliche Runden", m) },
+                { m -> Kennzahlkachel("Im Dienst", if (geladen) "$imDienst" else "–", "laufen gerade", m) },
+                { m -> Kennzahlkachel("Frei", if (geladen) "$frei" else "–", "Plätze insgesamt", m, farbe = Farben.Gruen) },
+            ),
+        )
+
+        Segment(
+            seiten = listOf("alle", "Lobby", "Laeuft"),
+            gewaehlt = zustand,
+            beiWahl = { zustand = it },
+            aufschrift = { ZUSTAENDE[it] ?: it },
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Hakenzeile("Nur mit freien Plätzen", nurFreie, { nurFreie = it })
+
         Bereich(
-            laedt = stand.laedt,
+            laedt = stand.laedt && stand.inhalt == null,
             fehler = stand.fehler,
             inhalt = stand.inhalt,
             beiErneut = beiLaden,
-        ) { runden ->
-            if (runden.isEmpty()) {
-                Leerhinweis("Gerade sucht niemand Verstärkung. Schau später wieder rein.")
-            } else {
-                runden.forEach { runde ->
-                    Kasten(abstandInnen = Abstand.Klein) {
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Text(
-                                text = runde.leitstelle.ifBlank { runde.code },
-                                style = Schrift.Gross,
-                                color = Farben.Text,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f),
-                            )
-                            Marke(
-                                statusText(runde.state),
-                                farbe = if (runde.state == "Laeuft") Farben.Amber else Farben.TextLeise,
-                            )
-                        }
-                        SehrLeise(
-                            listOfNotNull(
-                                runde.landkreis,
-                                modusText(runde.mode),
-                                "${runde.spieler}/${runde.maxSpieler} Spieler",
-                                "${runde.freiePlaetze} frei".takeIf { runde.freiePlaetze > 0 },
-                                "${runde.offeneEinsaetze} offene Einsätze"
-                                    .takeIf { runde.offeneEinsaetze > 0 },
-                                "Sandkasten — ungewertet".takeIf { runde.sandkasten },
-                                "Leitstelle gesucht".takeIf { !runde.leitstelleBesetzt },
-                            ).joinToString(" · "),
-                        )
-                        Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
-                            Knopf(
-                                "Beitreten",
-                                { beiBeitreten(runde.code) },
-                                aktiv = !laeuft && runde.freiePlaetze > 0 && runde.state != "Beendet",
-                                kompakt = true,
-                            )
-                            Knopf(
-                                "Zuschauen",
-                                { beiZuschauen(runde.code) },
-                                art = Knopfart.Leise,
-                                aktiv = !laeuft && runde.state != "Beendet",
-                                kompakt = true,
-                            )
-                        }
-                    }
+        ) { alle ->
+            // Wer hinein kann, steht vorn; darunter laufende vor wartenden, volle vor leeren.
+            val sichtbar = alle
+                .filter { zustand == "alle" || it.state == zustand }
+                .filter { !nurFreie || beitretbar(it) }
+                .sortedWith(
+                    compareByDescending<OeffentlicheRunde> { beitretbar(it) }
+                        .thenByDescending { it.state == "Laeuft" }
+                        .thenByDescending { it.spieler },
+                )
+            when {
+                alle.isEmpty() -> Kasten(abstandInnen = Abstand.Klein) {
+                    Leise(
+                        "Gerade ist keine öffentliche Runde offen. Frag in deiner Wache nach einem " +
+                            "Raumcode — oder besetze selbst die Leitstelle und öffne deine Runde für Fremde.",
+                        klein = false,
+                    )
+                    if (beiUebungen != null) Knopf("Eine Übung vorbereiten", beiUebungen, kompakt = true)
+                }
+                sichtbar.isEmpty() -> Kasten(abstandInnen = Abstand.Klein) {
+                    Leise("Zu dieser Auswahl passt gerade keine Runde.", klein = false)
+                    Knopf(
+                        "Alle Runden zeigen",
+                        {
+                            zustand = "alle"
+                            nurFreie = false
+                        },
+                        kompakt = true,
+                    )
+                }
+                else -> sichtbar.forEach { r ->
+                    Rundenkarte(r, laeuft, beiBeitreten, beiZuschauen)
                 }
             }
+        }
+    }
+}
+
+private val ZUSTAENDE = mapOf("alle" to "Alle", "Lobby" to "Wartet", "Laeuft" to "Im Dienst")
+
+private fun beitretbar(r: OeffentlicheRunde) = r.state != "Beendet" && r.freiePlaetze > 0
+
+/** Der Punkt mit „Live" — die Liste zieht von selbst nach. */
+@Composable
+private fun Livezeichen() {
+    Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Winzig), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(8.dp).background(Farben.Gruen, CircleShape))
+        Text("LIVE", style = Schrift.MonoKlein.copy(fontSize = Schrift.WINZIG), color = Farben.GruenHell)
+    }
+}
+
+/**
+ * Eine öffentliche Runde — Status und Code im Kopf, Leitstelle und Bereich, die
+ * Belegung als Balken („komme ich noch hinein?" ist die erste Frage), die Merkmale
+ * als Marken und der eine Knopf. Was man vor dem Beitritt gelesen haben soll
+ * („nicht gewertet", „wird gestreamt"), steht in Amber, nicht in Signalfarbe.
+ */
+@Composable
+private fun Rundenkarte(
+    r: OeffentlicheRunde,
+    laeuft: Boolean,
+    beiBeitreten: (String) -> Unit,
+    beiZuschauen: (String) -> Unit,
+) {
+    val offen = beitretbar(r)
+    Kasten(abstandInnen = Abstand.Klein) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            val imDienst = r.state == "Laeuft"
+            Box(Modifier.size(8.dp).background(if (imDienst) Farben.Amber else Farben.Gruen, CircleShape))
+            Text(
+                statusText(r.state),
+                style = Schrift.Klein,
+                color = if (imDienst) Farben.AmberHell else Farben.TextLeise,
+                modifier = Modifier.weight(1f),
+            )
+            Text(r.code, style = Schrift.MonoNormal, color = Farben.TextSehrLeise)
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(Abstand.Haar)) {
+            Text(
+                r.leitstelle.ifBlank { r.code },
+                style = Schrift.Gross,
+                color = Farben.Text,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            SehrLeise("${r.landkreis ?: "Erfundener Bereich"} · ${modusText(r.mode)}")
+        }
+        val anteil = if (r.maxSpieler <= 0) 0f else (r.spieler.toFloat() / r.maxSpieler).coerceIn(0.03f, 1f)
+        Fortschritt(
+            anteil = anteil,
+            text = "${r.spieler} / ${r.maxSpieler} an Bord · " +
+                if (r.freiePlaetze > 0) "${r.freiePlaetze} frei" else "voll",
+        )
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
+            verticalArrangement = Arrangement.spacedBy(Abstand.Klein),
+        ) {
+            Marke(
+                if (r.leitstelleBesetzt) "Leitstelle besetzt" else "Leitstelle frei",
+                farbe = if (r.leitstelleBesetzt) Farben.TextLeise else Farben.TextSehrLeise,
+            )
+            if (r.state == "Laeuft") {
+                Marke(
+                    "${r.offeneEinsaetze} ${if (r.offeneEinsaetze == 1) "offener Einsatz" else "offene Einsätze"}",
+                    farbe = Farben.TextLeise,
+                )
+            }
+            if (r.sandkasten) Marke("Sandkasten · nicht gewertet", farbe = Farben.AmberHell)
+            if (r.streamermodus) Marke("Wird gestreamt", farbe = Farben.AmberHell)
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
+            Knopf(
+                when {
+                    offen -> "Beitreten"
+                    r.state == "Beendet" -> "Beendet"
+                    else -> "Voll"
+                },
+                { beiBeitreten(r.code) },
+                art = if (offen) Knopfart.Haupt else Knopfart.Normal,
+                aktiv = !laeuft && offen,
+                modifier = Modifier.weight(1f),
+            )
+            // Nur in der App: still dazuschauen — kein Platz, keine Rolle.
+            Knopf(
+                "Zuschauen",
+                { beiZuschauen(r.code) },
+                art = Knopfart.Leise,
+                aktiv = !laeuft && r.state != "Beendet",
+            )
         }
     }
 }
