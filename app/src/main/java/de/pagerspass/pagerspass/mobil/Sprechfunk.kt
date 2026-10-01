@@ -185,12 +185,19 @@ class Lautsprecher {
     /** Ein Base64-Paket abspielen — Reihenfolge ist Ankunftsreihenfolge. */
     fun abspielen(paketB64: String) {
         val bytes = runCatching { Base64.decode(paketB64, Base64.DEFAULT) }.getOrNull() ?: return
+        abspielen(bytes)
+    }
+
+    /** Ein rohes Paket abspielen — so, wie es der Sprechkanal liefert (ohne Base64). */
+    @Synchronized
+    fun abspielen(bytes: ByteArray) {
         if (bytes.isEmpty()) return
         runCatching {
             sicherstellen().write(bytes, 0, bytes.size, AudioTrack.WRITE_NON_BLOCKING)
         }.onFailure { Log.w("Sprechfunk", "Abspielen fehlgeschlagen", it) }
     }
 
+    @Synchronized
     fun schliessen() {
         spur?.let { s ->
             runCatching { s.stop() }

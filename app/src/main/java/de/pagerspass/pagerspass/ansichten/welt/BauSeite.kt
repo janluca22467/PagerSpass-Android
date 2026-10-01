@@ -1,6 +1,11 @@
 package de.pagerspass.pagerspass.ansichten.welt
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.material3.Text
@@ -13,6 +18,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import de.pagerspass.pagerspass.ui.schmuck.Wappen
 import de.pagerspass.pagerspass.mobil.Welt
 import de.pagerspass.pagerspass.mobil.Weltzustand
 import de.pagerspass.pagerspass.netz.WeltBauart
@@ -470,4 +477,47 @@ private fun Punktform(
             })
         }
     }
+    Markenfarbe(p) { aendern(WeltPoiAenderung(farbe = it)) }
+}
+
+/**
+ * Die Farbe der Marke — „Farbe der Marke“ in `BauBlende.vue`.
+ *
+ * <b>0 ist automatisch:</b> Dann entscheidet die Kennung des Punkts, und zwei
+ * Punkte nebeneinander sehen trotzdem verschieden aus (`wappenton`). Das Web
+ * nimmt eine Zahl von 0 bis 20; hier stehen die Töne selbst zur Wahl, denn
+ * über 13 hinaus wiederholt sich die Palette nur. Jeder Ton ist eine 44er-Fläche.
+ */
+@Composable
+private fun Markenfarbe(p: Weltpoi, beiWahl: (Int) -> Unit) {
+    Text("Farbe der Marke", style = Schrift.Klein, color = Farben.TextLeise)
+    Umbruchreihe {
+        (0..Wappen.PALETTE.size).forEach { nummer ->
+            val gewaehlt = p.farbe == nummer || (nummer == 0 && p.farbe !in 0..Wappen.PALETTE.size)
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .size(44.dp)
+                    .clickable(onClickLabel = if (nummer == 0) "Automatisch" else "Farbe $nummer") { beiWahl(nummer) },
+            ) {
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .size(30.dp)
+                        .background(
+                            if (nummer == 0) Farben.FlaecheHoch else Wappen.ton(p.id, nummer),
+                            androidx.compose.foundation.shape.CircleShape,
+                        )
+                        .border(
+                            2.dp,
+                            if (gewaehlt) Farben.Text else Farben.Rand,
+                            androidx.compose.foundation.shape.CircleShape,
+                        ),
+                ) {
+                    if (nummer == 0) Text("A", style = Schrift.Winzig, color = Wappen.ton(p.id, 0))
+                }
+            }
+        }
+    }
+    Leisesatz("A ist automatisch. Damit lassen sich mehrere eigene Punkte auf der Karte auseinanderhalten.", winzig = true)
 }

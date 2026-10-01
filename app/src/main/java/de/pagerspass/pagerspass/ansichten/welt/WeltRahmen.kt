@@ -19,6 +19,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -83,6 +84,11 @@ fun WeltRahmen(
     server: String,
     beiVerlassen: () -> Unit,
     beiKonto: () -> Unit = beiVerlassen,
+    /**
+     * Ins Profil eines anderen Spielers — der Name in Rangliste, Leihmarkt und
+     * an einer fremden Wache führt dorthin (siehe `LocalWeltProfil`).
+     */
+    beiProfil: ((String) -> Unit)? = null,
 ) {
     val zustand by welt.stand.collectAsStateWithLifecycle()
     val browser = LocalUriHandler.current
@@ -111,6 +117,7 @@ fun WeltRahmen(
 
     fun shop() = browser.openUri("$server/play/mobile/shop?bereich=premium")
 
+    CompositionLocalProvider(LocalWeltServer provides server, LocalWeltProfil provides beiProfil) {
     when {
         konto == null -> Unit
         !premium -> Weltriegel(
@@ -164,6 +171,7 @@ fun WeltRahmen(
         }
 
         else -> WeltArbeitsplatz(welt = welt, zustand = zustand, beiVerlassen = beiVerlassen)
+    }
     }
 }
 

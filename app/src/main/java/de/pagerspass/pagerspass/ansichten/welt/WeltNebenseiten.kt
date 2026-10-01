@@ -164,15 +164,18 @@ private fun Chatzeile(z: WeltChatzeile, beiAntworten: () -> Unit, beiAnpingen: (
             .padding(horizontal = Abstand.Normal, vertical = Abstand.Klein),
     ) {
         Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
+            androidx.compose.foundation.layout.Box(Modifier.weight(1f)) {
             Text(
                 (if (z.eigen) "Du" else z.von ?: "Ohne Namen") +
                     if (z.kanal == "Direkt") " → ${if (z.eigen) z.an ?: "direkt" else "dich"}" else "",
                 style = Schrift.Winzig.copy(fontWeight = FontWeight.Bold),
                 color = if (z.eigen) Farben.Amber else Farben.TextLeise,
-                modifier = Modifier.weight(1f),
+                // Der Name führt ins Profil; die Zeile selbst antwortet, das @ pingt.
+                modifier = Modifier.zumProfil(z.vonBenutzername.takeIf { !z.eigen }),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+            }
             if (beiAnpingen != null) {
                 Text(
                     "@",
@@ -338,7 +341,12 @@ fun RanglisteSeite(welt: Welt, zustand: Weltzustand) {
     }
     l.letzteWoche?.let { s ->
         Weltkasten(randfarbe = Farben.AmberTief) {
-            Text("♛ Woche ${s.woche}: ${s.name}", style = Schrift.Klein.copy(fontWeight = FontWeight.Bold), color = Farben.Amber)
+            Text(
+                "♛ Woche ${s.woche}: ${s.name}",
+                style = Schrift.Klein.copy(fontWeight = FontWeight.Bold),
+                color = Farben.Amber,
+                modifier = Modifier.zumProfil(s.benutzername),
+            )
             Leisesatz("${s.leitstelle} · ${zahl(s.credits)} verdient · ${s.lagenGedeckt} Lagen · Preisgeld ${credits(s.preisgeld)}", winzig = true)
         }
     }
@@ -360,7 +368,14 @@ fun RanglisteSeite(welt: Welt, zustand: Weltzustand) {
         ) {
             Text("${r.platz}.", style = Schrift.MonoKlein.copy(fontWeight = FontWeight.Bold), color = if (r.platz <= 3) Farben.Amber else Farben.TextLeise)
             Column(Modifier.weight(1f)) {
-                Text(r.name + if (r.wochensiege > 0) " ♛${r.wochensiege}" else "", style = Schrift.Klein, color = Farben.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    r.name + if (r.wochensiege > 0) " ♛${r.wochensiege}" else "",
+                    style = Schrift.Klein,
+                    color = Farben.Text,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.zumProfil(r.benutzername),
+                )
                 Text("${r.leitstelle} · Stufe ${r.stufe} · ${r.lagenGedeckt} Lagen", style = Schrift.Winzig, color = Farben.TextSehrLeise, maxLines = 1)
             }
             Text(zahl(r.credits), style = Schrift.MonoKlein, color = Farben.Amber)
@@ -643,7 +658,7 @@ fun LeiheSeite(welt: Welt, zustand: Weltzustand) {
             s.geliehen.forEach { f ->
                 Weltkasten {
                     Text(f.funkrufname, style = Schrift.MonoKlein, color = Farben.Text)
-                    Leisesatz("${f.typ} · von ${f.gegenueber ?: "—"} · ${f.wache} · ${rest(f.bis)}", winzig = true)
+                    Namenssatz("${f.typ} · von ", f.gegenueber, f.gegenueberBenutzername, " · ${f.wache} · ${rest(f.bis)}")
                     Knopf("Zurückgeben", { tun("Das ging nicht.") { welt.wege.leiheZurueckgeben(it, f.fahrzeugId); welt.betriebLaden() } }, kompakt = true, art = Knopfart.Leise, aktiv = !sendet)
                 }
             }
@@ -684,7 +699,7 @@ fun LeiheSeite(welt: Welt, zustand: Weltzustand) {
                     Column(Modifier.weight(1f)) {
                         Text(a.funkrufname, style = Schrift.MonoKlein, color = Farben.Text)
                         Leisesatz("${a.typ} · ${angebotstext(a.tage, a.preis, a.entfernungKm)}", winzig = true)
-                        Leisesatz("${a.ort} · von ${a.von ?: "—"} · fährt zu ${zielFuer(a)?.name ?: "—"}", winzig = true)
+                        Namenssatz("${a.ort} · von ", a.von, a.vonBenutzername, " · fährt zu ${zielFuer(a)?.name ?: "—"}")
                     }
                     Knopf("Mieten", {
                         val ziel = zielFuer(a) ?: run { fehler = "Du hast keine Wache, auf der dieses Fahrzeug stehen dürfte."; return@Knopf }
@@ -772,7 +787,7 @@ fun LeiheSeite(welt: Welt, zustand: Weltzustand) {
                 var wahl by remember(g.id) { mutableStateOf<WeltFahrzeug?>(null) }
                 Weltkasten {
                     Text(g.kategorie, style = Schrift.MonoKlein, color = Farben.Text)
-                    Leisesatz("${angebotstext(g.tage, g.preis, g.entfernungKm)} · ${g.wache} · von ${g.von ?: "—"}", winzig = true)
+                    Namenssatz("${angebotstext(g.tage, g.preis, g.entfernungKm)} · ${g.wache} · von ", g.von, g.vonBenutzername)
                     if (passende.size > 1) Auswahl("Fahrzeug", passende, wahl ?: passende.first(), { "${it.funkrufname} · ${it.typ}" }, { wahl = it })
                     Knopf("Hinschicken", {
                         val f = wahl ?: passende.firstOrNull() ?: run {
@@ -803,7 +818,7 @@ fun LeiheSeite(welt: Welt, zustand: Weltzustand) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text(f.funkrufname, style = Schrift.MonoKlein, color = Farben.Text)
-                        Leisesatz("${f.typ} · bei ${f.gegenueber ?: "—"} · ${f.wache}", winzig = true)
+                        Namenssatz("${f.typ} · bei ", f.gegenueber, f.gegenueberBenutzername, " · ${f.wache}")
                     }
                     Text(rest(f.bis), style = Schrift.Winzig.copy(fontFamily = Schrift.Mono), color = Farben.TextSehrLeise)
                 }
@@ -812,3 +827,16 @@ fun LeiheSeite(welt: Welt, zustand: Weltzustand) {
     }
 }
 
+
+/**
+ * Ein Name, der ins Profil führt — wo es einen Benutzernamen und einen Weg gibt.
+ * Die Zielfläche ist die Zeile des Namens; ein eigener Knopf daneben wäre ein
+ * zweiter Weg zu derselben Person (siehe `Kontoname.vue`).
+ */
+@Composable
+private fun Modifier.zumProfil(benutzername: String?): Modifier {
+    val profil = LocalWeltProfil.current
+    val ziel = benutzername?.takeIf { it.isNotBlank() } ?: return this
+    if (profil == null) return this
+    return this.clickable(onClickLabel = "Profil ansehen") { profil(ziel) }
+}

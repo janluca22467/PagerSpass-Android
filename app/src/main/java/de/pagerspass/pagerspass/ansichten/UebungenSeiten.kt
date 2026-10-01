@@ -8,7 +8,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -536,14 +539,17 @@ private fun Eintrag(
             verticalArrangement = Arrangement.spacedBy(Abstand.Klein),
             modifier = Modifier.padding(start = Abstand.Normal, end = Abstand.Normal, bottom = Abstand.Normal),
         ) {
-            Stufenwahl(
+            // Ein Schieber wie im Web (`type="range"`, 30-Sekunden-Schritte). Sortiert
+            // wird erst beim Loslassen — sonst spränge der Eintrag unter dem Finger weg.
+            Schieber(
                 etikett = "Nach Dienstbeginn",
                 wert = e.nachSekunden,
-                beiAenderung = { beiAendern(e.copy(nachSekunden = it), true) },
-                schritt = 30,
                 von = 0,
                 bis = 3600,
+                schritt = 30,
                 anzeige = { "+${zeitText(it)}" },
+                beiAenderung = { beiAendern(e.copy(nachSekunden = it), false) },
+                beiLoslassen = { beiAendern(e, true) },
             )
 
             when (e.art) {
@@ -599,13 +605,13 @@ private fun Eintrag(
                             "${e.empfohleneFaehigkeiten?.size ?: 0} " +
                             (if (e.empfohleneFaehigkeiten?.size == 1) "Funktion)" else "Funktionen)"),
                     )
-                    Stufenwahl(
+                    Schieber(
                         etikett = "Empfohlene Fahrzeuge",
                         wert = e.empfohleneFahrzeuge ?: 1,
-                        beiAenderung = { beiAendern(e.copy(empfohleneFahrzeuge = it), false) },
-                        schritt = 1,
                         von = 1,
                         bis = 12,
+                        schritt = 1,
+                        beiAenderung = { beiAendern(e.copy(empfohleneFahrzeuge = it), false) },
                     )
                     if (katalog?.faehigkeiten?.isNotEmpty() == true) {
                         Etikett("Geforderte Funktionen")
@@ -674,3 +680,48 @@ private fun eintragTitel(e: Szenarioeintrag): String = when (e.art) {
 }
 
 private fun zeitText(sekunden: Int): String = "%d:%02d".format(sekunden / 60, sekunden % 60)
+
+/**
+ * Ein Schieber mit Etikett und Wert — wo das Web einen `type="range"` setzt.
+ *
+ * Plus und Minus in 30-Sekunden-Schritten hießen für „Minute 40“ achtzig Tipps;
+ * der Schieber ist ein Zug. Die Windrichtung bleibt beim Stufenwähler — dort hat
+ * das Web ein Zahlenfeld, und acht Stufen sind mit Tipps schneller als gezogen.
+ */
+@Composable
+private fun Schieber(
+    etikett: String,
+    wert: Int,
+    von: Int,
+    bis: Int,
+    schritt: Int,
+    beiAenderung: (Int) -> Unit,
+    anzeige: (Int) -> String = { it.toString() },
+    beiLoslassen: () -> Unit = {},
+) {
+    val loslassen by rememberUpdatedState(beiLoslassen)
+    Column(verticalArrangement = Arrangement.spacedBy(Abstand.Haar)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Etikett(etikett, Modifier.weight(1f))
+            Text(anzeige(wert.coerceIn(von, bis)), style = Schrift.MonoNormal, color = Farben.Amber)
+        }
+        Slider(
+            value = wert.coerceIn(von, bis).toFloat(),
+            onValueChange = { v ->
+                val gerundet = (von + Math.round((v - von) / schritt) * schritt).coerceIn(von, bis)
+                if (gerundet != wert) beiAenderung(gerundet)
+            },
+            onValueChangeFinished = { loslassen() },
+            valueRange = von.toFloat()..bis.toFloat(),
+            steps = ((bis - von) / schritt - 1).coerceAtLeast(0),
+            colors = SliderDefaults.colors(
+                thumbColor = Farben.Amber,
+                activeTrackColor = Farben.Amber,
+                inactiveTrackColor = Farben.FlaecheAktiv,
+                activeTickColor = Farben.AmberTief,
+                inactiveTickColor = Farben.Rand,
+            ),
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+}

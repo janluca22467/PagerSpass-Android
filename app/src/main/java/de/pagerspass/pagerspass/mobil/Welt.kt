@@ -37,6 +37,10 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.coroutines.withTimeoutOrNull
+import de.pagerspass.pagerspass.netz.Sprechkanal
+import android.util.Base64
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.doubleOrNull
 
@@ -71,6 +75,18 @@ class Welt(anwendung: Application) : AndroidViewModel(anwendung) {
     private val lautsprecher = Lautsprecher()
     private var funklimit: Job? = null
 
+    /**
+     * Der eigene Kanal für die Stimme (`api/sprechkanal.ts`) — gebunden an den
+     * Hub, nach jedem Verbinden neu. Steht er nicht, geht die Stimme wie bisher
+     * über `FunkAudio` am Hub.
+     */
+    private val sprechkanal = Sprechkanal(ablage, "Welt").apply {
+        empfang = { weg, _, _, pcm ->
+            // Dieselbe Prüfung wie bei „FunkAudio“: Ein ausgeschaltetes Gerät spricht nicht.
+            if (weg == Sprechkanal.Weg.WELT && _stand.value.funkgeraet) lautsprecher.abspielen(pcm)
+        }
+    }
+
     private val _stand = MutableStateFlow(Weltzustand())
     val stand: StateFlow<Weltzustand> = _stand.asStateFlow()
 
@@ -95,6 +111,7 @@ class Welt(anwendung: Application) : AndroidViewModel(anwendung) {
                 viewModelScope.launch {
                     runCatching { draht.frage("Anmelden") }
                     if (_stand.value.funkgeraet) draht.rufen("FunkHoeren", wert(true))
+                    sprechkanalBinden()
                     bald()
                 }
             }
@@ -301,6 +318,7 @@ class Welt(anwendung: Application) : AndroidViewModel(anwendung) {
         nachladen = null
         betriebNr++
         sprechenAbbrechen()
+        sprechkanal.loesen()
         lautsprecher.schliessen()
         draht.trennen()
     }
@@ -627,7 +645,14 @@ class Welt(anwendung: Application) : AndroidViewModel(anwendung) {
     fun sprechenStarten(): Boolean {
         if (_stand.value.sendet) return true
         if (draht.lage != Funkverbindung.Lage.Verbunden) return false
-        val los = mikrofon.starten { paket -> draht.rufen("FunkAudio", wert(paket)) }
+        val los = mikrofon.starten { paket ->
+            // Erst der Sprechkanal, der Hub nur, wenn er gerade nicht steht —
+            // für jedes Paket einzeln, wie im Web.
+            val roh = runCatching { Base64.decode(paket, Base64.NO_WRAP) }.getOrNull()
+            if (roh == null || !sprechkanal.senden(Sprechkanal.Weg.WELT, roh)) {
+                draht.rufen("FunkAudio", wert(paket))
+            }
+        }
         if (!los) {
             _stand.update { it.copy(chatfehler = "Das Mikrofon ließ sich nicht öffnen.") }
             return false
@@ -648,7 +673,25 @@ class Welt(anwendung: Application) : AndroidViewModel(anwendung) {
         if (!_stand.value.sendet) return
         mikrofon.stoppen()
         _stand.update { it.copy(sendet = false) }
-        if (draht.lage == Funkverbindung.Lage.Verbunden) draht.rufen("SprechenBeenden")
+        if (draht.lage != Funkverbindung.Lage.Verbunden) return
+        // Die letzten Pakete zuerst — sonst verschwindet „spricht“ bei den
+        // anderen, bevor der Satz zu Ende gespielt ist.
+        viewModelScope.launch {
+            sprechkanal.schranke()
+            if (draht.lage == Funkverbindung.Lage.Verbunden) draht.rufen("SprechenBeenden")
+        }
+    }
+
+    /**
+     * Einen Schein beim Hub holen und den Sprechkanal damit öffnen. Ein Server
+     * ohne Sprechkanal kennt die Methode nicht — dann bleibt es beim Hub.
+     */
+    private fun sprechkanalBinden() {
+        sprechkanal.anbinden {
+            if (draht.lage != Funkverbindung.Lage.Verbunden) return@anbinden null
+            val antwort = withTimeoutOrNull(5_000) { runCatching { draht.frage("SprechkanalOeffnen") }.getOrNull() }
+            (antwort as? JsonPrimitive)?.takeIf { it.isString }?.content
+        }
     }
 
     private fun sprechenAbbrechen() {

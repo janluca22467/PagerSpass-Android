@@ -1191,7 +1191,10 @@ private fun Gespraechsblende(
             }
         }
 
-        if (!beendet) {
+        // Der Eingabeweg ist eine Geräteeinstellung (Konto → Deine Bedienung):
+        // Fragen anklicken, selbst tippen oder sprechen — wie im Web.
+        val eingabeweg by de.pagerspass.pagerspass.mobil.eingabewegState()
+        if (!beendet && eingabeweg == "fragen") {
             Ueberschrift("Fragen")
             Pillenreihe {
                 FAKTENARTEN.forEach { (art, frage) ->

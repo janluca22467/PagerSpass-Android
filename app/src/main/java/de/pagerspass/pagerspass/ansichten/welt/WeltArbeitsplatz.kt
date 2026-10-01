@@ -32,7 +32,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.Saver
+import androidx.compose.runtime.saveable.listSaver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.flow.drop
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -156,6 +162,53 @@ class Werkbank {
     fun zurueckZurSeite() {
         seite = rueckkehr ?: seite
     }
+
+    companion object {
+        /**
+         * Was das Drehen des Geräts überstehen muss: die offene Seite und was in
+         * ihr gewählt ist. Wahlmodus und Entwürfe gehen mit — ein halb
+         * gezeichnetes Gelände nach dem Drehen neu anzufangen wäre ärgerlicher
+         * als eine Liste, die wieder oben steht.
+         */
+        val SICHERUNG: Saver<Werkbank, Any> = listSaver<Werkbank, String>(
+            save = { w ->
+                listOf(
+                    w.seite?.name.orEmpty(), w.rueckkehr?.name.orEmpty(), w.modus.name,
+                    w.gewaehlteWache.orEmpty(), w.gewaehltesFahrzeug.orEmpty(), w.offenesFahrzeug.orEmpty(),
+                    w.bauVorgang, w.bauName, w.bauArt.orEmpty(), w.zweigName, w.poiForm, w.poiName, w.poiArt,
+                    w.poiGelaendeart, w.poiFlaeche.toString(), "", w.ortZweck,
+                    w.bauort?.let { "${it.lat};${it.lon}" }.orEmpty(),
+                )
+            },
+            restore = { l ->
+                fun t(i: Int) = l.getOrNull(i).orEmpty()
+                fun n(i: Int) = t(i).ifEmpty { null }
+                Werkbank().apply {
+                    seite = n(0)?.let { name -> Werkzeug.entries.firstOrNull { it.name == name } }
+                    rueckkehr = n(1)?.let { name -> Werkzeug.entries.firstOrNull { it.name == name } }
+                    modus = Kartenmodus.entries.firstOrNull { it.name == t(2) } ?: Kartenmodus.Normal
+                    gewaehlteWache = n(3)
+                    gewaehltesFahrzeug = n(4)
+                    offenesFahrzeug = n(5)
+                    bauVorgang = n(6) ?: "keiner"
+                    bauName = t(7)
+                    bauArt = n(8)
+                    zweigName = t(9)
+                    poiForm = n(10) ?: "Punkt"
+                    poiName = t(11)
+                    poiArt = n(12) ?: "Schule"
+                    poiGelaendeart = t(13)
+                    poiFlaeche = t(14).toIntOrNull() ?: 1200
+                    ortZweck = n(16) ?: "wache"
+                    bauort = n(17)?.split(";")?.let { p ->
+                        val lat = p.getOrNull(0)?.toDoubleOrNull()
+                        val lon = p.getOrNull(1)?.toDoubleOrNull()
+                        if (lat != null && lon != null) WeltPunkt(lat, lon) else null
+                    }
+                }
+            },
+        )
+    }
 }
 
 /**
@@ -168,8 +221,19 @@ class Werkbank {
  */
 @Composable
 fun WeltArbeitsplatz(welt: Welt, zustand: Weltzustand, beiVerlassen: () -> Unit) {
-    val werkbank = remember { Werkbank() }
-    val ebenen = remember { Weltebenen() }
+    // Die offene Seite übersteht das Drehen des Geräts (die Activity wird dabei
+    // neu gebaut); die Ebenen überstehen sogar den Neustart — wie im Web.
+    val werkbank = rememberSaveable(saver = Werkbank.SICHERUNG) { Werkbank() }
+    val zusammenhang = LocalContext.current
+    val ebenen = remember { Weltebenen().also { Ebenenablage.laden(zusammenhang, it) } }
+    LaunchedEffect(ebenen) {
+        snapshotFlow {
+            listOf(
+                ebenen.lagen, ebenen.eigene, ebenen.wachen, ebenen.pois,
+                ebenen.wege, ebenen.fremde, ebenen.fremdeWachen, ebenen.grosslage,
+            )
+        }.drop(1).collect { Ebenenablage.merken(zusammenhang, ebenen) }
+    }
     val stand = zustand.stand
     val karte = remember {
         Weltkartenstand(stand?.lat ?: 51.2, stand?.lon ?: 10.4, 12.0)

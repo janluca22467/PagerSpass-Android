@@ -256,6 +256,8 @@ fun Lagekarte(
     val bereich = rememberCoroutineScope()
     val dichte = LocalDensity.current
     val messer = rememberTextMeasurer()
+    // Wie Fahrzeuge kurz heißen — eine Geräteeinstellung aus dem Konto.
+    val kennungsform by de.pagerspass.pagerspass.mobil.kennungsformState()
 
     var freigabe by remember { mutableStateOf<String?>("laedt") }
     var stil by remember { mutableStateOf(Kartenstil.Dunkel) }
@@ -581,7 +583,11 @@ fun Lagekarte(
                     }
 
                     val text = messer.measure(
-                        f.kurzname.ifBlank { f.funkrufname },
+                        f.kurzname.ifBlank { null }?.let {
+                            de.pagerspass.pagerspass.mobil.Geraeteeinstellungen.kennung(
+                                it, f.typ, f.organisation, raum.settings.landkreis, kennungsform,
+                            )
+                        } ?: f.funkrufname,
                         TextStyle(
                             color = Farben.Text,
                             fontSize = 10.sp,

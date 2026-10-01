@@ -1,5 +1,6 @@
 package de.pagerspass.pagerspass.ansichten
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -92,6 +93,13 @@ fun ProfilSeite(
     beiBildEinreichen: (String, String, ByteArray) -> Unit = { _, _, _ -> },
     beiBildEntfernen: () -> Unit = {},
     beiZurueck: () -> Unit = {},
+    /**
+     * Der Kontodienst — für den Benutzernamen. Er hat einen eigenen Endpunkt
+     * (eindeutig, Adresse des Profils) und steht deshalb nicht in
+     * `Profilaenderung`; im Web gehört er trotzdem ins selbe Formular
+     * (`ProfilBearbeiten.vue`). Ohne Dienst fehlt das Feld.
+     */
+    dienst: de.pagerspass.pagerspass.mobil.Kontodienst? = null,
 ) {
     LaunchedEffect(Unit) { beiLaden() }
 
@@ -136,6 +144,8 @@ fun ProfilSeite(
             )
 
             Namensfeld(p.anzeigename, laeuft) { beiAendern(Profilaenderung(anzeigename = it)) }
+
+            if (dienst != null) Benutzernamenfeld(p.benutzername, dienst) { beiLaden() }
 
             Vorstellungsfeld(p.vorstellung.orEmpty(), laeuft) {
                 beiAendern(Profilaenderung(vorstellung = it))
@@ -528,3 +538,36 @@ private fun Musterreihe(
 /** Wo das Profilbild liegt — der Pfad steht an genau einer Stelle. */
 internal fun bildweg(server: String, dateiname: String?): String? =
     de.pagerspass.pagerspass.ui.schmuck.profilbildAdresse(server, dateiname)
+
+/**
+ * Der Benutzername — derselbe Weg wie unter Konto → Sicherheit, hier, weil man
+ * ihn beim Gestalten des Auftritts sucht. Nach dem Ändern lädt das Profil neu:
+ * Die Adresse des Profils hängt an diesem Namen.
+ */
+@Composable
+private fun Benutzernamenfeld(name: String, dienst: de.pagerspass.pagerspass.mobil.Kontodienst, beiGeaendert: () -> Unit) {
+    val stand by dienst.stand.collectAsStateWithLifecycle()
+    var wert by remember(name) { mutableStateOf(name) }
+
+    Abschnitt("Benutzername") {
+        SehrLeise(
+            "3 bis 20 Zeichen: Buchstaben, Ziffern, Bindestrich, Unterstrich. Unter diesem " +
+                "Namen finden dich andere — und unter ihm steht dein Profil.",
+        )
+        Feld(
+            wert = wert,
+            beiAenderung = { wert = it.take(20) },
+            platzhalter = "benutzername",
+            weiterTaste = ImeAction.Done,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
+            Knopf(
+                aufschrift = "Übernehmen",
+                beiDruck = { dienst.benutzernameAendern(wert) { beiGeaendert() } },
+                aktiv = stand.laeuft == null && wert.trim().length >= 3 && wert.trim() != name,
+                kompakt = true,
+            )
+        }
+        Rueckmeldungszeile(stand.meldung(de.pagerspass.pagerspass.mobil.Kontodienst.BENUTZERNAME))
+    }
+}

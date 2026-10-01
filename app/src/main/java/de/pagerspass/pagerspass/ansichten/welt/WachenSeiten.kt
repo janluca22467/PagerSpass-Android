@@ -36,6 +36,8 @@ import de.pagerspass.pagerspass.ui.bausteine.Knopf
 import de.pagerspass.pagerspass.ui.bausteine.Knopfart
 import de.pagerspass.pagerspass.ui.bausteine.Ladezeile
 import de.pagerspass.pagerspass.ui.bausteine.Ueberschrift
+import de.pagerspass.pagerspass.ansichten.bildweg
+import de.pagerspass.pagerspass.ui.schmuck.Kontobild
 import de.pagerspass.pagerspass.ui.schmuck.Wappen
 import de.pagerspass.pagerspass.ui.theme.Abstand
 import de.pagerspass.pagerspass.ui.theme.Farben
@@ -253,18 +255,17 @@ fun WachenDetailSeite(welt: Welt, zustand: Weltzustand, werkbank: Werkbank) {
 
     Weltkasten(randfarbe = Farben.AmberTief) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Abstand.Normal)) {
-            Box(
-                contentAlignment = Alignment.Center,
-                modifier = Modifier
-                    .size(40.dp)
-                    .background(Wappen.ton(w.id, w.wappenFarbe), CircleShape),
-            ) {
-                Text(
-                    w.name.split(" ").filter { it.isNotBlank() }.take(2).joinToString("") { it.take(1).uppercase() },
-                    style = Schrift.Klein.copy(fontWeight = FontWeight.Bold),
-                    color = Wappen.schrift(Wappen.ton(w.id, w.wappenFarbe)),
-                )
-            }
+            // Dasselbe Kontobild wie im Profil und in jeder Liste (`WachenseiteBlende.vue`):
+            // die Wachenkennung als Farbschlüssel, der Wachenname für die Initialen —
+            // und beim Gestalten schon der Entwurf, damit man sieht, was man wählt.
+            Kontobild(
+                kennung = w.id,
+                anzeigename = w.name,
+                wappen = if (gestaltet) zeichen else w.wappenZeichen,
+                wappenfarbe = if (gestaltet) farbe else w.wappenFarbe,
+                bildAdresse = if (if (gestaltet) foto else w.fotoZeigen) bildweg(LocalWeltServer.current, s.profilbild) else null,
+                groesse = 56.dp,
+            )
             Column(Modifier.weight(1f)) {
                 Text(w.name, style = Schrift.Gross.copy(fontWeight = FontWeight.Bold), color = Farben.Text)
                 Text(

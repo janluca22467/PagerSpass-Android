@@ -98,6 +98,13 @@ fun ShopSeite(
     beiAutohaus: () -> Unit = {},
     beiProfil: () -> Unit = {},
     beiAusbildung: () -> Unit = {},
+    /**
+     * Der Stand der Garage — mit ihm steht das Autohaus im Bereich „Fahrzeuge“
+     * selbst (wie im Web). Ohne ihn bleibt es beim Weg in die Garage.
+     */
+    garage: de.pagerspass.pagerspass.mobil.Garagendaten? = null,
+    katalog: List<de.pagerspass.pagerspass.netz.Fahrzeugvorlage> = emptyList(),
+    beiFahrzeugHolen: ((String, Boolean) -> Unit)? = null,
 ) {
     var bereich by rememberSaveable { mutableStateOf(wunsch ?: UEBERSICHT) }
     LaunchedEffect(wunsch) {
@@ -184,7 +191,19 @@ fun ShopSeite(
                     },
                     beiProfil = beiProfil,
                 )
-                FAHRZEUGE -> Fahrzeugbereich(s, gutscheine, beiAutohaus)
+                FAHRZEUGE -> if (garage != null && beiFahrzeugHolen != null) {
+                    Fahrzeugbereich(s, gutscheine, null)
+                    Autohaus(
+                        garage = garage,
+                        katalog = katalog,
+                        credits = credits,
+                        laeuft = laeuft,
+                        vorwahl = s.tagesangebot?.templateId?.ifBlank { null },
+                        beiHolen = beiFahrzeugHolen,
+                    )
+                } else {
+                    Fahrzeugbereich(s, gutscheine, beiAutohaus)
+                }
                 else -> Guthaben(s) {
                     dienst?.rueckmeldungWeg(Kontodienst.CODE)
                     dienst?.codevorschauWeg()
@@ -421,14 +440,7 @@ private fun Schaufenster(stand: Kontostand, server: String) {
         }
     }
 
-    Abschnitt("Im Fenster") {
-        VITRINE.forEach { (titel, satz) ->
-            Kasten(abstandInnen = Abstand.Winzig) {
-                Text(titel, style = Schrift.Normal, color = Farben.Text)
-                SehrLeise(satz)
-            }
-        }
-    }
+    Vitrine()
 
     if (premium.vorteile.isNotEmpty()) {
         Abschnitt("Alles, was dazugehört") {
@@ -539,31 +551,6 @@ private fun Vertragswege(server: String) {
     }
 }
 
-/**
- * Die Vitrine in Worten. Im Web liegen die Stücke als Bilder aus; hier steht, was
- * sie sind — dieselben Sätze, damit niemand am Handy weniger erfährt als am Rechner.
- */
-private val VITRINE = listOf(
-    "Dein Kartenkopf" to "Statt eines gezeichneten Musters liegt hinter deinem Profilkopf eine echte " +
-        "Karte — den Ausschnitt schiebst du dir selbst zurecht. Näher als eine Ortsansicht geht es nicht.",
-    "Profilrahmen" to "Zwei davon leuchten: Beim Lauflicht wandert der Schein um dein Wappen, beim " +
-        "Nordlicht wechselt er die Farbe.",
-    "Melder-Gesichter" to "Die Farbe gilt auf jedem Gerät — vom Piepser über die Einsatzuhr bis zum Wandtableau.",
-    "Kopfmuster" to "Das Farbband über deinem Profil. Sieben gezeichnete — und als achtes der Kartenkopf.",
-    "Titel & goldener Name" to "Dein Name wird golden und trägt einen Stern — am Brett, in der Lobby und " +
-        "in jeder Mannschaftsliste.",
-    "Geräte" to "Drei andere Arten Melder — quer in der Hand, am Handgelenk, im Flur — und acht Gehäuse " +
-        "für dein Funkgerät, am Rechner wie am Handy. Am Funk ändert sich nichts.",
-    "Werkstatt · Gehäuse" to "In der Gehäusewerkstatt ziehst du dir deinen Melder selbst zusammen — " +
-        "achtzehn Bauteile, und es ist ein echtes Gerät. Gebaut wird am Rechner, getragen überall.",
-    "Werkstatt · Klang" to "Deinen Melderton klickst du ins Raster oder bringst ihn mit — als Datei oder " +
-        "über dein Mikrofon. Alles bleibt auf deinem Gerät.",
-    "Handy-Funkbegleiter" to "Dein Handy wird per QR-Code zum Funkgerät und Melder deines Platzes — " +
-        "ohne zweite Anmeldung, mit Mitteilung bei Alarm auch bei dunklem Bildschirm.",
-    "Schichtkarte" to "Dazu deine eigene Zeile auf dem Bild, das du nach der Schicht teilst — dein " +
-        "Motto, unter dem Namen der Leitstelle.",
-)
-
 // ----------------------------------------------------------------- Sortiment
 
 @Composable
@@ -596,6 +583,8 @@ private fun Sortiment(
                     }
                     if (a.gekauft) Marke("✓ Im Besitz", farbe = Farben.GruenHell)
                 }
+                // Das Stück selbst auf seiner Bühne — nicht nur sein Name (`WareKachel.vue`).
+                Warenbuehne(a)
                 Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
                     when {
                         a.gekauft -> Knopf("Im Konto anlegen", beiProfil, art = Knopfart.Leise, kompakt = true)
@@ -637,7 +626,7 @@ private fun gattung(art: String): String = when (art) {
  * Sache wären zwei Wegweiser zum selben Ort (so steht es auch über `ShopView.vue`).
  */
 @Composable
-private fun Fahrzeugbereich(s: Shop, gutscheine: Int, beiAutohaus: () -> Unit) {
+private fun Fahrzeugbereich(s: Shop, gutscheine: Int, beiAutohaus: (() -> Unit)?) {
     val angebot = s.tagesangebot
     if (angebot != null) {
         Abschnitt("Fahrzeug des Tages") {
@@ -652,10 +641,13 @@ private fun Fahrzeugbereich(s: Shop, gutscheine: Int, beiAutohaus: () -> Unit) {
                     )
                     Text("${angebot.preis} Credits", style = Schrift.MonoNormal, color = Farben.AmberHell)
                 }
-                Knopf("Im Autohaus ansehen", beiAutohaus, art = Knopfart.Haupt)
+                if (beiAutohaus != null) Knopf("Im Autohaus ansehen", beiAutohaus, art = Knopfart.Haupt)
+                else SehrLeise("Steht unten im Autohaus im Schaufenster.")
             }
         }
     }
+    // Mit dem Autohaus im Shop braucht es den Weg dorthin nicht.
+    if (beiAutohaus == null) return
 
     Abschnitt("Autohaus", weiterweg = {
         if (gutscheine > 0) SehrLeise("$gutscheine Gutschein${if (gutscheine == 1) "" else "e"}", mono = true)

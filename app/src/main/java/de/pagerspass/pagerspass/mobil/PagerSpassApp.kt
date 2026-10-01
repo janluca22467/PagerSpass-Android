@@ -215,6 +215,11 @@ fun PagerSpassApp(
                     welt.schliessen()
                     runCatching { zurWahl(steuerung, Weg.Konto) }
                 },
+                // Wie ein Name im Web: Die Route wechselt, und damit ist die Welt zu.
+                beiProfil = { name ->
+                    welt.schliessen()
+                    runCatching { steuerung.navigate("$UNTERSEITE_FREMDPROFIL/$name") }
+                },
             )
 
             else -> Angemeldet(stand, sitzung, runde, sozial, begleiter, werkstatt, steuerung, welt)
@@ -900,7 +905,11 @@ private fun Angemeldet(
 
             composable(Weg.Shop.adresse) {
                 // Die Garage sagt, wie viele Gutscheine offen sind — die Zahl am Reiter.
-                LaunchedEffect(Unit) { sitzung.garageLaden() }
+                LaunchedEffect(Unit) {
+                    sitzung.garageLaden()
+                    // Das Autohaus im Bereich „Fahrzeuge“ zeigt Kategorie und Fähigkeiten.
+                    sitzung.katalogSicherstellen()
+                }
                 ShopSeite(
                     unterrand = platz,
                     konto = stand.konto,
@@ -918,6 +927,9 @@ private fun Angemeldet(
                     beiAutohaus = { steuerung.navigate(UNTERSEITE_GARAGE) },
                     beiProfil = { steuerung.navigate(UNTERSEITE_PROFIL) },
                     beiAusbildung = { zurWahl(steuerung, Weg.Dienst) },
+                    garage = daten.garage.inhalt,
+                    katalog = daten.katalog.inhalt?.fahrzeuge.orEmpty(),
+                    beiFahrzeugHolen = { vorlage, kaufen -> sitzung.fahrzeugHolen(vorlage, kaufen) },
                 )
             }
 
@@ -1185,6 +1197,7 @@ private fun Angemeldet(
                     },
                     beiBildEntfernen = { sitzung.profilbildEntfernen() },
                     beiZurueck = { steuerung.popBackStack() },
+                    dienst = sitzung.kontodienst,
                 )
             }
 
@@ -1204,6 +1217,7 @@ private fun Angemeldet(
                             beiFreundeLaden = { sitzung.freundeLaden(neu = true) },
                             beiKonto = { steuerung.popBackStack() },
                             beiMitteilungen = { steuerung.navigate(UNTERSEITE_MITTEILUNGEN) },
+                            beiAbmelden = { sitzung.abmelden().join() },
                         )
                     },
                 )

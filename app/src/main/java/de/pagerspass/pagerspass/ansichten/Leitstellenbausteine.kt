@@ -558,8 +558,9 @@ fun ColumnScope.Telefonwerkzeug(
     var zuordnen by remember(anruf.id) { mutableStateOf(false) }
     val beendet = anruf.zustand == "Beendet"
 
+    val eingabeweg by de.pagerspass.pagerspass.mobil.eingabewegState()
     if (!beendet) {
-        Row(
+        if (eingabeweg == "tippen") Row(
             horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
             verticalAlignment = Alignment.Bottom,
         ) {
@@ -576,7 +577,7 @@ fun ColumnScope.Telefonwerkzeug(
         }
 
         // Die Rückfrage gesprochen: Der Server versteht sie und stellt sie.
-        Sprechtaste(
+        if (eingabeweg == "sprechen") Sprechtaste(
             sendet = neben.sendetAuf == "notruf",
             wirdVerstanden = neben.notrufVersteht,
             belegtVon = null,

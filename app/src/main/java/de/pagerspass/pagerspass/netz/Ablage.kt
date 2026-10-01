@@ -159,6 +159,14 @@ class Ablage(private val zusammenhang: Context) {
         }
     }
 
+    /**
+     * Alles vergessen — „Gespeicherte Daten dieses Geräts löschen“ in der
+     * Privatsphäre. Danach steht die App da wie frisch installiert.
+     */
+    suspend fun allesVergessen() {
+        zusammenhang.ablage.edit { it.clear() }
+    }
+
     private suspend fun lesen(schluessel: androidx.datastore.preferences.core.Preferences.Key<String>) =
         zusammenhang.ablage.data.first()[schluessel]
 }

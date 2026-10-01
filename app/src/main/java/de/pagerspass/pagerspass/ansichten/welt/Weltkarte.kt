@@ -346,7 +346,9 @@ fun Weltkarte(
             // --------------------------------------------------- Eigene Punkte
             if (ebenen.pois) {
                 zustand.pois.filter { it.sichtbar }.forEach { poi ->
-                    val farbe = if (poi.aktiv) Farben.ViolettHell else Farben.TextSehrLeise
+                    // Der Palettenton der Marke wie im Web (`poiSymbol`): 0 heißt
+                    // automatisch — dann entscheidet die Kennung.
+                    val farbe = if (poi.aktiv) de.pagerspass.pagerspass.ui.schmuck.Wappen.ton(poi.id, poi.farbe) else Farben.TextSehrLeise
                     if (poi.gelaende.size >= 2) {
                         val pfad = Path()
                         poi.gelaende.forEachIndexed { i, e ->

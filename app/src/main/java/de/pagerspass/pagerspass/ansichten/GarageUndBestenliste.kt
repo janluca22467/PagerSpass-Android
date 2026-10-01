@@ -342,7 +342,7 @@ private fun Kennzahlzeile(was: String, wert: String) {
  * überfliegt, unterscheidet sie am Farbton, bevor er die Marke liest. Ein
  * unbekannter Name bekommt die leise Textfarbe statt einer geratenen.
  */
-private fun organisationsfarbe(organisation: String): Color = when (organisation.lowercase()) {
+internal fun organisationsfarbe(organisation: String): Color = when (organisation.lowercase()) {
     "feuerwehr" -> Farben.OrgFeuerwehr
     "rettungsdienst" -> Farben.OrgRettungsdienst
     "thw" -> Farben.OrgThw

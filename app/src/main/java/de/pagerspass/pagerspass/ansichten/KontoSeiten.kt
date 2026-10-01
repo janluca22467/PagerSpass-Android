@@ -215,6 +215,7 @@ fun KontoSeite(
         Premiumkarte(stand, server, beiPremium = beiPremium)
         Sicherheit(konto, stand, dienst, beiAbmelden)
         Emailkarte(stand, dienst)
+        Bedienungskarte()
 
         Karte(
             titel = "Wachengemeinschaft",
@@ -898,10 +899,17 @@ fun ColumnScope.PrivatsphaereZusatz(
     beiFreundeLaden: () -> Unit,
     beiKonto: () -> Unit,
     beiMitteilungen: () -> Unit,
+    /**
+     * Am Server abmelden und erst danach zurückkehren — für „Gespeicherte Daten
+     * dieses Geräts löschen“. Ohne ihn fehlt der Abschnitt „Dieses Gerät“.
+     */
+    beiAbmelden: (suspend () -> Unit)? = null,
 ) {
     val browser = LocalUriHandler.current
     val zusammenhang = androidx.compose.ui.platform.LocalContext.current
     var auszug by remember { mutableStateOf<String?>(null) }
+    var datenverarbeitung by rememberSaveable { mutableStateOf(false) }
+    if (datenverarbeitung) Datenverarbeitungsblende { datenverarbeitung = false }
     val ablegen = androidx.activity.compose.rememberLauncherForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/json"),
     ) { ziel ->
@@ -958,7 +966,7 @@ fun ColumnScope.PrivatsphaereZusatz(
             beiWechsel = { dienst.analyseSetzen(it) },
             aktiv = stand.laeuft == null,
         )
-        Textweg("Datenverarbeitung anzeigen", { browser.openUri(Rechtsstand.adresse(Server.BETRIEB, Rechtsstand.DATENSCHUTZ)) })
+        Textweg("Datenverarbeitung anzeigen", { datenverarbeitung = true })
         Rueckmeldungszeile(stand.meldung(Kontodienst.ANALYSE))
     }
 
@@ -1009,6 +1017,8 @@ fun ColumnScope.PrivatsphaereZusatz(
         Rueckmeldungszeile(stand.meldung(Kontodienst.EINWILLIGUNG))
         Textweg("Einwilligungstext lesen", { browser.openUri(Rechtsstand.adresse(Server.BETRIEB, "uebertragung")) })
     }
+
+    beiAbmelden?.let { DiesesGeraet(it) }
 
     Abschnitt("Angemeldete Geräte") {
         Leise(
@@ -1175,7 +1185,8 @@ fun PasswortVergessen(
  */
 @Composable
 fun Analyseblende(stand: Kontostand, dienst: Kontodienst) {
-    val browser = LocalUriHandler.current
+    // Der Text steht in der App, nicht auf der Webseite — gefragt wird hier.
+    var datenverarbeitung by rememberSaveable { mutableStateOf(false) }
     Blende(
         titel = "Dürfen wir deine Daten für die Verbesserung unseres Produktes verwenden?",
         beiSchliessen = {},
@@ -1186,7 +1197,7 @@ fun Analyseblende(stand: Kontostand, dienst: Kontodienst) {
             Knopf("Nein, danke", { dienst.analyseSetzen(false) }, breit = true, aktiv = stand.laeuft == null)
             Knopf(
                 "Datenverarbeitung anzeigen",
-                { browser.openUri(Rechtsstand.adresse(Server.BETRIEB, Rechtsstand.DATENSCHUTZ)) },
+                { datenverarbeitung = true },
                 art = Knopfart.Leise,
                 breit = true,
             )
@@ -1204,6 +1215,8 @@ fun Analyseblende(stand: Kontostand, dienst: Kontodienst) {
         )
         Rueckmeldungszeile(stand.meldung(Kontodienst.ANALYSE))
     }
+    // Nach der Frage gesetzt, damit das Fenster über ihr aufgeht und nicht darunter.
+    if (datenverarbeitung) Datenverarbeitungsblende { datenverarbeitung = false }
 }
 
 /**
