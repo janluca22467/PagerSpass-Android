@@ -418,7 +418,7 @@ fun ColumnScope.FmsKasten(
             Etikett(if (imFunk) "Sondersignal" else "FMS-Status")
         }
         if (blaulicht && (imFunk || reiter == "signal")) {
-            Bedienteil(meins, beiSondersignal)
+            SondersignalBedienteil(meins, beiSondersignal)
         } else {
             FmsTastatur(raum, einsatz, meins, katalog, befehle, beiFms)
         }
@@ -622,42 +622,6 @@ private fun Streifenzeile(text: String, farbe: Color, fett: Boolean = false) {
     )
 }
 
-/**
- * Das Bedienteil — am Server hängt genau ein Knopf, das Blaulicht. Seit dem
- * 21.09.2026 schaltet kein Automat mehr: Wer ein Fahrzeug betritt, betritt es dunkel,
- * und der Fahrtschluss (Status 1, 2 oder 6) nimmt es heraus.
- */
-@Composable
-private fun ColumnScope.Bedienteil(meins: Rundenfahrzeug, beiSondersignal: (Boolean) -> Unit) {
-    val an = !meins.sondersignalAus
-    SehrLeise("Blaulicht schaltet die Fahrt — ohne fährt es sich wie im Berufsverkehr.")
-    // Die Heckansicht: zwei Blaulichtbalken — so sieht man auf einen Blick, was läuft.
-    val puls = if (an) {
-        rememberInfiniteTransition(label = "blau").animateFloat(0f, 1f, infiniteRepeatable(tween(420), RepeatMode.Reverse), label = "blau-wert").value
-    } else {
-        0f
-    }
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(Abstand.Normal),
-        modifier = Modifier.fillMaxWidth().background(Farben.BgTief, Rundung.Klein).padding(Abstand.Klein),
-    ) {
-        listOf(puls, 1f - puls).forEach { stufe ->
-            Box(
-                Modifier
-                    .weight(1f)
-                    .height(14.dp)
-                    .background(if (an) lerp(Color(0xFF0B2A66), Color(0xFF3D8BFF), stufe) else Color(0xFF14213A), Rundung.Rund),
-            )
-        }
-    }
-    Schalterzeile(
-        titel = "Blaulicht",
-        unterzeile = if (an) "Sondersignal an — Priorität der Lage" else "Aus — mit dem Verkehr",
-        an = an,
-        beiWechsel = { beiSondersignal(!it) },
-    )
-}
-
 // ---------------------------------------------------------- Lagemeldung
 
 /** Lagemeldung an die Leitstelle — mit den Sätzen des Stichworts und dem Nachfordern. */
@@ -736,7 +700,13 @@ fun ColumnScope.EinsatzleitungPanel(einsatz: Einsatz?, meins: Rundenfahrzeug, be
  * selbst führen (dann steht sie im Tablet), und den ELW 2 mit der Triage.
  */
 @Composable
-fun ColumnScope.ManvVersorgung(raum: Raumzustand, einsatz: Einsatz?, meins: Rundenfahrzeug, manv: ManvGriffe) {
+fun ColumnScope.ManvVersorgung(
+    raum: Raumzustand,
+    einsatz: Einsatz?,
+    meins: Rundenfahrzeug,
+    manv: ManvGriffe,
+    befehle: Raumbefehle = Raumbefehle.Leer,
+) {
     if (einsatz == null || !einsatz.manv) return
     val fuehrtSelbst = einsatz.einsatzleitung == meins.funkrufname || einsatz.einsatzleitungRd == meins.funkrufname
     if (fuehrtSelbst) return
@@ -755,6 +725,7 @@ fun ColumnScope.ManvVersorgung(raum: Raumzustand, einsatz: Einsatz?, meins: Rund
         beiTransport = { p -> manv.transport(einsatz.id, p) },
         beiVerstorbene = { manv.verstorbene(einsatz.id) },
         beiTriage = { manv.triage(einsatz.id) },
+        beiBehandler = { p, f, na -> befehle.patientBehandlerZuweisen(einsatz.id, p, f, na) },
     )
 }
 

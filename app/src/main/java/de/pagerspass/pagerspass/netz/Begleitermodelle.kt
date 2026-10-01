@@ -97,3 +97,10 @@ data class Begleiterbeitritt(
      */
     val geraete: Begleitergeraete? = null,
 )
+
+/** Die Antwort auf `POST …/funkbegleiter` — der Zugang für das zweite Gerät. */
+@Serializable
+data class Begleiterzugang(
+    val token: String = "",
+    val gueltigBis: String = "",
+)

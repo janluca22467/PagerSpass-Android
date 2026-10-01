@@ -152,6 +152,10 @@ fun FahrzeugSeite(
                 if (entscheidet) dienstendeGefragt = true else beiDienstende()
             },
             beiVerlassen = { verlassenGefragt = true },
+            eigeneKennung = eigeneKennung,
+            premium = premium,
+            server = server,
+            befehle = befehle,
         )
 
         Hinweise(raum, meins, befehle)
@@ -239,7 +243,7 @@ fun FahrzeugSeite(
 
 /**
  * Der Kopf — Statusmarke, Rufname, Dienstende, Aussteigen; in der zweiten Zeile
- * Zuschauer und Melderwahl.
+ * Zuschauer, Melderwahl, Tonregler und Funkbegleiter (`FahrzeugView.vue`, v6).
  *
  * <b>Die Statusmarke trägt Zeichen und Zahl in der Farbe des Status</b> — dasselbe
  * Zeichen wie die Taste, die man dafür gedrückt hat. Der Balken links trägt die
@@ -252,6 +256,10 @@ private fun Fahrzeugkopf(
     oben: androidx.compose.ui.unit.Dp,
     beiDienstende: () -> Unit,
     beiVerlassen: () -> Unit,
+    eigeneKennung: String,
+    premium: Boolean,
+    server: String,
+    befehle: Raumbefehle,
 ) {
     val org = orgFarbe(meins.organisation)
     Column(
@@ -312,6 +320,9 @@ private fun Fahrzeugkopf(
         Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein), verticalAlignment = Alignment.CenterVertically) {
             if (raum.zuschauer.isNotEmpty()) Marke("👁 ${raum.zuschauer.size}")
             Melderwahl(Modifier.weight(1f))
+            // Ton und Begleiter teilen sich die zweite Zeile mit der Melderwahl (v6).
+            DienstTonregler(raum, eigeneKennung, befehle)
+            BegleiterKopfknopf(raum, premium, befehle, server)
         }
     }
 }
@@ -408,7 +419,7 @@ private fun ColumnScope.TeilFahrzeug(
     }
     val fms: @Composable ColumnScope.() -> Unit = { FmsKasten(raum, einsatz, meins, katalog, imFunk, befehle, beiFms, beiSondersignal) }
     val bogen: @Composable ColumnScope.() -> Unit = {
-        ManvVersorgung(raum, einsatz, meins, manv)
+        ManvVersorgung(raum, einsatz, meins, manv, befehle)
         if (einsatz != null) {
             PatientenFenster(einsatz, meins, premium, server, befehle)
             BeteiligtenFenster(einsatz, meins, befehle)
@@ -553,6 +564,8 @@ private fun ColumnScope.TeilFunk(
                     eigenerRufname = meins.funkrufname,
                     laeuft = stand.laeuft,
                     beiSenden = beiFunk,
+                    fahrzeuge = raum.vehicles,
+                    gesperrt = funkGesperrt(raum, eigeneKennung),
                 )
                 stand.funkhinweis?.let { SehrLeise(it) }
             }

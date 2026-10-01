@@ -149,7 +149,10 @@ class Mikrofon {
  * Puffer des Tracks — Pakete werden angehängt, die Hardware zieht gleichmäßig.
  * Bei einer Lücke setzt der Track kurz aus und läuft weiter, ohne zu stapeln.
  */
-class Lautsprecher {
+class Lautsprecher(
+    /** Der Pegel dieser Leitung, 0 … 1 — der Funkregler des Tonreglers (`Tonstand`). */
+    private val pegel: () -> Float = { Tonstand.funk() },
+) {
 
     private var spur: AudioTrack? = null
 
@@ -194,9 +197,9 @@ class Lautsprecher {
         if (bytes.isEmpty()) return
         runCatching {
             val spur = sicherstellen()
-            // Der Funkregler und „alles außer dem Melder stumm" (`Tonpegel`) — je
+            // Der Funkregler und „alles außer dem Melder stumm" (`Tonstand`) — je
             // Paket, damit ein Schieben mitten in der Durchsage sofort greift.
-            spur.setVolume(Tonpegel.funkWirksam)
+            spur.setVolume(pegel())
             spur.write(bytes, 0, bytes.size, AudioTrack.WRITE_NON_BLOCKING)
         }.onFailure { Log.w("Sprechfunk", "Abspielen fehlgeschlagen", it) }
     }

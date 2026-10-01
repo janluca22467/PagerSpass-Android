@@ -126,6 +126,28 @@ class Raumwege(private val netz: Netz) {
             "POST",
             """{"funkAusgelagert":true}""",
         )
+
+    /**
+     * Einen Zugang für den Funkbegleiter erzeugen — `funkbegleiterErzeugen` in
+     * `rest.ts`. Der Rumpf ist der Gerätestand, den das zweite Gerät spiegelt.
+     */
+    suspend fun funkbegleiter(kennung: String, code: String, geraete: Begleitergeraete): Begleiterzugang =
+        netz.hole(
+            "/api/konto/${teil(kennung)}/raum/${teil(code)}/funkbegleiter",
+            "POST",
+            buildJsonObject {
+                put("bauform", geraete.bauform?.let { JsonPrimitive(it) } ?: JsonNull)
+                put("bauart", geraete.bauart?.let { JsonPrimitive(it) } ?: JsonNull)
+                put("funkgeraet", geraete.funkgeraet?.let { JsonPrimitive(it) } ?: JsonNull)
+                put("begleiterFunkgeraet", geraete.begleiterFunkgeraet?.let { JsonPrimitive(it) } ?: JsonNull)
+                put("melderton", geraete.melderton?.let { JsonPrimitive(it) } ?: JsonNull)
+                put("gesicht", geraete.gesicht?.let { JsonPrimitive(it) } ?: JsonNull)
+                put("zeigtMelder", true)
+                put("zeigtFunkgeraet", true)
+                put("zeigtFunkchat", true)
+                put("funkAusgelagert", false)
+            }.toString(),
+        )
 }
 
 /** Der Zugang eines Funkbegleiters — der Token geht als Link an das Handy. */

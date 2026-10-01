@@ -112,6 +112,10 @@ fun ColumnScope.Funkprotokoll(
     beiSenden: (String) -> Unit,
     /** Der Zuschauer liest nur — die Eingabezeile fällt weg. */
     nurLesen: Boolean = false,
+    /** Die Fahrzeuge der Runde — für Namen in der eingestellten Kennung (v6). */
+    fahrzeuge: List<Rundenfahrzeug> = emptyList(),
+    /** Ohne Funkschein in einer Runde mit Mitspielern ist die freie Rede zu (v6). */
+    gesperrt: Boolean = false,
 ) {
     var satz by remember { mutableStateOf("") }
 
@@ -122,11 +126,22 @@ fun ColumnScope.Funkprotokoll(
             verticalArrangement = Arrangement.spacedBy(Abstand.Winzig),
             modifier = Modifier.fillMaxWidth(),
         ) {
-            zeilen.takeLast(FUNK_SICHTBAR).forEach { zeile -> Funkzeile(zeile, eigenerRufname) }
+            zeilen.takeLast(FUNK_SICHTBAR).forEach { zeile -> Funkzeile(zeile, eigenerRufname, fahrzeuge) }
         }
     }
 
     if (nurLesen) return
+
+    // Der Grund steht über der Eingabe — als Satz und nicht als Verweis, denn ein Klick
+    // darauf risse mitten aus der laufenden Schicht.
+    if (gesperrt) {
+        Text(
+            "Mit anderen Spielern funkst du erst nach dem Lehrgang „Sprechfunk\" (nach der Schicht unter " +
+                "Lehrgänge). Status, Lagemeldung und Nachforderung gehen trotzdem.",
+            style = Schrift.Klein,
+            color = Farben.TextLeise,
+        )
+    }
 
     Row(
         horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
@@ -146,7 +161,7 @@ fun ColumnScope.Funkprotokoll(
                 beiSenden(satz)
                 satz = ""
             },
-            aktiv = !laeuft && satz.isNotBlank(),
+            aktiv = !laeuft && !gesperrt && satz.isNotBlank(),
             kompakt = true,
         )
     }
@@ -162,7 +177,7 @@ fun ColumnScope.Funkprotokoll(
  * Zeile finden, ohne jede zu lesen.
  */
 @Composable
-private fun Funkzeile(zeile: Funkzeile, eigenerRufname: String?) {
+private fun Funkzeile(zeile: Funkzeile, eigenerRufname: String?, fahrzeuge: List<Rundenfahrzeug>) {
     val (kante, schrift) = when (zeile.kind) {
         "System" -> Farben.TextSehrLeise to Farben.TextSehrLeise
         "Alarm" -> Farben.Signal to Farben.SignalHell
@@ -197,7 +212,7 @@ private fun Funkzeile(zeile: Funkzeile, eigenerRufname: String?) {
             modifier = Modifier.fillMaxWidth(),
         ) {
             Text(
-                text = zeile.von + (zeile.an?.let { " → $it" } ?: ""),
+                text = funkanzeige(zeile.von, fahrzeuge) + (zeile.an?.let { " → ${funkanzeige(it, fahrzeuge)}" } ?: ""),
                 style = Schrift.Winzig.copy(fontFamily = Schrift.Mono),
                 color = if (anMich) Farben.Amber else Farben.TextSehrLeise,
                 maxLines = 1,
@@ -206,7 +221,7 @@ private fun Funkzeile(zeile: Funkzeile, eigenerRufname: String?) {
             )
             Zeitpille(uhrzeit(zeile.zeit))
         }
-        Text(text = zeile.text, style = Schrift.Klein, color = schrift)
+        Text(text = funkanzeige(zeile.text, fahrzeuge), style = Schrift.Klein, color = schrift)
     }
 }
 
