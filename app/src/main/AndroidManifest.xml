@@ -70,8 +70,11 @@
 
             <!--
                 Links auf die Webseite, die die App selbst erledigen kann: Codes,
-                die Kopplung des Funkbegleiters, Raum- und Wachen-QR-Codes und die
-                Seiten unter /play/mobile. Ohne `autoVerify` — Android fragt dann
+                die Kopplung des Funkbegleiters, Raum- und Wachen-QR-Codes.
+                <b>Nicht</b> /play/mobile und /play/desktop: Dorthin schickt die App
+                selbst, was nur im Browser geht (Premium kaufen, kündigen) — wer die
+                App als Standard für Links gewählt hat, käme sonst nie auf der
+                Webseite an. Ohne `autoVerify` — Android fragt dann
                 einmal, ob App oder Browser; was die App nicht versteht
                 (`Tieflinks`), bleibt ohne Wirkung und die Startseite steht.
                 Die Wurzel `/` steht da, weil der QR-Code der Lobby `/?raum=…` trägt.
@@ -91,8 +94,6 @@
                 <data android:pathPrefix="/funk/" />
                 <data android:pathPrefix="/raum/" />
                 <data android:path="/gemeinschaften" />
-                <data android:pathPrefix="/play/mobile/" />
-                <data android:pathPrefix="/play/desktop/" />
             </intent-filter>
         </activity>
     </application>
