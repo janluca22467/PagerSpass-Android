@@ -22,8 +22,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
@@ -76,10 +74,7 @@ fun Teilleiste(
         modifier = modifier
             .fillMaxWidth()
             .shadow(Erhebung.Leiste, Rundung.LeisteOben)
-            .background(
-                brush = Brush.verticalGradient(listOf(Color(0xFA263344), Color(0xFA101823))),
-                shape = Rundung.LeisteOben,
-            )
+            .background(Farben.Flaeche, Rundung.LeisteOben)
             .drawBehind {
                 val strich = 1.dp.toPx()
                 drawLine(
@@ -112,11 +107,14 @@ private fun RowScope.Teilknopf(
     ruft: Boolean,
     beiDruck: () -> Unit,
 ) {
+    // Wie die Tableiste im Tabletlook: hier = helle Fläche, weiße Schrift,
+    // amberfarbenes Zeichen.
     val farbe = when {
         hier -> Farben.Amber
         ruft -> Farben.SignalHell
         else -> Farben.TextLeise
     }
+    val schriftfarbe = if (hier) Farben.Text else farbe
 
     Box(
         contentAlignment = Alignment.TopCenter,
@@ -126,12 +124,7 @@ private fun RowScope.Teilknopf(
             .defaultMinSize(minHeight = Mass.LeisteHoehe - 12.dp)
             .then(
                 if (hier) {
-                    Modifier.background(
-                        brush = Brush.verticalGradient(
-                            listOf(Farben.Amber.copy(alpha = 0.17f), Farben.Amber.copy(alpha = 0.08f)),
-                        ),
-                        shape = Rundung.Normal,
-                    )
+                    Modifier.background(Farben.FlaecheAktiv, Rundung.Normal)
                 } else {
                     Modifier
                 }
@@ -158,7 +151,7 @@ private fun RowScope.Teilknopf(
             Text(
                 text = teil.titel,
                 style = Schrift.Weg,
-                color = farbe,
+                color = schriftfarbe,
                 maxLines = 1,
                 overflow = TextOverflow.Clip,
             )

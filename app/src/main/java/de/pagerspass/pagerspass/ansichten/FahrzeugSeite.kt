@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -30,7 +29,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
@@ -41,7 +39,7 @@ import de.pagerspass.pagerspass.netz.FmsTaste
 import de.pagerspass.pagerspass.netz.Katalog
 import de.pagerspass.pagerspass.netz.Rundenfahrzeug
 import de.pagerspass.pagerspass.ui.bausteine.Feld
-import de.pagerspass.pagerspass.ui.bausteine.Kasten
+import de.pagerspass.pagerspass.ui.bausteine.Kapselreihe
 import de.pagerspass.pagerspass.ui.bausteine.Knopf
 import de.pagerspass.pagerspass.ui.bausteine.Knopfart
 import de.pagerspass.pagerspass.ui.bausteine.Ladezeile
@@ -49,8 +47,6 @@ import de.pagerspass.pagerspass.ui.bausteine.Leerhinweis
 import de.pagerspass.pagerspass.ui.bausteine.Marke
 import de.pagerspass.pagerspass.ui.bausteine.Pille
 import de.pagerspass.pagerspass.ui.bausteine.Pillenreihe
-import de.pagerspass.pagerspass.ui.bausteine.Reiter
-import de.pagerspass.pagerspass.ui.bausteine.Reiterreihe
 import de.pagerspass.pagerspass.ui.bausteine.Schalterzeile
 import de.pagerspass.pagerspass.ui.bausteine.SehrLeise
 import de.pagerspass.pagerspass.ui.bausteine.Teil
@@ -62,7 +58,10 @@ import de.pagerspass.pagerspass.ui.theme.Rundung
 import de.pagerspass.pagerspass.ui.theme.Schrift
 import de.pagerspass.pagerspass.ui.theme.flaeche
 import de.pagerspass.pagerspass.ui.theme.flaechenmarke
-import de.pagerspass.pagerspass.ui.theme.raster
+import de.pagerspass.pagerspass.ui.theme.kopfverlauf
+import de.pagerspass.pagerspass.ui.theme.leuchtleiste
+import de.pagerspass.pagerspass.ui.theme.seitengrund
+import de.pagerspass.pagerspass.ui.theme.statusquadrat
 import de.pagerspass.pagerspass.ui.zeichen.Zeichen
 
 /**
@@ -105,8 +104,7 @@ fun FahrzeugSeite(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .drawBehind { drawRect(Brush.verticalGradient(listOf(Farben.Bg, Farben.BgTief))) }
-            .raster(),
+            .seitengrund(),
     ) {
         Fahrzeugkopf(meins, oben, beiVerlassen)
 
@@ -179,20 +177,21 @@ fun FahrzeugSeite(
                             var leitung by remember { mutableStateOf("funk") }
                             if (!stelleFrei && leitung == "einsatzstelle") leitung = "funk"
 
-                            Reiterreihe {
-                                Reiter(
-                                    "Funkverkehr",
-                                    offen = leitung == "funk",
-                                    beiDruck = { leitung = "funk" },
-                                    modifier = Modifier.weight(1f),
-                                )
-                                Reiter(
-                                    if (stelleFrei) "Einsatzstelle" else "Einsatzstelle · S4",
-                                    offen = leitung == "einsatzstelle",
-                                    beiDruck = { if (stelleFrei) leitung = "einsatzstelle" },
-                                    modifier = Modifier.weight(1f),
-                                )
-                            }
+                            // Funkverkehr/Einsatzstelle als Kapselreihe, wie
+                            // im Web seit dem 01.10.2026.
+                            Kapselreihe(
+                                seiten = listOf("funk", "einsatzstelle"),
+                                gewaehlt = leitung,
+                                beiWahl = { leitung = it },
+                                aufschrift = {
+                                    when {
+                                        it == "funk" -> "Funkverkehr"
+                                        stelleFrei -> "Einsatzstelle"
+                                        else -> "Einsatzstelle · S4"
+                                    }
+                                },
+                                gesperrt = { it == "einsatzstelle" && !stelleFrei },
+                            )
 
                             if (leitung == "einsatzstelle") {
                                 Einsatzstellenfaden(
@@ -262,7 +261,7 @@ private fun Fahrzeugkopf(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
-            .background(Brush.verticalGradient(listOf(Farben.FlaecheHoch, Farben.Flaeche)))
+            .kopfverlauf()
             .drawBehind {
                 val strich = 1.dp.toPx()
                 drawLine(
@@ -279,8 +278,8 @@ private fun Fahrzeugkopf(
             Box(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier
-                    .size(40.dp)
-                    .background(fmsFarbe(meins.status), CircleShape),
+                    .size(44.dp)
+                    .statusquadrat(fmsFarbe(meins.status), ecke = 12.dp),
             ) {
                 Text(
                     text = meins.status.toString(),
@@ -296,7 +295,9 @@ private fun Fahrzeugkopf(
         ) {
             Text(
                 text = meins?.funkrufname ?: "—",
-                style = Schrift.MonoNormal.copy(fontSize = Schrift.GROSS),
+                // Eine Stufe kleiner als früher (Web, „Handy Runde 2"): Lange
+                // Rufnamen brachen am Handy um.
+                style = Schrift.MonoNormal,
                 color = Farben.Text,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -377,7 +378,26 @@ private fun ColumnScope.TeilEinsatz(
         return
     }
 
-    Kasten(marke = true, wartet = !einsatz.abgeschlossen, abstandInnen = Abstand.Klein) {
+    // Die Einsatzkarte mit Dringlichkeitsschein (Web, 01.10.2026): Die
+    // Leuchtleiste trägt die Priorität, ein dringender Einsatz glimmt.
+    val dringlichkeit = when {
+        einsatz.abgeschlossen -> einsatzFarbe(einsatz.state)
+        einsatz.prioritaet >= 3 -> Farben.Signal
+        einsatz.prioritaet == 2 -> Farben.Amber
+        else -> Farben.FmsFrei
+    }
+    Column(
+        verticalArrangement = Arrangement.spacedBy(Abstand.Klein),
+        modifier = Modifier
+            .fillMaxWidth()
+            .flaeche(randfarbe = dringlichkeit.copy(alpha = 0.35f))
+            .leuchtleiste(
+                dringlichkeit,
+                schein = 0.6f,
+                glimmt = einsatz.prioritaet >= 3 && !einsatz.abgeschlossen,
+            )
+            .padding(start = Abstand.Gross + 3.dp, end = Abstand.Gross, top = Abstand.Gross, bottom = Abstand.Gross),
+    ) {
         Row(
             horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
             verticalAlignment = Alignment.CenterVertically,
@@ -405,6 +425,14 @@ private fun ColumnScope.TeilEinsatz(
         )
 
         einsatz.meldender?.let { SehrLeise("gemeldet von $it") }
+
+        if (einsatz.empfohleneFahrzeuge > 0 && !einsatz.abgeschlossen) {
+            Verlaufsbalken(
+                anteil = einsatz.alarmierteFahrzeuge.size.toFloat() / einsatz.empfohleneFahrzeuge,
+                farbe = einsatzFarbe(einsatz.state),
+            )
+            SehrLeise("${einsatz.alarmierteFahrzeuge.size}/${einsatz.empfohleneFahrzeuge} Fahrzeuge alarmiert")
+        }
     }
 
     // Die zwei Meldungen, die jede Fahrt braucht — als Knöpfe, nicht als

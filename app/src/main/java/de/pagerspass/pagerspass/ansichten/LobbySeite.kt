@@ -34,7 +34,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -73,7 +72,8 @@ import de.pagerspass.pagerspass.ui.theme.Rundung
 import de.pagerspass.pagerspass.ui.theme.Schrift
 import de.pagerspass.pagerspass.ui.theme.Ziel
 import de.pagerspass.pagerspass.ui.theme.flaeche
-import de.pagerspass.pagerspass.ui.theme.raster
+import de.pagerspass.pagerspass.ui.theme.kopfverlauf
+import de.pagerspass.pagerspass.ui.theme.seitengrund
 import de.pagerspass.pagerspass.ui.zeichen.Zeichen
 
 /**
@@ -127,10 +127,7 @@ fun LobbySeite(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .drawBehind {
-                drawRect(Brush.verticalGradient(listOf(Farben.Bg, Farben.BgTief)))
-            }
-            .raster(),
+            .seitengrund(),
     ) {
         Dienstleiste(
             stand = stand,
@@ -216,7 +213,8 @@ private fun Dienstleiste(
         verticalArrangement = Arrangement.spacedBy(Abstand.Klein),
         modifier = Modifier
             .fillMaxWidth()
-            .background(Brush.verticalGradient(listOf(Farben.FlaecheHoch, Farben.Flaeche)))
+            // Der schräge Verlauf des Tablet-Kopfs (Tabletlook, 30.09.2026).
+            .kopfverlauf()
             .drawBehind {
                 val strich = 1.dp.toPx()
                 drawLine(
@@ -428,7 +426,8 @@ private fun ColumnScope.TeilMannschaft(
         Pillenreihe {
             garage.take(BOTVORSCHLAEGE).forEach { id ->
                 Pille(
-                    aufschrift = fahrzeuge.firstOrNull { it.id == id }?.typ ?: id,
+                    // „+ Bot" wie im Web: eine Kapsel, die etwas hinzufügt.
+                    aufschrift = "+ " + (fahrzeuge.firstOrNull { it.id == id }?.typ ?: id),
                     an = false,
                     beiDruck = { beiBot(id) },
                 )

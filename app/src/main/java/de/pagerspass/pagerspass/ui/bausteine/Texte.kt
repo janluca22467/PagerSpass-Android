@@ -65,7 +65,10 @@ fun Marke(
         horizontalArrangement = Arrangement.spacedBy(Abstand.Winzig),
         verticalAlignment = Alignment.CenterVertically,
         modifier = modifier
-            .border(1.dp, farbe, Rundung.Rund)
+            // Gefüllt statt nur umrandet (moderner Anstrich, 01.10.2026): ein
+            // Hauch der eigenen Farbe, der Rand nur noch halb so laut.
+            .background(farbe.copy(alpha = 0.12f), Rundung.Rund)
+            .border(1.dp, farbe.copy(alpha = 0.45f), Rundung.Rund)
             .padding(horizontal = Abstand.Klein, vertical = Abstand.Haar),
     ) {
         zeichenVorn?.invoke()

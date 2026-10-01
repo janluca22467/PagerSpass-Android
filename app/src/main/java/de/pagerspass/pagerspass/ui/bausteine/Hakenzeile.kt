@@ -117,6 +117,30 @@ private fun Haken(an: Boolean, aktiv: Boolean) {
 }
 
 /** Der Haken — auf demselben 24er-Raster wie alle anderen Zeichen. */
+/**
+ * Der runde Haken der modernen Fahrzeugkarten — im Alarmdialog rechts an jeder
+ * Karte. Gewählt ist er ein voller Amberkreis, sonst ein leerer Ring.
+ */
+@Composable
+fun RunderHaken(an: Boolean, modifier: Modifier = Modifier) {
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = modifier
+            .size(26.dp)
+            .background(if (an) Farben.Amber else Color.Transparent, Rundung.Rund)
+            .border(1.5.dp, if (an) Farben.Amber else Farben.RandHell, Rundung.Rund),
+    ) {
+        if (an) {
+            Icon(
+                imageVector = HAKEN,
+                contentDescription = null,
+                tint = Farben.AufAmber,
+                modifier = Modifier.size(16.dp),
+            )
+        }
+    }
+}
+
 private val HAKEN: ImageVector = ImageVector.Builder(
     name = "haken",
     defaultWidth = 24.dp,

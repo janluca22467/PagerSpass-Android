@@ -4,26 +4,30 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -39,6 +43,8 @@ import de.pagerspass.pagerspass.ui.theme.Abstand
 import de.pagerspass.pagerspass.ui.theme.Farben
 import de.pagerspass.pagerspass.ui.theme.Schrift
 import de.pagerspass.pagerspass.ui.theme.flaeche
+import de.pagerspass.pagerspass.ui.theme.leuchtleiste
+import de.pagerspass.pagerspass.ui.theme.statusquadrat
 
 /**
  * Die Bausteine, die Fahrzeug und Leitstelle teilen.
@@ -113,8 +119,8 @@ fun ColumnScope.Funkprotokoll(
         SehrLeise("Noch kein Funkverkehr.")
     } else {
         Column(
-            verticalArrangement = Arrangement.spacedBy(Abstand.Klein),
-            modifier = Modifier.fillMaxWidth().flaeche(ecke = 9.dp).padding(Abstand.Normal),
+            verticalArrangement = Arrangement.spacedBy(Abstand.Winzig),
+            modifier = Modifier.fillMaxWidth(),
         ) {
             zeilen.takeLast(FUNK_SICHTBAR).forEach { zeile -> Funkzeile(zeile, eigenerRufname) }
         }
@@ -147,38 +153,48 @@ fun ColumnScope.Funkprotokoll(
 }
 
 /**
- * Eine Zeile im Protokoll.
+ * Eine Zeile im Protokoll — als Nachrichtenkarte.
  *
- * Die Art färbt: System leise, Alarm signalrot, Lagemeldung amber, Funk in der
- * Textfarbe. <b>Die eigene Kennung wird hervorgehoben</b> — wer gerufen wird,
- * soll die Zeile finden, ohne jede zu lesen.
+ * Die Art färbt die Innenkante: System leise, Alarm signalrot, Lagemeldung
+ * amber, Nachforderung orange, Funk blau. Ein Alarm glimmt als ganze Karte
+ * (moderner Funkverkehr im Web, 01.10.2026). Die Uhrzeit steht als Pille rechts
+ * oben. <b>Die eigene Kennung wird hervorgehoben</b> — wer gerufen wird, soll die
+ * Zeile finden, ohne jede zu lesen.
  */
 @Composable
 private fun Funkzeile(zeile: Funkzeile, eigenerRufname: String?) {
-    val farbe = when (zeile.kind) {
-        "System" -> Farben.TextSehrLeise
-        "Alarm" -> Farben.SignalHell
-        "Lagemeldung" -> Farben.AmberHell
-        "Nachforderung" -> Farben.OrangeHell
-        else -> Farben.Text
+    val (kante, schrift) = when (zeile.kind) {
+        "System" -> Farben.TextSehrLeise to Farben.TextSehrLeise
+        "Alarm" -> Farben.Signal to Farben.SignalHell
+        "Lagemeldung" -> Farben.Amber to Farben.AmberHell
+        "Nachforderung" -> Farben.FmsAnfahrt to Farben.OrangeHell
+        else -> Farben.BlauHell to Farben.Text
     }
+    val alarm = zeile.kind == "Alarm"
 
     val anMich = eigenerRufname != null &&
         (zeile.an == eigenerRufname || zeile.text.contains(eigenerRufname))
 
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
-        verticalAlignment = Alignment.Top,
-        modifier = Modifier.fillMaxWidth(),
+    Column(
+        verticalArrangement = Arrangement.spacedBy(Abstand.Haar),
+        modifier = Modifier
+            .fillMaxWidth()
+            .flaeche(
+                farbe = if (alarm) Farben.SignalTief.copy(alpha = 0.35f) else Farben.Flaeche,
+                randfarbe = when {
+                    alarm -> Farben.Signal.copy(alpha = 0.55f)
+                    anMich -> Farben.Amber.copy(alpha = 0.55f)
+                    else -> Color.White.copy(alpha = 0.07f)
+                },
+                ecke = 12.dp,
+            )
+            .leuchtleiste(kante, ecke = 12.dp, schein = if (alarm) 0.6f else 0f, glimmt = alarm)
+            .padding(start = Abstand.Normal + 3.dp, end = Abstand.Klein, top = Abstand.Klein, bottom = Abstand.Klein),
     ) {
-        Text(
-            text = uhrzeit(zeile.zeit),
-            style = Schrift.Winzig.copy(fontFamily = Schrift.Mono),
-            color = Farben.TextSehrLeise,
-        )
-        Column(
-            verticalArrangement = Arrangement.spacedBy(0.dp),
-            modifier = Modifier.weight(1f),
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth(),
         ) {
             Text(
                 text = zeile.von + (zeile.an?.let { " → $it" } ?: ""),
@@ -186,18 +202,55 @@ private fun Funkzeile(zeile: Funkzeile, eigenerRufname: String?) {
                 color = if (anMich) Farben.Amber else Farben.TextSehrLeise,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
             )
-            Text(text = zeile.text, style = Schrift.Klein, color = farbe)
+            Zeitpille(uhrzeit(zeile.zeit))
         }
+        Text(text = zeile.text, style = Schrift.Klein, color = schrift)
     }
+}
+
+/** Die Uhrzeit einer Nachricht als ruhige Pille. */
+@Composable
+private fun Zeitpille(zeit: String) {
+    Text(
+        text = zeit,
+        style = Schrift.Winzig.copy(fontFamily = Schrift.Mono),
+        color = Farben.TextSehrLeise,
+        modifier = Modifier
+            .background(Color.White.copy(alpha = 0.06f), RoundedCornerShape(999.dp))
+            .padding(horizontal = Abstand.Klein, vertical = 1.dp),
+    )
+}
+
+/**
+ * Eine ruhige Marke für Nebenkennungen — Fahrzeugtyp, BOT.
+ *
+ * Gefüllt mit sechs Prozent Weiß, ohne Rand: `.kachel__typ` und `.mini` im Web.
+ * Sie liest sich, ohne mit den farbigen Marken (Zustand, Sprechwunsch) um
+ * Aufmerksamkeit zu konkurrieren.
+ */
+@Composable
+fun Kennmarke(text: String, modifier: Modifier = Modifier) {
+    Text(
+        text = text,
+        style = Schrift.Winzig.copy(fontWeight = FontWeight.SemiBold),
+        color = Farben.TextLeise,
+        maxLines = 1,
+        modifier = modifier
+            .background(Color.White.copy(alpha = 0.06f), RoundedCornerShape(999.dp))
+            .padding(horizontal = Abstand.Klein, vertical = Abstand.Haar),
+    )
 }
 
 /**
  * Eine Einsatzzeile — die Bauform der Einsatzliste.
  *
- * Der Farbbalken links trägt den Zustand; das ist dieselbe Sprache wie die
- * Auswahlzeilen im Web. Rechts die Priorität als Zahl im Kreis — sie ist der
- * Grund, warum man in einer vollen Liste zuerst nach oben schaut.
+ * Seit dem modernen Anstrich der Leitstelle (01.10.2026) eine weiche Karte: Die
+ * Leuchtleiste links trägt den Zustand, der Schein dahinter die Organisation,
+ * der Zustand selbst steht als Pille rechts, und unten zeigt ein runder Balken,
+ * wie viele der empfohlenen Fahrzeuge alarmiert sind. Ein Einsatz mit Priorität
+ * 3 und mehr glimmt.
  */
 @Composable
 fun Einsatzzeile(
@@ -209,7 +262,12 @@ fun Einsatzzeile(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
-            .flaeche(ecke = 9.dp, randfarbe = einsatzFarbe(einsatz.state).copy(alpha = 0.55f))
+            .flaeche(ecke = 12.dp, randfarbe = Color.White.copy(alpha = 0.07f))
+            .leuchtleiste(
+                einsatzFarbe(einsatz.state),
+                ecke = 12.dp,
+                glimmt = einsatz.prioritaet >= 3 && !einsatz.abgeschlossen,
+            )
             .then(
                 if (beiDruck != null) {
                     Modifier.clickable(onClick = beiDruck)
@@ -217,7 +275,7 @@ fun Einsatzzeile(
                     Modifier
                 }
             )
-            .padding(horizontal = Abstand.Normal, vertical = Abstand.Klein),
+            .padding(start = Abstand.Normal + 3.dp, end = Abstand.Normal, top = Abstand.Klein, bottom = Abstand.Klein),
     ) {
         Column(
             verticalArrangement = Arrangement.spacedBy(Abstand.Haar),
@@ -272,25 +330,73 @@ fun Einsatzzeile(
                     color = Farben.SignalHell,
                 )
             }
+
+            // Wie weit die Alarmierung ist — runder Verlaufsbalken in der
+            // Zustandsfarbe, nur wenn es eine Empfehlung gibt.
+            if (einsatz.empfohleneFahrzeuge > 0 && !einsatz.abgeschlossen) {
+                Verlaufsbalken(
+                    anteil = einsatz.alarmierteFahrzeuge.size.toFloat() / einsatz.empfohleneFahrzeuge,
+                    farbe = einsatzFarbe(einsatz.state),
+                    modifier = Modifier.padding(top = Abstand.Winzig),
+                )
+            }
         }
 
         Marke(einsatzZustand(einsatz.state), farbe = einsatzFarbe(einsatz.state))
     }
 }
 
-/** Eine Fahrzeugzeile mit Statuspunkt — für Tableau und Alarmauswahl. */
+/**
+ * Der schmale, runde Verlaufsbalken der modernen Leitstelle — Alarmierung,
+ * Löschwasser, Aufgaben. Leiser als `Fortschritt`: keine Zahl, kein Schein,
+ * vier Punkte hoch.
+ */
+@Composable
+fun Verlaufsbalken(anteil: Float, farbe: Color, modifier: Modifier = Modifier) {
+    val gezeigt = anteil.coerceIn(0f, 1f)
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(4.dp)
+            .background(Color.White.copy(alpha = 0.07f), RoundedCornerShape(999.dp)),
+    ) {
+        if (gezeigt > 0f) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(gezeigt)
+                    .fillMaxHeight()
+                    .background(farbe, RoundedCornerShape(999.dp)),
+            )
+        }
+    }
+}
+
+/**
+ * Eine Fahrzeugzeile mit Statusquadrat — für Tableau und Alarmauswahl.
+ *
+ * Die Bauform der Fahrzeugliste nach ihrem zweiten Durchgang (01.10.2026): der
+ * Status als abgerundetes Quadrat in FMS-Farbe mit Lichtkante und Schein, der
+ * Typ als ruhige Marke oben rechts, „BOT" als eigene Pille, ein Hauch der
+ * Organisationsfarbe an der Kante.
+ */
 @Composable
 fun Dienstfahrzeugzeile(
     fahrzeug: Rundenfahrzeug,
     hinten: (@Composable () -> Unit)? = null,
     beiDruck: (() -> Unit)? = null,
+    gewaehlt: Boolean = false,
 ) {
     Row(
         horizontalArrangement = Arrangement.spacedBy(Abstand.Normal),
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
-            .flaeche(ecke = 9.dp)
+            .flaeche(
+                farbe = Farben.Flaeche,
+                randfarbe = if (gewaehlt) Farben.Amber.copy(alpha = 0.7f) else Color.White.copy(alpha = 0.07f),
+                ecke = 12.dp,
+            )
+            .leuchtleiste(Farben.org(fahrzeug.organisation), ecke = 12.dp, schein = 0.35f)
             .then(
                 if (beiDruck != null) {
                     Modifier.clickable(onClick = beiDruck)
@@ -298,15 +404,15 @@ fun Dienstfahrzeugzeile(
                     Modifier
                 }
             )
-            .padding(horizontal = Abstand.Normal, vertical = Abstand.Klein),
+            .padding(start = Abstand.Normal + 3.dp, end = Abstand.Normal, top = Abstand.Klein, bottom = Abstand.Klein),
     ) {
-        // Der Statuspunkt: die Zahl auf der Statusfarbe. Das ist das Tableau
+        // Das Statusquadrat: die Zahl auf der Statusfarbe. Das ist das Tableau
         // in klein — wer FMS kennt, liest die Farbe schneller als das Wort.
         Box(
             contentAlignment = Alignment.Center,
             modifier = Modifier
-                .size(34.dp)
-                .background(fmsFarbe(fahrzeug.status), CircleShape),
+                .size(40.dp)
+                .statusquadrat(fmsFarbe(fahrzeug.status), ecke = 11.dp),
         ) {
             Text(
                 text = fahrzeug.status.toString(),
@@ -319,27 +425,46 @@ fun Dienstfahrzeugzeile(
             verticalArrangement = Arrangement.spacedBy(Abstand.Haar),
             modifier = Modifier.weight(1f),
         ) {
-            Text(
-                text = fahrzeug.funkrufname,
-                style = Schrift.MonoNormal,
-                color = Farben.Text,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            SehrLeise(
-                listOfNotNull(
-                    fahrzeug.typ.ifBlank { null },
-                    fahrzeug.statusText.ifBlank { null },
-                    if (fahrzeug.playerId == null) "Bot" else null,
-                ).joinToString(" · "),
-            )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = fahrzeug.funkrufname,
+                    style = Schrift.MonoNormal,
+                    color = Farben.Text,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                if (fahrzeug.playerId == null) Kennmarke("BOT")
+            }
+            // Der Statustext in Textfarbe, darunter leise, was sonst zählt.
+            if (fahrzeug.statusText.isNotBlank()) {
+                Text(
+                    text = fahrzeug.statusText,
+                    style = Schrift.Klein,
+                    color = Farben.Text,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (fahrzeug.alarmOffen) {
+                Text(text = "nicht quittiert", style = Schrift.Winzig, color = Farben.SignalHell)
+            }
         }
 
-        if (fahrzeug.sprechwunschSeit != null) {
-            Marke(
-                text = if (fahrzeug.sprechwunschVorrang) "Sprechwunsch!" else "Sprechwunsch",
-                farbe = Farben.FmsSprechwunsch,
-            )
+        Column(
+            horizontalAlignment = Alignment.End,
+            verticalArrangement = Arrangement.spacedBy(Abstand.Winzig),
+        ) {
+            if (fahrzeug.typ.isNotBlank()) Kennmarke(fahrzeug.typ)
+            if (fahrzeug.sprechwunschSeit != null) {
+                Marke(
+                    text = if (fahrzeug.sprechwunschVorrang) "Sprechwunsch!" else "Sprechwunsch",
+                    farbe = Farben.FmsSprechwunsch,
+                )
+            }
         }
 
         hinten?.invoke()
