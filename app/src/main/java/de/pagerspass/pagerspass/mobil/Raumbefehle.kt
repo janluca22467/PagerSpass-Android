@@ -1,6 +1,8 @@
 package de.pagerspass.pagerspass.mobil
 
 import de.pagerspass.pagerspass.netz.AaoVorlagenzeile
+import de.pagerspass.pagerspass.netz.KiPatientErgebnis
+import de.pagerspass.pagerspass.netz.Netz
 import de.pagerspass.pagerspass.netz.Raumwache
 import de.pagerspass.pagerspass.netz.Raumwege
 import de.pagerspass.pagerspass.netz.Raumzustand
@@ -815,6 +817,77 @@ class Raumbefehle internal constructor(
             beiFehler(f.message ?: "Das ging gerade nicht.")
         }
     }
+
+    // ===================================================== Fahrzeug (v6)
+    //
+    // Die Handgriffe, die mit Web 5.0.0.26 dazukamen: PatSim mit Übernahme und
+    // KI-Gespräch, die Abfragen der Polizeilage, FwSim und die Tafeln des
+    // Einsatz-Tablets. Ein älterer Server kennt die Methoden nicht und weist den
+    // Aufruf ab — die Absage landet in derselben Meldung wie jede andere.
+
+    /** Einen Patienten übernehmen oder abgeben — nur ohne Massenanfall. */
+    fun patientUebernehmen(incidentId: String, patientId: String, abgeben: Boolean) =
+        leitung.rufen("PatientUebernehmen", wert(incidentId), wert(patientId), wert(abgeben))
+
+    /** Die Besatzung am Patienten fordert über die Leitstelle einen Notarzt nach. */
+    fun patientNotarztNachfordern(incidentId: String, patientId: String) =
+        leitung.rufen("PatientNotarztNachfordern", wert(incidentId), wert(patientId))
+
+    /**
+     * Den Patienten fragen (Premium). Mit Antwort, damit eine Absage am Eingabefeld
+     * steht und nicht im allgemeinen Fehlerstreifen.
+     */
+    suspend fun patientFragen(incidentId: String, patientId: String, frage: String): KiPatientErgebnis =
+        kiErgebnis(leitung.frage("PatientFragen", wert(incidentId), wert(patientId), wert(frage.trim().take(200))))
+
+    /** Die Fallbesprechung zur Verdachtsdiagnose — geht nur an den, der fragt. */
+    suspend fun patientBesprechen(incidentId: String, patientId: String): KiPatientErgebnis =
+        kiErgebnis(leitung.frage("PatientBesprechen", wert(incidentId), wert(patientId)))
+
+    private fun kiErgebnis(roh: JsonElement?): KiPatientErgebnis =
+        roh?.let { runCatching { Netz.abgabe.decodeFromJsonElement(KiPatientErgebnis.serializer(), it) }.getOrNull() }
+            ?: KiPatientErgebnis(fehler = "Keine Verbindung.")
+
+    /** Einfach oder erweitert — die Übersicht der Maßnahmen, eine Einstellung am Konto. */
+    suspend fun massnahmenkatalogLaden(): Boolean? {
+        val kennung = eigeneKennung() ?: return null
+        return runCatching { wege?.massnahmenkatalog(kennung)?.alle }.getOrNull()
+    }
+
+    fun personalienFeststellen(incidentId: String, beteiligterId: String) =
+        leitung.rufen("PersonalienFeststellen", wert(incidentId), wert(beteiligterId))
+
+    /** Die Leitstelle über Funk um eine Abfrage bitten — die Antwort kommt über Funk. */
+    fun abfrageAnfordern(incidentId: String, beteiligterId: String, art: String) =
+        leitung.rufen("AbfrageAnfordern", wert(incidentId), wert(beteiligterId), wert(art))
+
+    fun polizeiMassnahme(incidentId: String, beteiligterId: String, massnahmeId: String) =
+        leitung.rufen("PolizeiMassnahme", wert(incidentId), wert(beteiligterId), wert(massnahmeId))
+
+    /** Den Tatvorwurf festhalten — Freitext, wie die Verdachtsdiagnose. */
+    fun beteiligterEinordnen(incidentId: String, beteiligterId: String, text: String) =
+        leitung.rufen("BeteiligterEinordnen", wert(incidentId), wert(beteiligterId), wert(text.trim().take(120)))
+
+    /** FwSim: einen Auftrag geben — leer heißt null, SignalR kennt keine wahlfreien Stellen. */
+    fun fwAuftrag(incidentId: String, auftragId: String, truppId: String?, bereichId: String?) =
+        leitung.rufen("FwAuftrag", wert(incidentId), wert(auftragId), opt(truppId), opt(bereichId))
+
+    /** Eine Meldung auf die Atemschutzüberwachungstafel; `zusatz` ist Auftrag oder Druck. */
+    fun atemschutzMelden(incidentId: String, vehicleId: String, trupp: String, meldung: String, zusatz: String?) =
+        leitung.rufen("AtemschutzMelden", wert(incidentId), wert(vehicleId), wert(trupp), wert(meldung), opt(zusatz))
+
+    fun abschnittUmbenennen(incidentId: String, bisher: String, neu: String, zweig: String) =
+        leitung.rufen("AbschnittUmbenennen", wert(incidentId), wert(bisher), wert(neu.take(40)), wert(zweig))
+
+    /** Eine Lagemeldung aus dem Einsatz-Tablet — dieselbe Nachricht wie im Fahrzeug. */
+    fun lagemeldungAbsetzen(text: String) {
+        if (text.isBlank()) return
+        leitung.rufen("SendLagemeldung", wert(text.trim()))
+    }
+
+    /** Die bei der Einsatzleitung gesammelten Nachforderungen gebündelt an die Leitstelle. */
+    fun nachforderungenWeiterreichen(incidentId: String, zweig: String) =
+        leitung.rufen("NachforderungenWeiterreichen", wert(incidentId), wert(zweig))
 
     // ------------------------------------------------------------- Werkzeug
 

@@ -103,6 +103,10 @@ class Raumwege(private val netz: Netz) {
 
     suspend fun aaoVorlageLoeschen(kennung: String, id: String) =
         netz.ohneAntwort("/api/aao/${teil(id)}?kennung=${teil(kennung)}", "DELETE")
+
+    /** PatSim: einfache oder erweiterte Übersicht der Maßnahmen (Konto → Spiel & Bedienung). */
+    suspend fun massnahmenkatalog(kennung: String): Massnahmenkatalog =
+        netz.hole("/api/konto/${teil(kennung)}/massnahmenkatalog")
 }
 
 private fun teil(wert: String): String = URLEncoder.encode(wert, "UTF-8")

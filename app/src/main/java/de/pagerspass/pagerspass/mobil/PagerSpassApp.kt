@@ -441,6 +441,7 @@ private fun Rundenrahmen(
             ),
             befehle = runde.befehle,
             neben = neben,
+            server = sitzungsstand.server,
         )
 
         else -> LobbySeite(

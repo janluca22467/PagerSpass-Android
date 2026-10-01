@@ -161,6 +161,21 @@ data class Patientenmassnahme(
     val brauchtArzt: Boolean = false,
     val laeuft: Boolean = false,
     val moeglich: Boolean = true,
+    // ---------------------------------------------- seit Web 5.0.0.26 (v6)
+    val erledigt: Boolean = false,
+    /** Warum sie gerade nicht geht — sichtbar am Eintrag, nicht erst nach dem Druck. */
+    val grund: String? = null,
+    val voraussetzungen: List<String> = emptyList(),
+    val gruppe: String = "",
+    /** Was eine Besatzung ohne Rettungsdienst darf. */
+    val ersteHilfe: Boolean = false,
+    val wiederholbar: Boolean = false,
+    val anzahl: Int = 0,
+    /**
+     * Ob sie in der einfachen Übersicht steht. Vorgabe wahr: Der ältere Server
+     * kennt das Feld nicht und schickt ohnehin nur die Vorschläge.
+     */
+    val vorgeschlagen: Boolean = true,
 )
 
 /** Ein abgearbeitetes Untersuchungsschema mit seinen Punkten. */
@@ -169,6 +184,12 @@ data class Befundschema(
     val schema: String = "",
     val name: String = "",
     val punkte: List<Befundpunkt> = emptyList(),
+    // ---------------------------------------------- seit Web 5.0.0.26 (v6)
+    /** Vorgabe wahr: Am älteren Server kommt ein Schema nur fertig an. */
+    val vollstaendig: Boolean = true,
+    val offen: List<String>? = null,
+    val naechster: Befundpunkt? = null,
+    val naechsterFertigUm: String? = null,
 )
 
 /** Leerer Befund heißt unauffällig — und wird auch so angezeigt. */
