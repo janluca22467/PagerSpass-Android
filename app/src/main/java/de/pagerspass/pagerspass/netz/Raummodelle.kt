@@ -250,3 +250,19 @@ data class AaoSpeicherergebnis(
     val anzahl: Int = 0,
     val grenze: Int = 0,
 )
+
+/** Der Teil von `/api/version`, den der Raum braucht — der Rest fällt still weg. */
+@Serializable
+data class Serverangebot(val kiFunk: Boolean = false)
+
+/** Die Antwort der Premium-Abfragehilfe — Spiegel von `NotrufabfrageKiAntwort` im Hub. */
+@Serializable
+data class NotrufabfrageKiAntwort(
+    val ok: Boolean = false,
+    /** Die vorgeschlagene Antwort, ab 0. */
+    val index: Int? = null,
+    val sicherheit: Double? = null,
+    val begruendung: String? = null,
+    val nachfragen: String? = null,
+    val fehler: String? = null,
+)

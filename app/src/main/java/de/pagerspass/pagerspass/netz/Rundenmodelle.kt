@@ -97,8 +97,16 @@ data class Raumzustand(
     val uebergabe: Uebergabe? = null,
     /** Seit wann die einzige Leitstelle ohne Verbindung ist. */
     val leitstelleVerwaistSeit: String? = null,
-    /** Ob die KI-Leitstelle gerade disponiert — eine leise Zeile im Fahrzeug. */
+    /**
+     * Ob die KI-Leitstelle gerade disponiert — eingeschaltet ist sie nur, solange
+     * kein Mensch am Tisch sitzt. Ein älterer Server kennt sie nicht; dann bleibt
+     * es bei `false`, und die Lobby zeigt die Karte gar nicht erst.
+     */
     val kiLeitstelleWirksam: Boolean = false,
+    /** Wer die KI-Leitstelle eingeschaltet hat — er führt die Lobby auch aus dem Fahrzeug. */
+    val kiLeitstelleInhaberId: String? = null,
+    /** Das Wetter im Kreis — es bremst jede Anfahrt, deshalb steht es im Kopf der Leitstelle. */
+    val wetter: Wetterstand? = null,
 ) {
     val inLobby: Boolean get() = state == "Lobby"
     val laeuft: Boolean get() = state == "Laeuft"
@@ -208,6 +216,43 @@ data class Rundeneinstellungen(
     val streameraufzeichnung: Boolean = false,
     /** Wer überträgt — die Spieler-Id dessen, der den Schalter umgelegt hat. */
     val streamerKontoId: String? = null,
+    // ------------------------------------------------- Neu in 5.0.0.26 (v6)
+    //
+    // Alle mit Vorgabe: Ein älterer Server schickt sie nicht, und dann gilt, was
+    // vorher galt — keine KI, Deutschland.
+    /** Notrufer sprechen frei (KI, Premium) — nur mit telefonischer Leitstelle. */
+    val kiAnrufeAktiv: Boolean = false,
+    /** Die KI-Leitstelle besetzt den leeren Tisch (Premium). Ob sie disponiert, sagt `kiLeitstelleWirksam`. */
+    val kiLeitstelleAktiv: Boolean = false,
+    /** Im Zufallsmodus erfindet eine KI die Einsätze samt AAO (Premium). */
+    val kiLagenAktiv: Boolean = false,
+    /** Land bzw. Kanton des Ausrückebereichs — `NordrheinWestfalen`, `Tirol`, `Zuerich`. */
+    val bundesland: String? = null,
+    /** `Deutschland`, `Oesterreich` oder `Schweiz`. */
+    val staat: String = "Deutschland",
+    /** Die Nachbarkreise, die mit auf dem Tisch liegen — Kennungen aus dem Katalog. */
+    val mitkreise: List<String> = emptyList(),
+    /** Woher der Wind kommt, ausgeschrieben („Südwest") — nur für Gefahrgutlagen von Belang. */
+    val windText: String? = null,
+)
+
+/**
+ * Das Wetter der Runde — Spiegel von `Wetterstand` in `types.ts`.
+ *
+ * <b>Die Bremse kommt vom Server.</b> Wie stark Glätte die Anfahrt bremst, ist eine
+ * Spielregel (`Wetterdienst.GeschwindigkeitsFaktor`); die App rundet nur.
+ */
+@Serializable
+data class Wetterstand(
+    /** `Klar`, `Regen`, `Glaette`, `Sturm`. */
+    val aktuell: String = "Klar",
+    val aktuellText: String = "",
+    val angekuendigt: String? = null,
+    val angekuendigtText: String? = null,
+    /** Ob gerade eine Unwetterwelle läuft — viele kleine Lagen auf einmal. */
+    val welle: Boolean = false,
+    /** Faktor auf die Fahrgeschwindigkeit; 1 bei klarer Lage. */
+    val bremsfaktor: Double = 1.0,
 )
 
 /**
@@ -782,6 +827,11 @@ data class Anruf(
     val vorschlag: Notrufvorschlag? = null,
     /** Die Ortung des Anschlusses — `null`, solange niemand geortet hat. */
     val ortung: Ortung? = null,
+    /**
+     * Bis wann der Anrufer in der Leitung wartet — die Uhr der Telefonanlage.
+     * Ein älterer Server schickt sie nicht; dann steht die Anlage ohne Uhr da.
+     */
+    val klingeltBis: String? = null,
 ) {
     val klingelt: Boolean get() = zustand == "Klingelt"
     val imGespraech: Boolean get() = zustand == "ImGespraech"
@@ -820,12 +870,14 @@ data class Notrufvorschlag(
  * Die Reihenfolge ist die des Webs: Ort zuerst, denn ohne Ort fährt niemand.
  */
 val FAKTENARTEN: List<Pair<String, String>> = listOf(
-    "Ort" to "Wo genau ist das?",
-    "Was" to "Was ist passiert?",
-    "Betroffene" to "Sind Menschen betroffen?",
-    "Ausmass" to "Wie groß ist das Ausmaß?",
+    // Wortgleich mit `NOTRUF_FRAGEN` im Web und `Notrufabfrage.Fragen` am Server —
+    // der schreibt die angeklickte Frage ins Protokoll.
+    "Ort" to "Wo genau ist der Notfallort?",
+    "Was" to "Was genau ist passiert?",
+    "Betroffene" to "Sind Menschen betroffen oder verletzt?",
+    "Ausmass" to "Wie groß ist das Ganze?",
     "Gefahren" to "Gibt es besondere Gefahren?",
-    "Anrufer" to "Wie heißen Sie?",
+    "Anrufer" to "Wer spricht da bitte?",
 )
 
 /** Was der Server nach Dienstende gutgeschrieben hat. */

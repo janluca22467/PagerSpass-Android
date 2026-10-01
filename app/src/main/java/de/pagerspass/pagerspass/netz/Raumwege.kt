@@ -107,6 +107,13 @@ class Raumwege(private val netz: Netz) {
     /** PatSim: einfache oder erweiterte Übersicht der Maßnahmen (Konto → Spiel & Bedienung). */
     suspend fun massnahmenkatalog(kennung: String): Massnahmenkatalog =
         netz.hole("/api/konto/${teil(kennung)}/massnahmenkatalog")
+
+    /**
+     * Ob der Server die KI-Schalter (Funk, Anrufe, Lagen) anbietet — `kiFunk` in
+     * `/api/version`. Ein älterer Server kennt das Feld nicht; dann heißt es „nein".
+     */
+    suspend fun kiFunkVerfuegbar(): Boolean =
+        netz.hole<Serverangebot>("/api/version").kiFunk
 }
 
 private fun teil(wert: String): String = URLEncoder.encode(wert, "UTF-8")

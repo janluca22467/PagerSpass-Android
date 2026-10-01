@@ -92,6 +92,7 @@ fun Einsatzblende(
     beiAlarmieren: () -> Unit,
     beiAbraeumen: () -> Unit,
     beiZu: () -> Unit,
+    beiWarnen: (() -> Unit)? = null,
 ) {
     var rueckruf by remember(einsatz.id) { mutableStateOf(false) }
     var zurueck by remember(einsatz.id) { mutableStateOf<Set<String>>(emptySet()) }
@@ -133,6 +134,15 @@ fun Einsatzblende(
         },
     ) {
         Text(einsatz.stichwortText, style = Schrift.Normal, color = Farben.Text)
+
+        // Die Bevölkerungswarnung (MoWaS) — hier und nicht mehr im Kopf: Gewarnt wird
+        // wegen einer Lage, und deren Bogen ist der Ort, an dem man daran denkt. Leise,
+        // denn sie ist selten.
+        if (beiWarnen != null && !einsatz.abgeschlossen) {
+            Row {
+                Knopf("⚠  Bevölkerung warnen", beiWarnen, art = Knopfart.Leise, kompakt = true)
+            }
+        }
         Text(
             listOfNotNull(einsatz.adresse.ifBlank { null }, einsatz.ortsteil).joinToString(" · "),
             style = Schrift.MonoKlein,

@@ -18,6 +18,8 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.rememberScrollState
@@ -82,11 +84,17 @@ import de.pagerspass.pagerspass.ui.zeichen.Zeichen
 /**
  * Die Leitstelle — der Dienst aus Sicht des Disponenten.
  *
- * Übertragen aus `web/src/views/LeitstelleView.vue` in die Handyform: fester
- * Kopf, ein Teil, Reiter unten — Einsätze · Fahrzeuge · Notruf · Funk · Mehr.
- * Am Rechner stehen Lagekarte und Tableau nebeneinander; auf einer Handbreit
- * zeigt eine Seite einen Teil, und die Reiter tragen die Marken: Wo es
- * klingelt, steht eine Zahl.
+ * Übertragen aus `web/src/views/LeitstelleView.vue` in die Handyform (5.0.0.26):
+ * fester Kopf (`Leitstellenkopf.kt`), darunter die Reiter Einsätze · Karte ·
+ * Fahrzeuge · Funk, und unten links die Telefonanlage, sobald es klingelt. Am
+ * Rechner stehen Lagekarte und Tableau nebeneinander; auf einer Handbreit zeigt
+ * eine Seite einen Teil.
+ *
+ * <b>Kein Reiter „Notruf" und keiner „Mehr" mehr.</b> Der Notruf versteckte das
+ * Klingeln hinter einer Zahl — jetzt klingelt es über jedem Reiter in der Anlage.
+ * Was unter „Mehr" lag, steht dort, wo man daran denkt: Besatzung und Verlassen im
+ * Werkzeugfach des Kopfs, Dienstende daneben, die Bevölkerungswarnung im
+ * Einsatzbogen, das Anrufjournal bei den Einsätzen.
  *
  * <b>Der Kreislauf der Leitstelle:</b> Der Notruf kommt herein, das Gespräch
  * füllt den Vorschlag, der Vorschlag wird ein Einsatz, der Einsatz alarmiert
@@ -129,20 +137,69 @@ fun LeitstelleSeite(
     var fahrzeugFuer by remember { mutableStateOf<String?>(null) }
     var besatzungOffen by remember { mutableStateOf(false) }
     var warnungOffen by remember { mutableStateOf(false) }
+    var journalOffen by remember { mutableStateOf(false) }
+    var verlassenGefragt by remember { mutableStateOf(false) }
+    var dienstendeGefragt by remember { mutableStateOf(false) }
 
     val raum = stand.raum
     val oben = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val unten = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
-    val klingelnde = raum?.anrufe?.count { it.klingelt } ?: 0
-    val sprechwuensche = raum?.vehicles?.count { it.sprechwunschSeit != null } ?: 0
-    val offene = raum?.incidents?.count { !it.abgeschlossen } ?: 0
+    // Die Telefonanlage: alle klingelnden Leitungen, älteste zuerst. Eingeklappt bleibt
+    // sie, bis ein Anruf hereinkommt, der beim Einklappen noch nicht da war — gemerkt
+    // wird die Kennung des jüngsten Anrufs zu dem Zeitpunkt.
+    val klingelnd = raum?.anrufe?.filter { it.klingelt }?.sortedBy { it.eingangUm }.orEmpty()
+    var weggeklappt by remember { mutableStateOf<String?>(null) }
+    val eingeklappt = weggeklappt != null && klingelnd.lastOrNull()?.id == weggeklappt
+    val laufendesGespraech = raum?.anrufe?.firstOrNull { it.imGespraech && it.bearbeiterPlayerId == eigeneKennung }
 
+    // Das Gespräch geht von selbst auf, sobald man abgehoben hat — wie das
+    // Telefonfenster im Web. Wer es wegklappt, holt es über die Anlage zurück.
+    if (laufendesGespraech != null && gespraech == null) gespraech = laufendesGespraech.id
+
+    // Ungelesenes am Funk — die Zahl am Reiter. Sie zählt ab dem Betreten, nicht ab null.
+    var funkGelesen by remember { mutableIntStateOf(stand.funk.size) }
+    if (reiter == Leitstellenteil.Funk) funkGelesen = stand.funk.size
+    val funkUngelesen = (stand.funk.size - funkGelesen).coerceAtLeast(0)
+
+    // Wer allein am Tisch sitzt, beendet den Dienst; erst in einer besetzten Runde
+    // geht der eigene Platz frei.
+    val kannVerlassen = (raum?.players?.count { !it.istBot } ?: 0) > 1
+
+    Box(modifier = modifier.fillMaxSize()) {
     Column(
-        modifier = modifier
+        modifier = Modifier
             .fillMaxSize()
             .seitengrund(),
     ) {
-        Leitstellenkopf(raum, oben, beiVerlassen)
+        Leitstellenkopf(
+            raum = raum,
+            katalog = katalog,
+            oben = oben,
+            beiNeuerEinsatz = { neuOffen = true },
+            beiWuerfeln = befehle::einsatzWuerfeln,
+            beiBesatzung = { besatzungOffen = true },
+            beiVerlassen = if (kannVerlassen) ({ verlassenGefragt = true }) else null,
+            beiDienstende = {
+                // Nur wer die letzte fehlende Stimme gibt, wird gefragt — sonst ist der
+                // Druck eine Stimme unter mehreren.
+                val entscheidet = raum != null && !raum.dienstendeEigeneStimme &&
+                    raum.dienstendeStimmen + 1 >= raum.dienstendeSchwelle
+                if (entscheidet) dienstendeGefragt = true else beiDienstende()
+            },
+        )
+
+        // Die Reiter oben, wie am Handy im Web — vier Teile, die Zahl am Funk.
+        Reiterreihe(Modifier.background(Farben.Flaeche)) {
+            Leitstellenteil.entries.forEach { t ->
+                Reiter(
+                    aufschrift = t.titel,
+                    offen = reiter == t,
+                    beiDruck = { reiter = t },
+                    marke = if (t == Leitstellenteil.Funk) funkUngelesen else 0,
+                )
+            }
+        }
 
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             if (raum == null) {
@@ -168,16 +225,21 @@ fun LeitstelleSeite(
 
                     when (reiter) {
                         Leitstellenteil.Einsaetze -> {
+                            // Wer mitten im Dienst um den Tisch oder einen Platz bittet,
+                            // wartet auf den Host — und der sitzt hier.
+                            Anfragenkasten(raum, befehle)
                             Feststellungsband(raum, befehle)
                             TeilEinsaetze(
                                 raum = raum,
                                 beiNeu = { neuOffen = true },
+                                beiJournal = if (raum.settings.telefonischeLeitstelle) ({ journalOffen = true }) else null,
                                 // Ein offener Einsatz will alarmiert werden — dorthin
                                 // direkt; ein laufender öffnet seinen Bogen.
                                 beiAlarm = { e -> if (e.offen) alarmFuer = e else bogenFuer = e.id },
                                 beiSchliessen = beiSchliessen,
-                                beiWuerfeln = if (raum.settings.mode == "Frei") befehle::einsatzWuerfeln else null,
                             )
+                            // Platz unter der Liste, damit die Telefonanlage nichts zudeckt.
+                            if (klingelnd.isNotEmpty()) Box(Modifier.height(if (eingeklappt) 72.dp else 220.dp))
                         }
 
                         // Die Karte wird oben ohne Rollspalte gezeichnet.
@@ -189,54 +251,32 @@ fun LeitstelleSeite(
                             beiFahrzeug = { fahrzeugFuer = it.id },
                         )
 
-                        Leitstellenteil.Notruf -> {
-                            TeilNotruf(
-                                raum = raum,
-                                beiAnnehmen = { id ->
-                                    beiAnrufAnnehmen(id)
-                                    gespraech = id
-                                },
-                                beiOeffnen = { gespraech = it },
-                                beiAbweisen = beiAnrufAbweisen,
-                            )
-                            Anrufjournal(raum, befehle)
-                        }
-
                         Leitstellenteil.Funk -> TeilLeitstellenfunk(
                             stand, raum, beiFunk, beiSprechstart, beiSprechende, beiDraht,
                             neben, befehle,
-                        )
-
-                        Leitstellenteil.Mehr -> TeilMehrLeitstelle(
-                            raum = raum,
-                            befehle = befehle,
-                            beiDienstende = beiDienstende,
-                            beiBesatzung = { besatzungOffen = true },
-                            beiWarnung = { warnungOffen = true },
                         )
                     }
                 }
             }
         }
 
-        Teilleiste(
-            teile = Leitstellenteil.entries.map { Teil(it.name, it.titel, it.zeichen) },
-            offen = reiter.name,
-            marken = mapOf(
-                Leitstellenteil.Notruf.name to klingelnde,
-                Leitstellenteil.Fahrzeuge.name to sprechwuensche,
-                Leitstellenteil.Einsaetze.name to offene,
-                Leitstellenteil.Mehr.name to if (raum?.istHost == true) {
-                    raum.platzanfragen.size + raum.beitrittsanfragen.size
-                } else {
-                    0
-                },
-            ),
-            // Ein klingelnder Notruf ruft — er ist das Dringendste, was eine
-            // Leitstelle haben kann, und er wartet nicht.
-            ruft = if (klingelnde > 0) setOf(Leitstellenteil.Notruf.name) else emptySet(),
-            beiWahl = { id -> reiter = Leitstellenteil.valueOf(id) },
-        )
+    }
+
+    // Die Telefonanlage unten links — über jedem Reiter. Läuft schon ein Gespräch
+    // und ist sein Fenster zu, holt ein Druck auf die Anlage es zurück.
+    Telefonanlage(
+        anrufe = klingelnd,
+        eingeklappt = eingeklappt,
+        imGespraech = laufendesGespraech != null,
+        beiAnnehmen = { id ->
+            beiAnrufAnnehmen(id)
+            gespraech = id
+        },
+        beiAbweisen = beiAnrufAbweisen,
+        beiWegklappen = { weggeklappt = klingelnd.lastOrNull()?.id },
+        beiAufklappen = { weggeklappt = null },
+        unten = unten,
+    )
     }
 
     if (neuOffen && katalog != null) {
@@ -274,6 +314,7 @@ fun LeitstelleSeite(
                     bogenFuer = null
                 },
                 beiZu = { bogenFuer = null },
+                beiWarnen = { warnungOffen = true },
             )
         }
     }
@@ -306,6 +347,33 @@ fun LeitstelleSeite(
 
     if (warnungOffen) {
         Warnungsblende(befehle) { warnungOffen = false }
+    }
+
+    if (journalOffen && raum != null) {
+        Blende(titel = "Anrufjournal", beiSchliessen = { journalOffen = false }) {
+            Anrufjournal(raum, befehle)
+        }
+    }
+
+    if (verlassenGefragt) {
+        Leitstelleverlassenblende(
+            beiBleiben = { verlassenGefragt = false },
+            beiVerlassen = {
+                verlassenGefragt = false
+                beiVerlassen()
+            },
+        )
+    }
+
+    if (dienstendeGefragt && raum != null) {
+        Dienstendeblende(
+            raum = raum,
+            beiWeiter = { dienstendeGefragt = false },
+            beiBeenden = {
+                dienstendeGefragt = false
+                beiDienstende()
+            },
+        )
     }
 
     alarmFuer?.let { gemerkt ->
@@ -343,6 +411,13 @@ fun LeitstelleSeite(
                 anruf = anruf,
                 katalog = katalog,
                 beiFrage = { beiAnrufFrage(anruf.id, it) },
+                beiOrten = { befehle.anrufOrten(anruf.id) },
+                // Die KI-Hilfe gehört zu Premium — ohne Abo öffnet der Knopf den Hinweis.
+                beiKi = if (raum?.players?.firstOrNull { it.id == eigeneKennung }?.premium == true) {
+                    { frage, antworten -> befehle.notrufabfrageKi(anruf.id, frage, antworten) }
+                } else {
+                    null
+                },
                 beiUebernehmen = { vorschlag ->
                     // Der Vorschlag wird der Einsatz — mit der Anruf-Id, damit
                     // der Server Gespräch und Lage verknüpft. Das Auflegen
@@ -362,6 +437,8 @@ fun LeitstelleSeite(
                         vorschlag.meldender,
                         anruf.id,
                     )
+                    // Der Einsatz steht, die Abfrage ist erledigt.
+                    abfragestaende.remove(anruf.id)
                     gespraech = null
                 },
                 beiAuflegen = {
@@ -372,6 +449,7 @@ fun LeitstelleSeite(
                 },
                 beiVerwerfen = {
                     beiVorschlagVerwerfen(anruf.id)
+                    abfragestaende.remove(anruf.id)
                     gespraech = null
                 },
                 werkzeug = {
@@ -391,160 +469,7 @@ private enum class Leitstellenteil(
     Einsaetze("Einsätze", Zeichen.Lage),
     Karte("Karte", Zeichen.Karte),
     Fahrzeuge("Fahrzeuge", Zeichen.Fahrzeug),
-    Notruf("Notruf", Zeichen.Notruf),
     Funk("Funk", Zeichen.Funk),
-    Mehr("Mehr", Zeichen.LobbyMehr),
-}
-
-@Composable
-private fun Leitstellenkopf(
-    raum: Raumzustand?,
-    oben: androidx.compose.ui.unit.Dp,
-    beiVerlassen: () -> Unit,
-) {
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(Abstand.Normal),
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier
-            .fillMaxWidth()
-            .kopfverlauf()
-            .drawBehind {
-                val strich = 1.dp.toPx()
-                drawLine(
-                    color = Farben.Rand,
-                    start = Offset(0f, size.height - strich / 2f),
-                    end = Offset(size.width, size.height - strich / 2f),
-                    strokeWidth = strich,
-                )
-            }
-            .padding(top = oben)
-            .padding(horizontal = Abstand.Gross, vertical = Abstand.Normal),
-    ) {
-        Column(
-            verticalArrangement = Arrangement.spacedBy(Abstand.Haar),
-            modifier = Modifier.weight(1f),
-        ) {
-            Text(
-                text = "Leitstelle",
-                style = Schrift.Gross,
-                color = Farben.Text,
-            )
-            SehrLeise(
-                listOfNotNull(
-                    raum?.settings?.leitstelle,
-                    raum?.settings?.landkreis ?: raum?.settings?.ort,
-                ).joinToString(" · ").ifBlank { "…" },
-                mono = true,
-            )
-            if (raum != null) Lagepillen(raum, Modifier.padding(top = Abstand.Winzig))
-        }
-
-        Knopf("Verlassen", beiVerlassen, art = Knopfart.Gefahr, kompakt = true)
-    }
-}
-
-/**
- * Die Lagezahlen — drei kleine Pillen statt einer Tafel (Web, 01.10.2026).
- *
- * Punkt · Zahl · Wort. Bei null sind sie grau und treten zurück; wartet etwas,
- * werden sie rot, und bei „unquittiert" pulsiert der Punkt. „frei" trägt einen
- * grünen Punkt und wird amber, wenn kein Fahrzeug mehr frei ist.
- */
-@Composable
-private fun Lagepillen(raum: Raumzustand, modifier: Modifier = Modifier) {
-    val offen = raum.incidents.count { it.state == "Offen" }
-    val unquittiert = raum.vehicles.count { it.alarmOffen }
-    val fahrzeuge = raum.vehicles.size
-    val frei = raum.vehicles.count { it.status in 1..2 }
-
-    FlowRow(
-        horizontalArrangement = Arrangement.spacedBy(Abstand.Winzig),
-        verticalArrangement = Arrangement.spacedBy(Abstand.Winzig),
-        modifier = modifier,
-    ) {
-        Lagezahlpille(
-            zahl = offen.toString(),
-            wort = "offen",
-            farbe = if (offen > 0) Farben.SignalHell else null,
-        )
-        Lagezahlpille(
-            zahl = unquittiert.toString(),
-            wort = "unquittiert",
-            farbe = if (unquittiert > 0) Farben.SignalHell else null,
-            puls = unquittiert > 0,
-        )
-        Lagezahlpille(
-            zahl = "$frei/$fahrzeuge",
-            wort = "frei",
-            farbe = if (fahrzeuge > 0 && frei == 0) Farben.AmberHell else Farben.GruenHell,
-            nurPunkt = fahrzeuge == 0 || frei > 0,
-        )
-    }
-}
-
-/**
- * Eine Lagezahlpille.
- *
- * @param farbe `null` = ruhig (grau). Sonst trägt die Pille die Farbe in Punkt,
- *   Zahl und Hauch.
- * @param nurPunkt Nur der Punkt farbig, die Pille bleibt ruhig — „frei" im
- *   Regelfall.
- */
-@Composable
-private fun Lagezahlpille(
-    zahl: String,
-    wort: String,
-    farbe: Color?,
-    puls: Boolean = false,
-    nurPunkt: Boolean = false,
-) {
-    val laut = farbe != null && !nurPunkt
-    val punktfarbe = farbe ?: Farben.TextSehrLeise
-    val deckkraft = if (puls) {
-        val takt = rememberInfiniteTransition(label = "lagepuls")
-        val wert by takt.animateFloat(
-            initialValue = 1f,
-            targetValue = 0.3f,
-            animationSpec = infiniteRepeatable(tween(600), RepeatMode.Reverse),
-            label = "lagepuls-punkt",
-        )
-        wert
-    } else {
-        1f
-    }
-
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(Abstand.Winzig),
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier
-            .background(
-                if (laut) punktfarbe.copy(alpha = 0.12f) else Color.White.copy(alpha = 0.05f),
-                Rundung.Rund,
-            )
-            .border(
-                1.dp,
-                if (laut) punktfarbe.copy(alpha = 0.45f) else Color.White.copy(alpha = 0.08f),
-                Rundung.Rund,
-            )
-            .padding(horizontal = Abstand.Klein, vertical = 1.dp),
-    ) {
-        Box(
-            modifier = Modifier
-                .size(6.dp)
-                .alpha(deckkraft)
-                .background(punktfarbe, CircleShape),
-        )
-        Text(
-            text = zahl,
-            style = Schrift.Winzig.copy(fontFamily = Schrift.Mono, fontWeight = FontWeight.Bold),
-            color = if (laut) punktfarbe else Farben.TextLeise,
-        )
-        Text(
-            text = wort,
-            style = Schrift.Winzig,
-            color = if (laut) punktfarbe else Farben.TextSehrLeise,
-        )
-    }
 }
 
 /** Teil 1 — die Einsatzliste, das Herz des Arbeitsplatzes. */
@@ -554,7 +479,7 @@ private fun ColumnScope.TeilEinsaetze(
     beiNeu: () -> Unit,
     beiAlarm: (Einsatz) -> Unit,
     beiSchliessen: (String) -> Unit,
-    beiWuerfeln: (() -> Unit)? = null,
+    beiJournal: (() -> Unit)? = null,
 ) {
     Row(
         horizontalArrangement = Arrangement.spacedBy(Abstand.Normal),
@@ -562,10 +487,10 @@ private fun ColumnScope.TeilEinsaetze(
         modifier = Modifier.fillMaxWidth(),
     ) {
         Ueberschrift("Einsätze", Modifier.weight(1f))
-        // Der Würfel gehört der freien Vergabe: Im Zufallsmodus nähme er der
-        // Schicht das Warten, von dem sie lebt.
-        if (beiWuerfeln != null) Knopf("Würfeln", beiWuerfeln, art = Knopfart.Leise, kompakt = true)
-        Knopf("Neuer Einsatz", beiNeu, art = Knopfart.Haupt, kompakt = true)
+        // Das Anrufjournal steht bei den Einsätzen: neben dem, worüber es Auskunft
+        // gibt — den Lagen und den Anrufen, aus denen sie entstanden sind. Neuer
+        // Einsatz und Würfel stehen in der Freien Vergabe im Kopf.
+        if (beiJournal != null) Knopf("Journal", beiJournal, art = Knopfart.Leise, kompakt = true)
     }
 
     // Die Laufenden zuerst, die Offenen darin ganz oben — abgeräumt wird unten.
@@ -639,65 +564,6 @@ private fun ColumnScope.TeilFahrzeuge(
         raum.vehicles
             .sortedWith(compareBy({ it.status !in 1..2 }, { it.funkrufname }))
             .forEach { f -> Dienstfahrzeugzeile(f, beiDruck = { beiFahrzeug(f) }) }
-    }
-}
-
-/** Teil 3 — der Notruf: was klingelt, was läuft, was verpasst wurde. */
-@Composable
-private fun ColumnScope.TeilNotruf(
-    raum: Raumzustand,
-    beiAnnehmen: (String) -> Unit,
-    beiOeffnen: (String) -> Unit,
-    beiAbweisen: (String) -> Unit,
-) {
-    Ueberschrift("Notruf")
-
-    val aktive = raum.anrufe.filter { it.klingelt || it.imGespraech }
-
-    if (aktive.isEmpty()) {
-        Leerhinweis("Kein Anruf in der Leitung.")
-    }
-
-    aktive.forEach { anruf ->
-        Kasten(marke = anruf.klingelt, wartet = anruf.klingelt, abstandInnen = Abstand.Klein) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(
-                    text = "Notruf ${anruf.nummer}",
-                    style = Schrift.Gross,
-                    color = Farben.Text,
-                    modifier = Modifier.weight(1f),
-                )
-                Marke(
-                    text = if (anruf.klingelt) "Klingelt" else "Im Gespräch",
-                    farbe = if (anruf.klingelt) Farben.SignalHell else Farben.GruenHell,
-                )
-            }
-
-            SehrLeise("eingegangen ${uhrzeit(anruf.eingangUm)}", mono = true)
-
-            Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
-                if (anruf.klingelt) {
-                    Knopf(
-                        "Annehmen",
-                        { beiAnnehmen(anruf.id) },
-                        art = Knopfart.Haupt,
-                        kompakt = true,
-                    )
-                    Knopf(
-                        "Abweisen",
-                        { beiAbweisen(anruf.id) },
-                        art = Knopfart.Gefahr,
-                        kompakt = true,
-                    )
-                } else {
-                    Knopf("Zum Gespräch", { beiOeffnen(anruf.id) }, kompakt = true)
-                }
-            }
-        }
     }
 }
 
@@ -791,47 +657,6 @@ private fun ColumnScope.TeilLeitstellenfunk(
             },
             beiSchliessen = { zielwahl = false },
             suchbar = raum.vehicles.size > 8,
-        )
-    }
-}
-
-@Composable
-private fun ColumnScope.TeilMehrLeitstelle(
-    raum: Raumzustand,
-    beiDienstende: () -> Unit,
-    beiBesatzung: () -> Unit = {},
-    beiWarnung: () -> Unit = {},
-    befehle: Raumbefehle = Raumbefehle.Leer,
-) {
-    // Wer mitten im Dienst um den Tisch oder einen Platz bittet, wartet auf den
-    // Host — und der sitzt hier, nicht in der Lobby.
-    Anfragenkasten(raum, befehle)
-
-    Ueberschrift("Mannschaft")
-    SehrLeise("Mitspieler werfen, die Leitstelle übergeben, Bot-Besatzungen einteilen.")
-    Row { Knopf("Besatzungen einteilen", beiBesatzung) }
-
-    Ueberschrift("Bevölkerung warnen")
-    SehrLeise("Die Warn-App der Leitstelle — nur zum Spaß, folgenlos fürs Spiel.")
-    Row { Knopf("Warnung senden", beiWarnung, art = Knopfart.Leise) }
-
-    Ueberschrift("Dienstende")
-    SehrLeise(
-        "Das Dienstende ist eine Abstimmung — jeder stimmt mit. Danach steht die " +
-            "Auswertung, und die Schicht wandert ins Dienstbuch.",
-    )
-    // Der Zwischenstand steht am Knopf: Ohne ihn drückte man, es geschähe nichts
-    // Sichtbares, und man hielte es für einen Fehler.
-    val stand = if (raum.dienstendeStimmen > 0 && raum.dienstendeSchwelle > 1) {
-        " (${raum.dienstendeStimmen}/${raum.dienstendeSchwelle})"
-    } else {
-        ""
-    }
-    Row {
-        Knopf(
-            if (raum.dienstendeEigeneStimme) "Stimme zurücknehmen$stand" else "Dienst beenden$stand",
-            beiDienstende,
-            art = Knopfart.Gefahr,
         )
     }
 }
@@ -1278,8 +1103,13 @@ private fun Gespraechsblende(
     beiAuflegen: () -> Unit,
     beiVerwerfen: () -> Unit,
     werkzeug: @Composable ColumnScope.() -> Unit = {},
+    beiOrten: () -> Unit = {},
+    beiKi: (suspend (String, List<String>) -> de.pagerspass.pagerspass.netz.NotrufabfrageKiAntwort)? = null,
 ) {
     val beendet = anruf.zustand == "Beendet"
+    // Am Handy zwei Reiter statt zwei Spalten: Gespräch und Abfrage. Der Stand der
+    // Abfrage hängt am Anruf, nicht am Reiter — ein Wechsel verliert nichts.
+    var teil by remember(anruf.id) { mutableStateOf("gespraech") }
 
     Blende(
         titel = "Notruf ${anruf.nummer}",
@@ -1291,6 +1121,25 @@ private fun Gespraechsblende(
             }
         },
     ) {
+        if (!beendet) {
+            Reiterreihe {
+                Reiter("Gespräch", offen = teil == "gespraech", beiDruck = { teil = "gespraech" })
+                Reiter("Abfrage", offen = teil == "abfrage", beiDruck = { teil = "abfrage" })
+            }
+        }
+
+        if (!beendet && teil == "abfrage") {
+            Notrufabfrage(
+                anruf = anruf,
+                katalog = katalog?.stichworte.orEmpty(),
+                beiFrage = beiFrage,
+                beiOrten = beiOrten,
+                beiKi = beiKi,
+                beiAuflegen = beiAuflegen,
+            )
+            return@Blende
+        }
+
         // Der Verlauf — die Leitstelle rechts wäre am Handy verschenkter Platz;
         // wer spricht, steht vorn an der Zeile.
         if (anruf.verlauf.isEmpty()) {
@@ -1333,8 +1182,18 @@ private fun Gespraechsblende(
 
         werkzeug()
 
-        anruf.vorschlag?.let { v ->
+        // Was die Abfrage ergeben hat, geht in den Vorschlag: Stichwort, Dringlichkeit,
+        // Befunde hinter dem Meldebild des Gesprächs.
+        val ausAbfrage = abfrageauswertung(anruf.id)
+        anruf.vorschlag?.let { abfrageUebernehmen(it, ausAbfrage, katalog?.stichworte.orEmpty()) }?.let { v ->
             Ueberschrift("Vorschlag")
+            if (ausAbfrage != null) {
+                SehrLeise(
+                    "Aus der Abfrage übernommen" +
+                        ausAbfrage.mitalarm.filter { it != v.organisation }.takeIf { it.isNotEmpty() }
+                            ?.let { " — außerdem: ${it.joinToString(", ")}" }.orEmpty(),
+                )
+            }
             Kasten(marke = true, wartet = true, abstandInnen = Abstand.Klein) {
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),

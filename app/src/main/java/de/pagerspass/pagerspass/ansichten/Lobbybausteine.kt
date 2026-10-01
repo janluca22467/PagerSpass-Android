@@ -78,334 +78,8 @@ internal val RAUM_TRAEGER = mapOf(
     "Privat" to "Privater RD",
 )
 
-private val EINSATZDICHTE_HINWEIS = mapOf(
-    "Ruhig" to "Alle drei Minuten eine Lage, höchstens zwei offen. Für die erste Schicht allein.",
-    "Normal" to "Alle zwei Minuten eine Lage, höchstens drei offen. Allein und geübt.",
-    "Dicht" to "Alle anderthalb Minuten eine Lage, höchstens vier offen. Für die Leitstelle zu zweit.",
-)
-
-private val STOERUNG_HINWEIS = mapOf(
-    "Aus" to "Jede Alarmierung ist echt, jedes Fahrzeug fährt durch.",
-    "Selten" to "Etwa einmal je Stunde kommt etwas dazwischen.",
-    "Gelegentlich" to "Mehrmals je Stunde — für Schichten, die fordern sollen.",
-)
-
-private val EINSATZENDE_HINWEIS = mapOf(
-    "Selbsttaetig" to "Auf die Abschlussmeldung hin rücken alle Kräfte ein, der Einsatz schließt sich.",
-    "NachFreigabe" to "Die Kräfte bleiben, bis du die Abschlussmeldung quittierst oder abschließt.",
-)
-
-/**
- * Die Schalter der Einsatzregeln — Reihenfolge wie im Web: erst der Dienstalltag,
- * dann die Lagen mit eigener Fläche, zuletzt, was nach dem Eintreffen geschieht.
- */
-private class Regelschalter(
-    val titel: String,
-    val hinweis: String,
-    val an: (Rundeneinstellungen) -> Boolean,
-    val setzen: (Boolean) -> Einstellungsaenderung,
-)
-
-private val REGELSCHALTER = listOf(
-    Regelschalter(
-        "Telefonische Leitstelle",
-        "Notrufe kommen als Anruf herein — erst fragen, dann disponieren.",
-        { it.telefonischeLeitstelle },
-    ) { Einstellungsaenderung(telefonischeLeitstelle = it) },
-    Regelschalter(
-        "Tagesalarmstärke berücksichtigen",
-        "Freiwillige brauchen werktags tagsüber am längsten zum Ausrücken.",
-        { it.tagesalarmstaerke },
-    ) { Einstellungsaenderung(tagesalarmstaerke = it) },
-    Regelschalter(
-        "Löschwasser berücksichtigen",
-        "Tanks laufen leer, die Wasserversorgung muss erst aufgebaut werden.",
-        { it.loeschwasser },
-    ) { Einstellungsaenderung(loeschwasser = it) },
-    Regelschalter(
-        "Sonderobjekte bespielen",
-        "Schulen, Heime, Bahnhöfe — mit Einsatzplan und größerer Ausrückeordnung.",
-        { it.sonderobjekte },
-    ) { Einstellungsaenderung(sonderobjekte = it) },
-    Regelschalter(
-        "Einsatzbereitschaft wiederherstellen",
-        "Nach dem Einsatz erst desinfizieren, auffüllen, reinigen — dann Status 2.",
-        { it.wiederherstellung },
-    ) { Einstellungsaenderung(wiederherstellung = it) },
-    Regelschalter(
-        "Silvesterlage",
-        "Kleinbrände, Container und Handverletzungen in Serie.",
-        { it.silvester },
-    ) { Einstellungsaenderung(silvester = it) },
-    Regelschalter(
-        "Gefahrgutlagen mit Ausbreitung",
-        "Die Fahne zieht mit dem Wind; Sonderobjekte darin müssen geräumt werden.",
-        { it.gefahrgutlagen },
-    ) { Einstellungsaenderung(gefahrgutlagen = it) },
-    Regelschalter(
-        "Vermisstensuche als Flächenlage",
-        "Suchabschnitte, die Trupps nacheinander absuchen.",
-        { it.suchlagen },
-    ) { Einstellungsaenderung(suchlagen = it) },
-    Regelschalter(
-        "Vegetationsbrand als wachsende Fläche",
-        "Die Fläche wächst mit Wind und Trockenheit, solange zu wenig dagegen steht.",
-        { it.vegetationsbraende },
-    ) { Einstellungsaenderung(vegetationsbraende = it) },
-    Regelschalter(
-        "Tätigkeiten an der Einsatzstelle",
-        "Jede Einsatzstelle bekommt Aufgaben aus ihrer Alarm- und Ausrückeordnung.",
-        { it.einsatzarbeit },
-    ) { Einstellungsaenderung(einsatzarbeit = it) },
-    Regelschalter(
-        "Einsatzleitung vor Ort",
-        "Ab vier Fahrzeugen übernimmt ein Führungsfahrzeug die Lage.",
-        { it.einsatzleitung },
-    ) { Einstellungsaenderung(einsatzleitung = it) },
-    Regelschalter(
-        "Terminfahrten",
-        "Krankentransport und Verlegung werden bestellt statt gemeldet — mit Termin.",
-        { it.verlegungsfahrten },
-    ) { Einstellungsaenderung(verlegungsfahrten = it) },
-)
-
-/**
- * Die Rundeneinstellungen — die Regler der Leitstelle.
- *
- * <b>Die Schicht des Tages ist für alle dieselbe:</b> Dort ist nichts einstellbar,
- * auch nicht für die Leitstelle. Ein abgewiesener Klick zeigte am Ende eine
- * Einstellung an, die die Runde nicht hat.
- */
-@Composable
-fun ColumnScope.Rundenregler(
-    raum: Raumzustand,
-    istLeitstelle: Boolean,
-    neben: Raumneben,
-    befehle: Raumbefehle,
-) {
-    val s = raum.settings
-    val einstellbar = istLeitstelle && s.mode != "Tagesschicht"
-    val menschen = raum.players.count { !it.istBot }
-    val setzen: (Einstellungsaenderung) -> Unit = { if (einstellbar) befehle.einstellungen(it) }
-
-    LaunchedEffect(einstellbar) { if (einstellbar) befehle.stichwortsetsLaden() }
-
-    if (!istLeitstelle) {
-        SehrLeise("Diese Einstellungen setzt die Leitstelle. Nachlesen geht trotzdem.")
-    } else if (!einstellbar) {
-        SehrLeise("Die Schicht des Tages ist für alle dieselbe — an ihren Regeln lässt sich nichts verstellen.")
-    }
-
-    // ------------------------------------------------------------ Grundregeln
-    Ueberschrift("Grundregeln")
-    Etikett("Spielmodus")
-    Pillenreihe {
-        listOf("Zufall", "Frei").forEach { m ->
-            Pille(RAUM_MODUS[m] ?: m, an = s.mode == m, beiDruck = { setzen(Einstellungsaenderung(mode = m)) }, aktiv = einstellbar)
-        }
-        if (s.mode !in listOf("Zufall", "Frei")) Pille(RAUM_MODUS[s.mode] ?: s.mode, an = true, beiDruck = {}, aktiv = false)
-    }
-    SehrLeise(if (s.mode == "Frei") "Die Leitstelle denkt sich Lagen aus." else "Der Notruf klingelt von selbst.")
-
-    Etikett("Zeittempo")
-    Pillenreihe {
-        Pille("Echtzeit", an = s.zeitmodus == "Echtzeit", beiDruck = { setzen(Einstellungsaenderung(zeitmodus = "Echtzeit")) }, aktiv = einstellbar)
-        Pille("Simulation", an = s.zeitmodus == "Simulation", beiDruck = { setzen(Einstellungsaenderung(zeitmodus = "Simulation")) }, aktiv = einstellbar)
-    }
-
-    // Die Plätze in Zweierschritten — der Server klemmt auf 24 bis 400, und weiter
-    // herunter als die Zahl der Menschen, die schon da sind, lässt er nicht.
-    Etikett("Plätze — ${raum.maxSpieler}")
-    val untergrenze = maxOf(24, menschen)
-    Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
-        listOf(-20, -2, 2, 20).forEach { schritt ->
-            Knopf(
-                aufschrift = if (schritt > 0) "+$schritt" else "$schritt",
-                beiDruck = {
-                    setzen(Einstellungsaenderung(maxSpieler = (raum.maxSpieler + schritt).coerceIn(untergrenze, 400)))
-                },
-                art = Knopfart.Leise,
-                kompakt = true,
-                aktiv = einstellbar,
-            )
-        }
-    }
-    SehrLeise("Plätze für Mitspieler. Bot-Besatzungen zählen nicht mit.")
-
-    Schalterzeile(
-        titel = "Öffentlich",
-        unterzeile = "Die Runde steht in der Liste offener Runden — Fremde können beitreten.",
-        an = s.oeffentlich,
-        beiWechsel = { setzen(Einstellungsaenderung(oeffentlich = it)) },
-        aktiv = einstellbar,
-    )
-
-    // ---------------------------------------------------------- Einsatzregeln
-    Ueberschrift("Einsatzregeln")
-    if (s.mode == "Zufall") {
-        Etikett("Einsatzdichte")
-        Pillenreihe {
-            listOf("Ruhig", "Normal", "Dicht").forEach { d ->
-                Pille(d, an = s.einsatzdichte == d, beiDruck = { setzen(Einstellungsaenderung(einsatzdichte = d)) }, aktiv = einstellbar)
-            }
-        }
-        EINSATZDICHTE_HINWEIS[s.einsatzdichte]?.let { SehrLeise(it) }
-    }
-
-    if (s.mode != "Ausbildung") {
-        Etikett("Störungen im Dienst")
-        Pillenreihe {
-            listOf("Aus", "Selten", "Gelegentlich").forEach { h ->
-                Pille(h, an = s.stoerungshaeufigkeit == h, beiDruck = { setzen(Einstellungsaenderung(stoerungshaeufigkeit = h)) }, aktiv = einstellbar)
-            }
-        }
-        STOERUNG_HINWEIS[s.stoerungshaeufigkeit]?.let { SehrLeise(it) }
-
-        Etikett("Jahreszeit")
-        Pillenreihe {
-            listOf("Fruehling" to "Frühling", "Sommer" to "Sommer", "Herbst" to "Herbst", "Winter" to "Winter").forEach { (id, name) ->
-                Pille(name, an = s.jahreszeit == id, beiDruck = { setzen(Einstellungsaenderung(jahreszeit = id)) }, aktiv = einstellbar)
-            }
-        }
-    }
-
-    REGELSCHALTER.forEach { r ->
-        Schalterzeile(
-            titel = r.titel,
-            unterzeile = r.hinweis,
-            an = r.an(s),
-            beiWechsel = { setzen(r.setzen(it)) },
-            aktiv = einstellbar,
-        )
-    }
-
-    // ---------------------------------------------------------- Organisationen
-    Ueberschrift("Organisationen")
-    Pillenreihe {
-        RAUM_ORGANISATIONEN.forEach { (org, name) ->
-            val an = org in s.organisationen
-            Pille(
-                aufschrift = name,
-                an = an,
-                beiDruck = {
-                    val neu = if (an) s.organisationen - org else s.organisationen + org
-                    // Mindestens eine Organisation muss bleiben.
-                    if (neu.isNotEmpty()) setzen(Einstellungsaenderung(organisationen = neu))
-                },
-                aktiv = einstellbar,
-            )
-        }
-    }
-    Etikett(if (s.hiOrgs.isEmpty()) "Hilfsorganisationen — alle erlaubt" else "Hilfsorganisationen — ${s.hiOrgs.size} gewählt")
-    Pillenreihe {
-        RAUM_TRAEGER.forEach { (h, name) ->
-            val an = h in s.hiOrgs
-            Pille(
-                aufschrift = name,
-                an = an,
-                beiDruck = { setzen(Einstellungsaenderung(hiOrgs = if (an) s.hiOrgs - h else s.hiOrgs + h)) },
-                aktiv = einstellbar,
-            )
-        }
-    }
-    SehrLeise("Ohne Auswahl fahren alle Träger mit.")
-
-    if (neben.stichwortsets.isNotEmpty()) {
-        var setWahl by remember { mutableStateOf(false) }
-        val gewaehlt = neben.stichwortsets.firstOrNull { it.id == s.stichwortsetId }
-        Wahlfeld(
-            etikett = "Stichwörter",
-            wert = gewaehlt?.name ?: "Grundkatalog (bundesweit gemischt)",
-            beiDruck = { setWahl = true },
-            aktiv = einstellbar,
-        )
-        if (setWahl) {
-            Wahlblende(
-                titel = "Stichwörter",
-                gruppen = listOf(null to (listOf<Stichwortset?>(null) + neben.stichwortsets)),
-                aufschrift = { it?.name ?: "Grundkatalog (bundesweit gemischt)" },
-                unterschrift = { it?.let { satz -> "${satz.lagen} ${if (satz.lagen == 1) "Lage" else "Lagen"}" } },
-                gewaehlt = gewaehlt,
-                beiWahl = {
-                    setzen(Einstellungsaenderung(stichwortsetId = it?.id ?: ""))
-                    setWahl = false
-                },
-                beiSchliessen = { setWahl = false },
-            )
-        }
-    }
-
-    // ------------------------------------------------------- Funk und Rufnamen
-    Ueberschrift("Funk und Rufnamen")
-    Etikett("Wachnummer — Stellen")
-    Pillenreihe {
-        (1..3).forEach { n ->
-            Pille("1".padStart(n, '0'), an = s.wachennummerStellen == n, beiDruck = { setzen(Einstellungsaenderung(wachennummerStellen = n)) }, aktiv = einstellbar)
-        }
-    }
-    Etikett("Laufende Nummer — Stellen")
-    Pillenreihe {
-        (1..3).forEach { n ->
-            Pille("1".padStart(n, '0'), an = s.laufnummerStellen == n, beiDruck = { setzen(Einstellungsaenderung(laufnummerStellen = n)) }, aktiv = einstellbar)
-        }
-    }
-    Etikett("Dauerfunk-Verstöße bis zur Entfernung")
-    Pillenreihe {
-        listOf(3, 4, 5).forEach { n ->
-            Pille(n.toString(), an = s.funkverstossSchwelle == n, beiDruck = { setzen(Einstellungsaenderung(funkverstossSchwelle = n)) }, aktiv = einstellbar)
-        }
-    }
-    SehrLeise(
-        "Nach 20 Sekunden endet die Sendung automatisch, dann folgen Sendepause und ein " +
-            "Verstoß. Beim ${s.funkverstossSchwelle}. Verstoß wird der Platz aus dieser Runde entfernt.",
-    )
-    // Wie die Kennungen heißen, über welchen Kanal sie laufen und auf welchen
-    // Wachen sie stehen — wer das eine einstellt, stellt meistens das andere mit.
-    Rufnamewoerter(raum, einstellbar, befehle)
-    Funkgruppenmaske(raum, istLeitstelle, befehle)
-    Wachenmaske(raum, istLeitstelle, neben, befehle)
-
-    // ------------------------------------------------------------------- Bots
-    if (raum.players.any { it.istBot }) {
-        Ueberschrift("Bot-Besatzungen")
-        Etikett("Arbeitstempo")
-        Pillenreihe {
-            listOf("Gemuetlich" to "Gemütlich", "Normal" to "Normal", "Zuegig" to "Zügig").forEach { (id, name) ->
-                Pille(name, an = s.botTempo == id, beiDruck = { setzen(Einstellungsaenderung(botTempo = id)) }, aktiv = istLeitstelle)
-            }
-        }
-        Schalterzeile(
-            titel = "Bot-Funk",
-            unterzeile = "Aus heißt: Bots antworten nur knapp und melden sich nie von sich aus.",
-            an = s.botFunkAktiv,
-            beiWechsel = { if (istLeitstelle) befehle.einstellungen(Einstellungsaenderung(botFunkAktiv = it)) },
-            aktiv = istLeitstelle,
-        )
-        if (s.botFunkAktiv) {
-            Etikett("Gesprächigkeit")
-            Pillenreihe {
-                listOf("Knapp" to "Knapp", "Normal" to "Normal", "Gespraechig" to "Gesprächig").forEach { (id, name) ->
-                    Pille(name, an = s.botGespraechigkeit == id, beiDruck = { if (istLeitstelle) befehle.einstellungen(Einstellungsaenderung(botGespraechigkeit = id)) }, aktiv = istLeitstelle)
-                }
-            }
-            Etikett("Wer sich von sich aus meldet")
-            Pillenreihe {
-                listOf("NurEinsatzleitung" to "Nur die Einsatzleitung", "AlleBesatzungen" to "Alle Besatzungen").forEach { (id, name) ->
-                    Pille(name, an = s.arbeitsfunk == id, beiDruck = { if (istLeitstelle) befehle.einstellungen(Einstellungsaenderung(arbeitsfunk = id)) }, aktiv = istLeitstelle)
-                }
-            }
-            if (s.einsatzarbeit) {
-                Etikett("Einsatzende")
-                Pillenreihe {
-                    listOf("Selbsttaetig" to "Selbsttätig", "NachFreigabe" to "Nach Freigabe").forEach { (id, name) ->
-                        Pille(name, an = s.einsatzende == id, beiDruck = { if (istLeitstelle) befehle.einstellungen(Einstellungsaenderung(einsatzende = id)) }, aktiv = istLeitstelle)
-                    }
-                }
-                EINSATZENDE_HINWEIS[s.einsatzende]?.let { SehrLeise(it) }
-            }
-        }
-    }
-}
+// Die Regler der Runde stehen seit 5.0.0.26 im Rundendialog (`Rundendialog.kt`),
+// ihre Schalter und Beschriftungen in `Rundenregeln.kt`.
 
 /**
  * Die Bitten, über die der Host zu entscheiden hat — um den Tisch und um einen
@@ -538,6 +212,7 @@ fun ColumnScope.Botverwaltung(
     raum: Raumzustand,
     katalog: List<Fahrzeugvorlage>,
     befehle: Raumbefehle,
+    beiVerhalten: (() -> Unit)? = null,
 ) {
     val bots = raum.players.filter { it.istBot }
     var versetzen by remember { mutableStateOf<Spieler?>(null) }
@@ -546,11 +221,41 @@ fun ColumnScope.Botverwaltung(
     var anzahl by remember { mutableIntStateOf(1) }
     val gruppen = remember(raum.settings, katalog) { botGruppen(raum, katalog) }
 
-    Ueberschrift("Bot-Besatzungen (${bots.size})")
+    // Die Lücke zum vollen Zug: so viele Fahrzeuge, wie die Runde groß ist —
+    // gezählt werden alle Besatzungen, Menschen wie Bots.
+    val luecke = (raum.maxSpieler - raum.players.size).coerceAtLeast(0)
+    // Sperre gegen den Doppeldruck: Bis der Server die neuen Bots meldet, steht die
+    // Lücke noch auf dem alten Wert. Frei wird sie, sobald sie sich bewegt.
+    var fuelltBei by remember { mutableStateOf<Int?>(null) }
+    if (fuelltBei != null && fuelltBei != luecke) fuelltBei = null
+
+    Ueberschrift("Bot-Besatzungen")
     SehrLeise(
         "Der Server besetzt diese Fahrzeuge selbst: quittieren, ausrücken, eintreffen, Lage " +
             "melden, nachfordern. So läuft eine Runde auch zu zweit.",
     )
+
+    Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
+        Knopf(
+            "Zug auffüllen ($luecke offen)",
+            {
+                fuelltBei = luecke
+                zugAuffuellen(gruppen.firstOrNull()?.second.orEmpty(), luecke).forEach { (id, n) ->
+                    befehle.botHinzufuegen(id, n)
+                }
+            },
+            aktiv = luecke > 0 && fuelltBei == null && raum.vehicles.size < 400,
+            kompakt = true,
+        )
+        Knopf(
+            "Alle entfernen",
+            { bots.forEach { befehle.botEntfernen(it.id) } },
+            art = Knopfart.Leise,
+            aktiv = bots.isNotEmpty(),
+            kompakt = true,
+        )
+    }
+    if (bots.isEmpty()) SehrLeise("Noch keine Bot-Besatzungen eingeteilt.", mono = true)
 
     bots.forEach { bot ->
         val f = raum.vehicles.firstOrNull { it.id == bot.vehicleId }
@@ -593,9 +298,17 @@ fun ColumnScope.Botverwaltung(
             kompakt = true,
         )
     }
-    if (bots.isNotEmpty()) {
+    // Das Verhalten der Bots steht im Rundendialog auf der Seite „Bots". Der Weg
+    // dorthin steht hier, wo man an Bots denkt.
+    if (beiVerhalten != null) {
+        val s = raum.settings
         Row {
-            Knopf("Alle entfernen", { bots.forEach { befehle.botEntfernen(it.id) } }, art = Knopfart.Leise, kompakt = true)
+            Knopf(
+                "Verhalten der Bots · ${BOT_TEMPO_LABEL[s.botTempo] ?: s.botTempo}, Funk ${if (s.botFunkAktiv) "an" else "aus"}",
+                beiVerhalten,
+                art = Knopfart.Leise,
+                kompakt = true,
+            )
         }
     }
 
@@ -628,6 +341,44 @@ fun ColumnScope.Botverwaltung(
             suchbar = true,
         )
     }
+}
+
+/**
+ * Füllt die Aufstellung mit einem sinnvollen Zug auf, statt vierzehnmal einzeln
+ * drücken zu lassen — dieselbe Rechnung wie `zugAuffuellen` im Web.
+ *
+ * Die Wunschliste ist von Natur aus Feuerwehr-lastig. Stur der Reihe nach aufgefüllt
+ * bekäme die Feuerwehr immer den Löwenanteil der Bots; deshalb erst nach Organisation
+ * gruppieren und reihum verteilen, innerhalb einer Organisation über ihre eigenen
+ * Typen — erst die gewünschten, dann alle übrigen. Je Typ ein Sammelbefehl.
+ */
+internal fun zugAuffuellen(verfuegbar: List<Fahrzeugvorlage>, luecke: Int): Map<String, Int> {
+    if (verfuegbar.isEmpty() || luecke <= 0) return emptyMap()
+    val wunsch = listOf(
+        "hlf20", "dlk23", "rtw", "lf10", "elw1", "nef", "tlf3000", "rw", "fustw", "gkw",
+        "gwmess", "ktw", "mtw", "grukw",
+    )
+    val nachOrg = linkedMapOf<String, MutableList<String>>()
+    wunsch.forEach { id ->
+        val f = verfuegbar.firstOrNull { it.id == id } ?: return@forEach
+        nachOrg.getOrPut(f.organisation) { mutableListOf() }.add(f.id)
+    }
+    verfuegbar.forEach { f ->
+        val liste = nachOrg.getOrPut(f.organisation) { mutableListOf() }
+        if (f.id !in liste) liste.add(f.id)
+    }
+    val orgs = nachOrg.keys.toList()
+    val zeiger = orgs.associateWith { 0 }.toMutableMap()
+    val bedarf = linkedMapOf<String, Int>()
+    repeat(luecke) { i ->
+        val org = orgs[i % orgs.size]
+        val liste = nachOrg.getValue(org)
+        val stand = zeiger.getValue(org)
+        val id = liste[stand % liste.size]
+        zeiger[org] = stand + 1
+        bedarf[id] = (bedarf[id] ?: 0) + 1
+    }
+    return bedarf
 }
 
 private fun vorlagenname(f: Fahrzeugvorlage): String =
@@ -786,10 +537,10 @@ fun ColumnScope.Rundenvorlage(raum: Raumzustand, neben: Raumneben, befehle: Raum
 
     LaunchedEffect(Unit) { befehle.rundenvorlagenLaden() }
 
-    Ueberschrift("Vorlage")
-    SehrLeise(
+    // Der Titel steht im Kopf des Rundendialogs („Als Vorlage merken").
+    de.pagerspass.pagerspass.ui.bausteine.Leise(
         "Speichert alle Rundeneinstellungen dieser Lobby unter einem Namen. Die nächste " +
-            "Runde startest du damit vom Startbildschirm aus.",
+            "Runde startest du damit vom Startbildschirm aus — samt Kreis, ohne alles neu einzustellen.",
     )
     if (neben.rundenvorlagen.isNotEmpty()) {
         Wahlfeld(
