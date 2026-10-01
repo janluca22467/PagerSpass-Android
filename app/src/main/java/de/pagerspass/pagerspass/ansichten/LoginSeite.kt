@@ -73,6 +73,13 @@ fun LoginSeite(
     beiKontoAnlegen: (String, String, String) -> Unit = { _, _, _ -> },
     beiZweiFaktor: (String) -> Unit = {},
     beiServerWechsel: (String) -> Unit = {},
+    /**
+     * Was die Verwaltung zentral vorgibt, wenn es von der eigenen Wahl abweicht
+     * (siehe `Sitzungsstand.abweichendeVorgabe`) — sonst `null`, und es steht kein
+     * Hinweis da.
+     */
+    abweichendeVorgabe: String? = null,
+    beiZentralerVorgabe: () -> Unit = {},
     zweiFaktorZiel: String? = null,
     /**
      * „Passwort vergessen?" — der Ablauf steht in `KontoSeiten.kt` (`PasswortVergessen`)
@@ -234,9 +241,13 @@ fun LoginSeite(
             }
         }
 
-        Fusszeile(server = server, beiServerWechsel = beiServerWechsel, beiText = { seite ->
-            browser.openUri(Rechtsstand.adresse(server, seite))
-        })
+        Fusszeile(
+            server = server,
+            beiServerWechsel = beiServerWechsel,
+            abweichendeVorgabe = abweichendeVorgabe,
+            beiZentralerVorgabe = beiZentralerVorgabe,
+            beiText = { seite -> browser.openUri(Rechtsstand.adresse(server, seite)) },
+        )
     }
 }
 
@@ -382,6 +393,8 @@ private fun Hinweis(text: String) {
 private fun Fusszeile(
     server: String,
     beiServerWechsel: (String) -> Unit,
+    abweichendeVorgabe: String?,
+    beiZentralerVorgabe: () -> Unit,
     beiText: (String) -> Unit,
 ) {
     Column(
@@ -414,6 +427,24 @@ private fun Fusszeile(
             style = Schrift.Winzig.copy(fontFamily = Schrift.Mono),
             color = Farben.TextSehrLeise,
         )
+
+        // Die eigene Wahl hat Vorrang vor der Verwaltung — aber sie soll nicht
+        // stillschweigend Vorrang haben. Wer vor Wochen einmal auf die Beta
+        // geschaltet hat, erfährt hier, dass alle anderen inzwischen woanders sind.
+        if (abweichendeVorgabe != null) {
+            Text(
+                text = "Zentral vorgegeben ist ${Server.name(abweichendeVorgabe)} — du hast " +
+                    "selbst ${Server.name(server)} gewählt.",
+                style = Schrift.Klein,
+                color = Farben.TextLeise,
+                textAlign = TextAlign.Center,
+            )
+            Knopf(
+                aufschrift = "Zentrale Vorgabe verwenden",
+                beiDruck = beiZentralerVorgabe,
+                kompakt = true,
+            )
+        }
     }
 }
 

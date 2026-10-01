@@ -173,6 +173,11 @@ fun PagerSpassApp(
                     zweiFaktor = null
                     sitzung.serverWechseln(adresse)
                 },
+                abweichendeVorgabe = stand.abweichendeVorgabe,
+                beiZentralerVorgabe = {
+                    zweiFaktor = null
+                    sitzung.zentraleVorgabeVerwenden()
+                },
                 passwortVergessen = { vorbelegt, beiFertig, beiZurueck ->
                     val kontostand by sitzung.kontodienst.stand.collectAsStateWithLifecycle()
                     de.pagerspass.pagerspass.ansichten.PasswortVergessen(

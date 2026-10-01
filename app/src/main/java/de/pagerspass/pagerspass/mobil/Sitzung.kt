@@ -14,6 +14,7 @@ import de.pagerspass.pagerspass.netz.Rechtsstand
 import de.pagerspass.pagerspass.netz.Server
 import de.pagerspass.pagerspass.netz.Spielwege
 import de.pagerspass.pagerspass.netz.Wartungsstand
+import de.pagerspass.pagerspass.netz.Zentralserver
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -46,6 +47,12 @@ class Sitzung(anwendung: Application) : AndroidViewModel(anwendung) {
 
     private val _daten = MutableStateFlow(Seitenstand())
     val daten: StateFlow<Seitenstand> = _daten.asStateFlow()
+
+    /**
+     * Was die Verwaltung zuletzt vorgegeben hat (siehe `Zentralserver`) — `null`,
+     * solange pagerspass.de in diesem Lauf nicht geantwortet hat.
+     */
+    private var zentralerServer: String? = null
 
     /**
      * Konto-Zentrale, Premium-Stand, Postfach und Shop-Nebenwege — siehe
@@ -88,7 +95,18 @@ class Sitzung(anwendung: Application) : AndroidViewModel(anwendung) {
      * — und dabei erführe man ihn ein zweites Mal.
      */
     fun kontoSicherstellen() = viewModelScope.launch {
-        _stand.update { it.copy(server = ablage.server(), laedt = true) }
+        _stand.update { it.copy(laedt = true) }
+
+        // Vor allem anderen: auf welchen Server dieses Gerät gehört. Danach erst
+        // Merkmal und Kennung lesen — eine Umstellung wirft beide weg.
+        zentraleVorgabeAnwenden()
+        _stand.update {
+            it.copy(
+                server = ablage.server(),
+                serverVonHand = ablage.serverVonHand(),
+                zentralerServer = zentralerServer,
+            )
+        }
 
         val kennung = ablage.kennung()
         val merkmal = ablage.merkmal()
@@ -149,7 +167,7 @@ class Sitzung(anwendung: Application) : AndroidViewModel(anwendung) {
 
     fun abmelden() = viewModelScope.launch {
         konten.abmelden()
-        _stand.update { Sitzungsstand(server = ablage.server(), geprueft = true) }
+        _stand.value = grundstand()
         // Alles vergessen, was zum alten Konto gehörte. Ohne diese Zeile stünde
         // beim nächsten Anmelden die Freundesliste des Vorgängers auf dem Schirm,
         // bis die neue geladen ist.
@@ -170,7 +188,7 @@ class Sitzung(anwendung: Application) : AndroidViewModel(anwendung) {
     fun kontoLoeschen(passwort: String) = arbeiten {
         val kennung = _stand.value.konto?.kennung ?: return@arbeiten
         konten.loeschen(kennung, passwort)
-        _stand.value = Sitzungsstand(server = ablage.server(), geprueft = true)
+        _stand.value = grundstand()
         _daten.value = Seitenstand()
         kontodienst.vergessen()
     }
@@ -764,12 +782,58 @@ class Sitzung(anwendung: Application) : AndroidViewModel(anwendung) {
 
     /** Den Server wechseln — und alles vergessen, was zum alten gehörte. */
     fun serverWechseln(adresse: String) = viewModelScope.launch {
-        ablage.serverSetzen(adresse)
+        serverUmstellen(adresse, vonHand = true)
+    }
+
+    /**
+     * Die eigene Wahl aufgeben und der Verwaltung folgen — der Knopf unter dem
+     * Hinweis auf der Anmeldeseite. Ab jetzt zieht die App bei jedem Start mit,
+     * wenn die zentrale Vorgabe sich ändert.
+     */
+    fun zentraleVorgabeVerwenden() = viewModelScope.launch {
+        serverUmstellen(zentralerServer ?: return@launch, vonHand = false)
+    }
+
+    private suspend fun serverUmstellen(adresse: String, vonHand: Boolean) {
+        ablage.serverSetzen(adresse, vonHand)
         ablage.anmeldungMerken(null, null)
-        _stand.value = Sitzungsstand(server = adresse.trimEnd('/'), geprueft = true)
+        _stand.value = grundstand()
         kontodienst.vergessen()
         versionHolen()
     }
+
+    /**
+     * Die zentrale Vorgabe holen und, wo sie gilt, übernehmen.
+     *
+     * <b>Sie gilt nicht</b>, wenn hier jemand von Hand gewählt hat (dann zeigt die
+     * Anmeldeseite nur den Hinweis), wenn pagerspass.de nicht antwortet (dann
+     * bleibt alles, wie es ist), und im Debug-Bau nicht für die
+     * Entwicklungsmaschine — wer gegen die eigene API baut, soll beim Start nicht
+     * auf einen fremden Server springen.
+     *
+     * <b>Ein Wechsel meldet ab.</b> Das Merkmal ist eines des alten Servers; am
+     * neuen weist es niemanden aus. Dasselbe wie beim Wechsel von Hand.
+     */
+    private suspend fun zentraleVorgabeAnwenden() {
+        val zentral = Zentralserver.holen() ?: return
+        zentralerServer = zentral
+
+        val jetzt = ablage.server()
+        if (zentral == jetzt || ablage.serverVonHand()) return
+        if (de.pagerspass.pagerspass.BuildConfig.DEBUG && jetzt == Server.ENTWICKLUNG) return
+
+        ablage.serverSetzen(zentral, vonHand = false)
+        ablage.anmeldungMerken(null, null)
+        kontodienst.vergessen()
+    }
+
+    /** Der Stand ohne Anmeldung — mit dem, was über den Server bekannt ist. */
+    private suspend fun grundstand() = Sitzungsstand(
+        server = ablage.server(),
+        geprueft = true,
+        serverVonHand = ablage.serverVonHand(),
+        zentralerServer = zentralerServer,
+    )
 
     fun fehlerWegnehmen() = _stand.update { it.copy(fehler = null) }
 
@@ -879,6 +943,10 @@ data class Sitzungsstand(
     /** Der Code einer gerade eröffneten Runde — siehe `raumEroeffnen`. */
     val raumcode: String? = null,
     val server: String = Server.VORGABE,
+    /** Ob [server] auf der Anmeldeseite von Hand gewählt ist (siehe `Ablage.serverVonHand`). */
+    val serverVonHand: Boolean = false,
+    /** Was die Verwaltung vorgibt — `null`, solange pagerspass.de nicht geantwortet hat. */
+    val zentralerServer: String? = null,
     val version: String? = null,
     val kanal: String? = null,
     /** Ob das Postfach freigeschaltet ist — es hängt an einem Betriebsschalter. */
@@ -887,6 +955,13 @@ data class Sitzungsstand(
     val kontofreischaltung: Boolean = false,
 ) {
     val angemeldet: Boolean get() = konto != null
+
+    /**
+     * Die zentrale Vorgabe, wenn sie von der eigenen Wahl abweicht — dann steht
+     * auf der Anmeldeseite der Hinweis mit „Zentrale Vorgabe verwenden".
+     */
+    val abweichendeVorgabe: String?
+        get() = zentralerServer?.takeIf { serverVonHand && it != server }
 
     /** Ob dies ein Vorabstand ist — das „Beta" im Fuß. */
     val beta: Boolean get() = kanal.equals("beta", ignoreCase = true) || "beta" in server

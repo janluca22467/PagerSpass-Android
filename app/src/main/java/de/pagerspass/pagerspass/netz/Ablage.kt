@@ -31,6 +31,7 @@ class Ablage(private val zusammenhang: Context) {
     private val merkmalSchluessel = stringPreferencesKey("merkmal")
     private val kennungSchluessel = stringPreferencesKey("kennung")
     private val serverSchluessel = stringPreferencesKey("server")
+    private val serverVonHandSchluessel = stringPreferencesKey("serverVonHand")
     private val rundenSchluessel = stringPreferencesKey("offeneRunde")
     private val begleiterSchluessel = stringPreferencesKey("begleiterToken")
     private val karteFreigabeSchluessel = stringPreferencesKey("karteFreigabe")
@@ -53,8 +54,32 @@ class Ablage(private val zusammenhang: Context) {
      */
     suspend fun server(): String = lesen(serverSchluessel) ?: Server.VORGABE
 
-    suspend fun serverSetzen(adresse: String) {
-        zusammenhang.ablage.edit { it[serverSchluessel] = adresse.trimEnd('/') }
+    /**
+     * Den Server ablegen — und dazu, ob ihn jemand auf der Anmeldeseite von Hand
+     * gewählt hat oder ob er aus der zentralen Vorgabe der Verwaltung stammt
+     * (siehe `Zentralserver`). Nur ein von Hand gewählter bleibt stehen, wenn die
+     * Vorgabe sich ändert.
+     */
+    suspend fun serverSetzen(adresse: String, vonHand: Boolean = true) {
+        zusammenhang.ablage.edit {
+            it[serverSchluessel] = adresse.trimEnd('/')
+            it[serverVonHandSchluessel] = if (vonHand) "ja" else "nein"
+        }
+    }
+
+    /**
+     * Ob der Server von Hand gewählt ist.
+     *
+     * <b>Ohne Vermerk zählt ein abgelegter Server als von Hand.</b> Vor der
+     * zentralen Vorgabe legte nur die Anmeldeseite einen Server ab — wer dort
+     * die Beta gewählt hat, soll nach dem Update nicht still auf pagerspass.de
+     * landen und abgemeldet sein. Er sieht stattdessen den Hinweis mit
+     * „Zentrale Vorgabe verwenden".
+     */
+    suspend fun serverVonHand(): Boolean = when (lesen(serverVonHandSchluessel)) {
+        "ja" -> true
+        "nein" -> false
+        else -> lesen(serverSchluessel) != null
     }
 
     /**
