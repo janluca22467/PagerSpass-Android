@@ -206,7 +206,7 @@ fun DebriefingSeite(
                             Text(e.stichwortText, style = Schrift.Normal, color = Farben.Text, modifier = Modifier.weight(1f))
                         }
                         SehrLeise(
-                            listOfNotNull(e.einsatznummer.ifBlank { null }, uhrzeitMitSekunden(e.eingangUm), einsatzstand(e.state)).joinToString(" · "),
+                            listOfNotNull(e.einsatznummer.ifBlank { null }, nachbesprechungsuhr(e.eingangUm), einsatzstand(e.state)).joinToString(" · "),
                             mono = true,
                         )
                         SehrLeise("Disp. ${dauerText(e.dispositionszeitSekunden)} · Hilfsfrist ${dauerText(e.hilfsfristSekunden)}", mono = true)
@@ -214,7 +214,7 @@ fun DebriefingSeite(
                         sortiert(befunde.filter { it.incidentId == e.id }).forEach { Befundkarte(it) }
                         e.chronologie.forEach { c ->
                             Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
-                                SehrLeise(uhrzeitMitSekunden(c.zeit).orEmpty(), mono = true)
+                                SehrLeise(nachbesprechungsuhr(c.zeit).orEmpty(), mono = true)
                                 Text(
                                     c.text,
                                     style = Schrift.Klein,
@@ -244,7 +244,7 @@ fun DebriefingSeite(
                 Kasten(abstandInnen = Abstand.Winzig, farbe = Farben.BgTief) {
                     (if (funkAlle) funk else funk.take(60)).forEach { z ->
                         Text(
-                            "${uhrzeitMitSekunden(z.zeit) ?: ""}  ${z.von}${z.an?.let { " → $it" } ?: ""}: ${z.text}",
+                            "${nachbesprechungsuhr(z.zeit) ?: ""}  ${z.von}${z.an?.let { " → $it" } ?: ""}: ${z.text}",
                             style = Schrift.MonoKlein,
                             color = if (z.kind == "System") Farben.TextSehrLeise else Farben.TextLeise,
                         )
@@ -294,7 +294,7 @@ private fun dauerText(sekunden: Double?): String {
     return if (s >= 60) "%d:%02d min".format(s / 60, s % 60) else "$s s"
 }
 
-private fun uhrzeitMitSekunden(roh: String?): String? = zeitInMillis(roh)?.let {
+private fun nachbesprechungsuhr(roh: String?): String? = zeitInMillis(roh)?.let {
     java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss")
         .format(java.time.Instant.ofEpochMilli(it).atZone(java.time.ZoneId.systemDefault()))
 }
