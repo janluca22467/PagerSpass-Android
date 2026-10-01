@@ -78,6 +78,8 @@ data class Garage(
     val preise: Map<String, Int> = emptyMap(),
     val tagesangebot: String? = null,
     val tagesangebotRegulaer: Int? = null,
+    /** Verdiente Punkte je Organisation — die Hallentore der Garage; fehlt auf älteren Servern. */
+    val proOrganisation: List<Orgerfahrung> = emptyList(),
 )
 
 /** Ein Fahrzeugbauplan aus dem Katalog. */
