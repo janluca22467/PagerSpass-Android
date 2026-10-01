@@ -31,8 +31,6 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.semantics.Role
@@ -90,12 +88,9 @@ fun Tableiste(
         modifier = modifier
             .fillMaxWidth()
             .shadow(Erhebung.Leiste, Rundung.LeisteOben)
-            .background(
-                brush = Brush.verticalGradient(
-                    listOf(Color(0xFA263344), Color(0xFA101823)),
-                ),
-                shape = Rundung.LeisteOben,
-            )
+            // Flach auf ihrer Fläche, wie die Leiste des Einsatz-Tablets
+            // (Tabletlook, 30.09.2026) — vorher ein Verlauf ins Nachtblau.
+            .background(Farben.Flaeche, Rundung.LeisteOben)
             // Die Kante nach oben — und die Lichtkante darauf. Beide sind hier
             // nicht Zierde: Ohne sie steht die Leiste kantenlos vor dem Grund
             // und der Inhalt, der darunter durchrollt, hört einfach auf.
@@ -178,7 +173,12 @@ private fun RowScope.Wegknopf(
         label = "weg-stauchung",
     )
 
-    val farbe = if (hier) Farben.Amber else Farben.TextLeise
+    // Tabletlook: Der Ort, an dem man ist, ist eine helle Fläche mit weißer
+    // Schrift; amber bleiben nur Zeichen und Strich. Vorher war der ganze Knopf
+    // golden — und stand am Handy über dem goldenen Hauptknopf und dem goldenen
+    // offenen Reiter. Drei gleich laute Flächen sagen nicht, welche entscheidet.
+    val zeichenfarbe = if (hier) Farben.Amber else Farben.TextLeise
+    val schriftfarbe = if (hier) Farben.Text else Farben.TextLeise
 
     Box(
         contentAlignment = Alignment.TopCenter,
@@ -188,17 +188,7 @@ private fun RowScope.Wegknopf(
             .padding(vertical = 6.dp)
             .defaultMinSize(minHeight = Mass.LeisteHoehe - 12.dp)
             .then(
-                if (hier) {
-                    Modifier.background(
-                        brush = Brush.verticalGradient(
-                            listOf(
-                                Farben.Amber.copy(alpha = 0.17f),
-                                Farben.Amber.copy(alpha = 0.08f),
-                            ),
-                        ),
-                        shape = Rundung.Normal,
-                    )
-                } else if (gedrueckt) {
+                if (hier || gedrueckt) {
                     Modifier.background(Farben.FlaecheAktiv, Rundung.Normal)
                 } else {
                     Modifier
@@ -236,13 +226,13 @@ private fun RowScope.Wegknopf(
             Icon(
                 imageVector = weg.zeichen,
                 contentDescription = null,
-                tint = farbe,
+                tint = zeichenfarbe,
                 modifier = Modifier.size(22.dp),
             )
             Text(
                 text = if (eng) weg.kurz else weg.titel,
                 style = Schrift.Weg,
-                color = farbe,
+                color = schriftfarbe,
                 maxLines = 1,
                 overflow = TextOverflow.Clip,
             )

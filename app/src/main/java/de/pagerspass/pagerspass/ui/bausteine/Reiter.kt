@@ -79,7 +79,10 @@ fun RowScope.Reiter(
     zeichen: ImageVector? = null,
     marke: Int = 0,
 ) {
-    val farbe = if (offen) Farben.Amber else Farben.TextLeise
+    // Tabletlook (30.09.2026): Der offene Reiter ist eine helle Fläche mit
+    // weißer, fetter Schrift und dem Amberstrich an der Unterkante — kein
+    // goldener Schriftzug mehr. Amber bleibt dem, was man entscheidet.
+    val farbe = if (offen) Farben.Text else Farben.TextLeise
 
     Row(
         horizontalArrangement = Arrangement.spacedBy(Abstand.Klein, Alignment.CenterHorizontally),
@@ -95,6 +98,7 @@ fun RowScope.Reiter(
             )
             .drawBehind {
                 if (!offen) return@drawBehind
+                drawRect(Farben.FlaecheAktiv)
                 val balken = 2.dp.toPx()
                 drawLine(
                     color = Farben.Amber,
@@ -116,7 +120,7 @@ fun RowScope.Reiter(
         Text(
             text = aufschrift,
             style = Schrift.Normal.copy(
-                fontWeight = if (offen) FontWeight.SemiBold else FontWeight.Normal,
+                fontWeight = if (offen) FontWeight.Bold else FontWeight.Normal,
             ),
             color = farbe,
             maxLines = 1,

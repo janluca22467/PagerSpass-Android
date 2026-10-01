@@ -69,7 +69,8 @@ import de.pagerspass.pagerspass.ui.theme.Farben
 import de.pagerspass.pagerspass.ui.theme.Rundung
 import de.pagerspass.pagerspass.ui.theme.Schrift
 import de.pagerspass.pagerspass.ui.theme.flaeche
-import de.pagerspass.pagerspass.ui.theme.raster
+import de.pagerspass.pagerspass.ui.theme.kopfverlauf
+import de.pagerspass.pagerspass.ui.theme.seitengrund
 import de.pagerspass.pagerspass.ui.zeichen.Zeichen
 
 /**
@@ -143,8 +144,7 @@ fun BegleiterSeite(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .drawBehind { drawRect(Brush.verticalGradient(listOf(Farben.Bg, Farben.BgTief))) }
-            .raster(),
+            .seitengrund(),
     ) {
         Begleiterkopf(stand, oben, beiTrennen)
 
@@ -258,7 +258,7 @@ private fun Begleiterkopf(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
-            .background(Brush.verticalGradient(listOf(Farben.FlaecheHoch, Farben.Flaeche)))
+            .kopfverlauf()
             .drawBehind {
                 val strich = 1.dp.toPx()
                 drawLine(

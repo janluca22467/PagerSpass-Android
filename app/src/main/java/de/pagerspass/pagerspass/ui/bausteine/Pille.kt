@@ -23,6 +23,7 @@ import de.pagerspass.pagerspass.ui.theme.Farben
 import de.pagerspass.pagerspass.ui.theme.Rundung
 import de.pagerspass.pagerspass.ui.theme.Schrift
 import de.pagerspass.pagerspass.ui.theme.Ziel
+import de.pagerspass.pagerspass.ui.theme.schein
 
 /**
  * Die Pille — ein Filter, den man an- und ausschaltet.
@@ -59,7 +60,7 @@ fun Pille(
     val rand = when {
         !aktiv -> Farben.Rand.copy(alpha = 0.6f)
         an -> farbe
-        else -> Farben.Rand
+        else -> Color.White.copy(alpha = 0.09f)
     }
 
     Row(
@@ -67,7 +68,11 @@ fun Pille(
         verticalAlignment = Alignment.CenterVertically,
         modifier = modifier
             .defaultMinSize(minHeight = Ziel.Kompakt)
-            .background(if (an) farbe.copy(alpha = 0.10f) else Color.Transparent, Rundung.Rund)
+            // Moderner Anstrich (01.10.2026): gefüllte Kapseln statt Ränder um
+            // nichts — ausgeschaltet ein Hauch Weiß, eingeschaltet die Farbe mit
+            // einem Schein darum.
+            .then(if (an && aktiv) Modifier.schein(farbe, ecke = 999.dp, weite = 6.dp, staerke = 0.25f, versatz = 0.dp) else Modifier)
+            .background(if (an) farbe.copy(alpha = 0.12f) else Color.White.copy(alpha = 0.04f), Rundung.Rund)
             .border(1.dp, rand, Rundung.Rund)
             .clickable(
                 enabled = aktiv,

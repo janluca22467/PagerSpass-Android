@@ -21,9 +21,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -32,16 +29,15 @@ import de.pagerspass.pagerspass.ui.theme.Abstand
 import de.pagerspass.pagerspass.ui.theme.Farben
 import de.pagerspass.pagerspass.ui.theme.Mass
 import de.pagerspass.pagerspass.ui.theme.Schrift
-import de.pagerspass.pagerspass.ui.theme.raster
+import de.pagerspass.pagerspass.ui.theme.seitengrund
 
 /**
  * Die Rollfläche einer Ansicht — das Gegenstück zu `.seite` in `base.css`.
  *
- * <b>Der Grund einer Seite besteht aus drei Lagen</b>, und alle drei sind im Web
- * dieselbe `background`-Angabe: das Raster aus zwei Haarlinien, ein warmer
- * Schein von oben (Amber bei 10 %, breit gestreut) und darunter ein Verlauf von
- * `Bg` nach `BgTief`. Zusammen ergeben sie den abgedunkelten Arbeitsplatz. Jede
- * einzelne Lage für sich sieht nach nichts aus; das ist Absicht.
+ * <b>Der Grund ist eine ruhige Fläche.</b> Am Rechner trägt `.seite` im Web
+ * drei Lagen — Haarlinienraster, warmer Schein von oben, Verlauf nach `BgTief`.
+ * Am Handy fielen sie am 30.09.2026 weg (Tabletlook), und die App ist ein Handy:
+ * eine Farbe, nichts leuchtet dahinter. Siehe `seitengrund()`.
  *
  * <b>Die Aussparungen des Geräts gehören zum Rand, nicht zum Inhalt.</b> Der
  * Grund läuft unter Uhr und Wischstreifen durch, das Polster hält den Inhalt
@@ -69,30 +65,10 @@ fun Seite(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .drawBehind {
-                // Lage 3, ganz unten: der Verlauf.
-                drawRect(
-                    Brush.verticalGradient(
-                        colors = listOf(Farben.Bg, Farben.BgTief),
-                        startY = 0f,
-                        endY = size.height,
-                    )
-                )
-                // Lage 2: der warme Schein von oben. Im Web „1200 × 560 bei
-                // 50 % / −12 %" — also ein breiter, flacher Fleck, dessen Mitte
-                // oberhalb des Bildschirms liegt. Sichtbar ist nur sein unterer
-                // Rand, und genau das ist gemeint: Licht, das von oben kommt.
-                drawRect(
-                    Brush.radialGradient(
-                        colors = listOf(Farben.Amber.copy(alpha = 0.10f), androidx.compose.ui.graphics.Color.Transparent),
-                        center = Offset(size.width / 2f, -size.height * 0.12f),
-                        radius = maxOf(size.width, size.height) * 0.9f,
-                    )
-                )
-            }
-            // Lage 1: das Raster. Es liegt über dem Verlauf, damit seine Linien
-            // oben so hell sind wie unten.
-            .raster(),
+            // Die ruhige Fläche des Tabletlooks — ohne Raster und ohne den
+            // warmen Schein von oben, die das Web am Handy seit dem 30.09.2026
+            // abgelegt hat (mobil.css, „Das Handy im Tabletlook").
+            .seitengrund(),
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
