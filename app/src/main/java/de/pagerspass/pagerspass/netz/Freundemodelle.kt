@@ -267,18 +267,11 @@ data class Wachenschatz(
     val schmuck: List<Wachenstueck> = emptyList(),
 )
 
-/** Ein Punkt der Hilfsfrist-Kurve eines Mitglieds. */
-@Serializable
-data class HilfsfristPunkt(
-    val beendetUm: String = "",
-    val hilfsfristSekunden: Double? = null,
-)
-
 /** Die Hilfsfrist-Kurve eines Mitglieds, für den Vergleich. */
 @Serializable
 data class GemeinschaftsHilfsfrist(
     val anzeigename: String = "",
-    val verlauf: List<HilfsfristPunkt> = emptyList(),
+    val verlauf: List<Hilfsfristpunkt> = emptyList(),
 )
 
 /**
