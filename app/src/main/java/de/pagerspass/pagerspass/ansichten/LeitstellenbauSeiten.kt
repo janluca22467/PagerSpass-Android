@@ -328,6 +328,46 @@ fun LeitstelleEditorSeite(
                     )
                 }
 
+                // Die Karte: Wachen des Kreises antippen, eigene hinstellen und
+                // verschieben. Die Liste darunter bleibt als Rückfall.
+                Leitstellenbaukarte(
+                    abzug = abzug,
+                    wachen = v.wachen,
+                    voll = v.wachen.size >= MAX_WACHEN,
+                    beiUmschalten = { a ->
+                        if (a.kennung in gewaehlt) {
+                            beiAendern(
+                                v.copy(
+                                    wachen = v.wachen.filter { it.kennung != a.kennung },
+                                    festeFunkrufnamen = v.festeFunkrufnamen.filterKeys { !it.startsWith("${a.kennung}:") },
+                                ),
+                            )
+                        } else if (v.wachen.size < MAX_WACHEN) {
+                            beiAendern(v.copy(wachen = v.wachen + Wachenwahl(kennung = a.kennung, name = a.name, zugnummer = naechsteZug())))
+                        }
+                    },
+                    beiVerschieben = { kennung, lat, lon ->
+                        // NaN heißt: zurück an den Platz aus dem Abzug.
+                        wahlAendern(kennung) {
+                            if (lat.isNaN()) it.copy(lat = null, lon = null) else it.copy(lat = lat, lon = lon)
+                        }
+                    },
+                    beiBauen = { lat, lon ->
+                        beiAendern(
+                            v.copy(
+                                wachen = v.wachen + Wachenwahl(
+                                    kennung = EIGEN_PRAEFIX + java.util.UUID.randomUUID().toString().replace("-", "").take(13),
+                                    name = "",
+                                    zugnummer = naechsteZug(),
+                                    lat = lat,
+                                    lon = lon,
+                                    organisation = "Feuerwehr",
+                                ),
+                            ),
+                        )
+                    },
+                )
+
                 eigene.forEach { w ->
                     EigeneWache(
                         w = w,
