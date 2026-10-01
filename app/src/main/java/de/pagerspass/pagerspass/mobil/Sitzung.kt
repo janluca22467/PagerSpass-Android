@@ -920,6 +920,17 @@ class Sitzung(anwendung: Application) : AndroidViewModel(anwendung) {
      * Versuch beginnt. Wer das je Aufruf schreibt, vergisst beim vierten Mal das
      * Zurücknehmen — und dann dreht sich der Knopf für immer.
      */
+    /**
+     * Eine Freundschaftsanfrage stellen — „+ Freund" in der Nachbesprechung. Der
+     * Rückruf bekommt den Satz des Servers oder `null`; danach die Liste neu.
+     */
+    fun freundAnfragen(wen: String, danach: (String?) -> Unit = {}) = viewModelScope.launch {
+        val fehler = runCatching { de.pagerspass.pagerspass.netz.Freundewege(netz).anfragen(kennung(), wen) }
+            .exceptionOrNull()?.let { it.message ?: "Das ging gerade nicht." }
+        danach(fehler)
+        freundeLaden(neu = true)
+    }
+
     private fun arbeiten(tun: suspend () -> Unit) = viewModelScope.launch {
         _stand.update { it.copy(laeuft = true, fehler = null, hinweis = null) }
         runCatching { tun() }

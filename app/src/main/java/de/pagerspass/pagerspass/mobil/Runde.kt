@@ -46,7 +46,7 @@ class Runde(anwendung: Application) : AndroidViewModel(anwendung) {
     private val bereich = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private val mikrofon = Mikrofon()
-    private val lautsprecher = Lautsprecher()
+    private val lautsprecher = Lautsprecher().also { Tonpegel.laden(anwendung) }
     private var funklimit: kotlinx.coroutines.Job? = null
 
     private val _stand = MutableStateFlow(Rundenstand())
@@ -288,7 +288,7 @@ class Runde(anwendung: Application) : AndroidViewModel(anwendung) {
      * die App zeigt „Diesen Raum gibt es nicht (mehr)". Deshalb stehen Verbinden
      * und Beitreten hier in einem Aufruf und nicht in zweien.
      */
-    fun beitreten(code: String, name: String) = arbeiten {
+    fun beitreten(code: String, name: String, anrufeVorgabe: Boolean? = null) = arbeiten {
         val sauber = code.trim().uppercase()
         _stand.update { it.copy(code = sauber) }
 
@@ -318,8 +318,27 @@ class Runde(anwendung: Application) : AndroidViewModel(anwendung) {
                 // Die App hat keine eigene Spracherkennung — der Server soll
                 // Durchsagen mit Whisper in Text übersetzen (wie Firefox).
                 draht.rufen("FunkerkennungWuenschen", wert(true))
+                vorlesenAnmelden()
+                // Die Vorgabe aus dem Einrichtungsbogen: Notrufe als Anruf — ja oder
+                // nein. Nur für eine selbst eröffnete Runde und nur einmal, gleich
+                // nach dem Eröffnen; danach gehört der Schalter der Lobby.
+                val raum = ergebnis.state
+                if (anrufeVorgabe != null && raum != null && raum.settings.telefonischeLeitstelle != anrufeVorgabe) {
+                    befehle.einstellungen(Einstellungsaenderung(telefonischeLeitstelle = anrufeVorgabe))
+                }
             }
         }
+    }
+
+    /**
+     * Das Vorlesen kennt der Server nur für die Dauer der Runde. Wer es auf diesem
+     * Gerät eingeschaltet hat (`funk.vorlesen`), meldet es beim Beitritt gleich wieder
+     * an — sonst funkt er die erste halbe Schicht stumm. Nur der Einschaltfall: Ein
+     * „aus" ist schon der Anfangszustand des Spielers.
+     */
+    private fun vorlesenAnmelden() {
+        Geraeteeinstellungen.laden(getApplication())
+        if (Geraeteeinstellungen.funkVorlesen.value == true) draht.rufen("FunkVorlesen", wert(true))
     }
 
     /**
@@ -359,7 +378,10 @@ class Runde(anwendung: Application) : AndroidViewModel(anwendung) {
                         zuschauer = alsZuschauer,
                     )
                 }
-                if (!alsZuschauer) draht.rufen("FunkerkennungWuenschen", wert(true))
+                if (!alsZuschauer) {
+                    draht.rufen("FunkerkennungWuenschen", wert(true))
+                    vorlesenAnmelden()
+                }
             } else {
                 ablage.rundeMerken(null)
                 draht.trennen()

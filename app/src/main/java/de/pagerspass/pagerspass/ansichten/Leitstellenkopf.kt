@@ -97,6 +97,9 @@ fun Leitstellenkopf(
     beiBesatzung: () -> Unit,
     beiVerlassen: (() -> Unit)?,
     beiDienstende: () -> Unit,
+    beiBegleiter: (() -> Unit)? = null,
+    beiTon: (() -> Unit)? = null,
+    tonAus: Boolean = false,
 ) {
     var fachOffen by remember { mutableStateOf(false) }
 
@@ -242,6 +245,13 @@ fun Leitstellenkopf(
                     .border(1.dp, Farben.Rand, Rundung.Klein)
                     .padding(Abstand.Klein),
             ) {
+                // Der Begleiter nur in der laufenden Runde — in der Lobby gibt es nichts zu koppeln.
+                if (beiBegleiter != null && raum?.laeuft == true) {
+                    Werkzeug("Begleiter", Kopfzeichen.Begleiter) {
+                        fachOffen = false
+                        beiBegleiter()
+                    }
+                }
                 Werkzeug("Besatzung", Kopfzeichen.Besatzung) {
                     fachOffen = false
                     beiBesatzung()
@@ -250,6 +260,13 @@ fun Leitstellenkopf(
                     Werkzeug("Verlassen", Kopfzeichen.Verlassen) {
                         fachOffen = false
                         beiVerlassen()
+                    }
+                }
+                // Der Ton zuletzt, wie im Web — sein Zeichen zeigt, ob man etwas hört.
+                if (beiTon != null) {
+                    Werkzeug("Ton", if (tonAus) Kopfzeichen.TonAus else Kopfzeichen.Ton) {
+                        fachOffen = false
+                        beiTon()
                     }
                 }
             }
@@ -703,6 +720,21 @@ private object Kopfzeichen {
 
     /** Tür mit Pfeil: den Platz verlassen. */
     val Verlassen = strich("verlassen", "M10 4H5a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h5", "M14 8l4 4-4 4", "M8 12h10")
+
+    /** Handy mit Funkbögen: der Begleiter (`BegleiterKnopf.vue`). */
+    val Begleiter = strich(
+        "begleiter",
+        "M10 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z",
+        "M10.5 6h3M11 18.5h2",
+        "M6 9.5a4.5 4.5 0 0 0 0 5M3.6 7.6a8 8 0 0 0 0 8.8",
+        "M18 9.5a4.5 4.5 0 0 1 0 5M20.4 7.6a8 8 0 0 1 0 8.8",
+    )
+
+    /** Lautsprecher mit Wellen — der Ton (`Tonregler.vue`). */
+    val Ton = strich("ton", "M11.5 5 7 9H3.5v6H7l4.5 4Z", "M15.2 9.2a4 4 0 0 1 0 5.6", "M17.9 6.6a7.8 7.8 0 0 1 0 10.8")
+
+    /** Lautsprecher mit Kreuz — alles außer dem Melder stumm. */
+    val TonAus = strich("tonAus", "M11.5 5 7 9H3.5v6H7l4.5 4Z", "m16.5 9.5 5 5m0-5-5 5")
 
     /** Ausschalter: Bogen mit Strich — das Ende der Schicht. */
     val Aus = strich("aus", "M12 3.5v7.5", "M7.4 6.6a7.5 7.5 0 1 0 9.2 0")

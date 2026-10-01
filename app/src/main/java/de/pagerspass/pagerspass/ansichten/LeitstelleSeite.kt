@@ -127,8 +127,11 @@ fun LeitstelleSeite(
     eigeneKennung: String = "",
     befehle: Raumbefehle = Raumbefehle.Leer,
     neben: Raumneben = Raumneben(),
+    server: String = de.pagerspass.pagerspass.netz.Server.VORGABE,
 ) {
     var reiter by remember { mutableStateOf(Leitstellenteil.Einsaetze) }
+    var tonOffen by remember { mutableStateOf(false) }
+    var begleiterOffen by remember { mutableStateOf(false) }
     var kartenwahl by remember { mutableStateOf<String?>(null) }
     var neuOffen by remember { mutableStateOf(false) }
     var alarmFuer by remember { mutableStateOf<Einsatz?>(null) }
@@ -140,6 +143,14 @@ fun LeitstelleSeite(
     var journalOffen by remember { mutableStateOf(false) }
     var verlassenGefragt by remember { mutableStateOf(false) }
     var dienstendeGefragt by remember { mutableStateOf(false) }
+    // Der Abfrageplatz (INPOL, ZEVIS …) — am Handy ein Vollbild, geöffnet aus dem Band
+    // oder dem Einsatzbogen, beide mit einer Person vorgewählt.
+    var abfrageplatzOffen by remember { mutableStateOf(false) }
+    var abfragefokus by remember { mutableStateOf<Abfragefokus?>(null) }
+    val abfrageplatzOeffnen: (Abfragefokus?) -> Unit = {
+        abfragefokus = it
+        abfrageplatzOffen = true
+    }
 
     val raum = stand.raum
     val oben = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
@@ -187,6 +198,9 @@ fun LeitstelleSeite(
                     raum.dienstendeStimmen + 1 >= raum.dienstendeSchwelle
                 if (entscheidet) dienstendeGefragt = true else beiDienstende()
             },
+            beiBegleiter = { begleiterOffen = true },
+            beiTon = { tonOffen = true },
+            tonAus = de.pagerspass.pagerspass.mobil.Tonpegel.stummAusserMelder,
         )
 
         // Die Reiter oben, wie am Handy im Web — vier Teile, die Zahl am Funk.
@@ -229,6 +243,7 @@ fun LeitstelleSeite(
                             // wartet auf den Host — und der sitzt hier.
                             Anfragenkasten(raum, befehle)
                             Feststellungsband(raum, befehle)
+                            Abfrageband(raum, abfrageplatzOeffnen)
                             TeilEinsaetze(
                                 raum = raum,
                                 beiNeu = { neuOffen = true },
@@ -315,6 +330,10 @@ fun LeitstelleSeite(
                 },
                 beiZu = { bogenFuer = null },
                 beiWarnen = { warnungOffen = true },
+                beiAbfrageplatz = {
+                    bogenFuer = null
+                    abfrageplatzOeffnen(it)
+                },
             )
         }
     }
@@ -342,6 +361,31 @@ fun LeitstelleSeite(
             katalog = katalog?.fahrzeuge.orEmpty(),
             befehle = befehle,
             beiZu = { besatzungOffen = false },
+        )
+    }
+
+    if (tonOffen && raum != null) {
+        Tonblende(raum, eigeneKennung, befehle) { tonOffen = false }
+    }
+
+    if (begleiterOffen && raum != null) {
+        Begleiterblende(
+            raum = raum,
+            server = server,
+            premium = raum.players.firstOrNull { it.id == eigeneKennung }?.premium == true,
+            befehle = befehle,
+            neben = neben,
+            beiZu = { begleiterOffen = false },
+        )
+    }
+
+    if (abfrageplatzOffen && raum != null) {
+        Abfrageplatz(
+            raum = raum,
+            fokus = abfragefokus,
+            befehle = befehle,
+            beiFokus = { abfragefokus = it },
+            beiSchliessen = { abfrageplatzOffen = false },
         )
     }
 

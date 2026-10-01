@@ -114,6 +114,22 @@ class Raumwege(private val netz: Netz) {
      */
     suspend fun kiFunkVerfuegbar(): Boolean =
         netz.hole<Serverangebot>("/api/version").kiFunk
+
+    /**
+     * Den Zugang für einen Handy-Funkbegleiter dieses Platzes erzeugen (Premium) —
+     * `funkbegleiterErzeugen` im Web. Die App schickt keine Gerätewahl mit; der
+     * Server lässt den Begleiter dann aufs Dienstgerät zurückfallen.
+     */
+    suspend fun funkbegleiterErzeugen(kennung: String, code: String): Funkbegleiterzugang =
+        netz.hole(
+            "/api/konto/${teil(kennung)}/raum/${teil(code)}/funkbegleiter",
+            "POST",
+            """{"funkAusgelagert":true}""",
+        )
 }
+
+/** Der Zugang eines Funkbegleiters — der Token geht als Link an das Handy. */
+@kotlinx.serialization.Serializable
+data class Funkbegleiterzugang(val token: String = "", val gueltigBis: String? = null)
 
 private fun teil(wert: String): String = URLEncoder.encode(wert, "UTF-8")
