@@ -35,10 +35,10 @@ package de.pagerspass.pagerspass.netz
  */
 object Rechtsstand {
     /** Muss zeichengleich `RECHTSSTAND` in `web/src/recht/rechtstexte.ts` sein. */
-    const val AKTUELL = "2026-09-24"
+    const val AKTUELL = "2026-10-01"
 
     /** Wie der Stand in einer Fußzeile heißt. */
-    const val ANSAGE = "Stand: 24. September 2026 (Fassung $AKTUELL)"
+    const val ANSAGE = "Stand: 1. Oktober 2026 (Fassung $AKTUELL)"
 
     /**
      * Ist diesem Konto die aktuelle Fassung noch vorzulegen?
