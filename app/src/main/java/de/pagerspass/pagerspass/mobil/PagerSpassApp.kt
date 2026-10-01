@@ -359,6 +359,7 @@ private fun Rundenrahmen(
         raum?.beendet == true -> DebriefingSeite(
             stand = stand,
             beiVerlassen = { runde.verlassen() },
+            eigeneKennung = sitzungsstand.konto?.kennung.orEmpty(),
         )
 
         raum?.laeuft == true && ich?.istLeitstelle == true -> LeitstelleSeite(
