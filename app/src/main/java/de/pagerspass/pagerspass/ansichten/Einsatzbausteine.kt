@@ -188,11 +188,17 @@ fun ColumnScope.Geraetegriffe(
         an = ich?.einzelrufZulassen != false,
         beiWechsel = { befehle.einzelrufZulassen(it) },
     )
+    val vorlesezusammenhang = androidx.compose.ui.platform.LocalContext.current
     Schalterzeile(
         titel = "Getippten Funk vorlesen",
         unterzeile = "Wer auf der Gruppe mithört, hört deine getippten Sprüche als Stimme.",
         an = ich?.funkVorlesen == true,
-        beiWechsel = { befehle.funkVorlesen(it) },
+        // Wie `funkVorlesenSetzen` im Web: Das Gerät merkt es sich für die nächste
+        // Schicht, der Beitritt meldet es dann gleich wieder an.
+        beiWechsel = {
+            de.pagerspass.pagerspass.mobil.Geraeteeinstellungen.funkVorlesenSetzen(vorlesezusammenhang, it)
+            befehle.funkVorlesen(it)
+        },
     )
 
     // Die Rufgruppe — das Gerät versucht es, der Server entscheidet („Auf DMO kann

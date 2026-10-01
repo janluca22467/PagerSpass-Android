@@ -351,6 +351,7 @@ internal fun Vollblende(
     etikett: String,
     titel: String,
     beiSchliessen: () -> Unit,
+    schliessen: String = "Zuklappen",
     inhalt: @Composable ColumnScope.() -> Unit,
 ) {
     Dialog(
@@ -376,7 +377,7 @@ internal fun Vollblende(
                     Etikett(etikett)
                     Text(titel, style = Schrift.Titel, color = Farben.Text, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
-                Knopf("Zuklappen", beiSchliessen, art = Knopfart.Leise, kompakt = true)
+                Knopf(schliessen, beiSchliessen, art = Knopfart.Leise, kompakt = true)
             }
             Column(
                 verticalArrangement = Arrangement.spacedBy(Abstand.Normal),

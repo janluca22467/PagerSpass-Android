@@ -116,6 +116,11 @@ fun LobbySeite(
     befehle: Raumbefehle = Raumbefehle.Leer,
     neben: Raumneben = Raumneben(),
     katalog: Katalog? = null,
+    /** Die eigene Freundesliste — für „Freunde einladen" unter Mehr. */
+    freunde: List<de.pagerspass.pagerspass.netz.Freund> = emptyList(),
+    beiFreundeLaden: () -> Unit = {},
+    /** Einladen (Kennung, als Zuschauer); der Rückruf bekommt den Fehlersatz oder `null`. */
+    beiEinladen: ((String, Boolean, (String?) -> Unit) -> Unit)? = null,
 ) {
     var reiter by remember { mutableStateOf(Lobbyteil.Rolle) }
 
@@ -184,7 +189,7 @@ fun LobbySeite(
                             beiChat(chatsatz)
                             chatsatz = ""
                         }
-                        Lobbyteil.Mehr -> TeilMehr(stand, ich, neben, befehle)
+                        Lobbyteil.Mehr -> TeilMehr(stand, ich, neben, befehle, freunde, beiFreundeLaden, beiEinladen)
                     }
                 }
             }
@@ -927,6 +932,9 @@ private fun ColumnScope.TeilMehr(
     ich: Spieler?,
     neben: Raumneben,
     befehle: Raumbefehle,
+    freunde: List<de.pagerspass.pagerspass.netz.Freund> = emptyList(),
+    beiFreundeLaden: () -> Unit = {},
+    beiEinladen: ((String, Boolean, (String?) -> Unit) -> Unit)? = null,
 ) {
     val zwischenablage = LocalClipboardManager.current
 
@@ -992,6 +1000,18 @@ private fun ColumnScope.TeilMehr(
 
     // Die Rundenvorlage steht seit 5.0.0.26 im Rundendialog („Als Vorlage merken").
     val raum = stand.raum
+
+    // Die Freundesliste — im selben Abschnitt wie Code, QR und Link: alle Wege, wie
+    // jemand hereinkommt, an einer Stelle (`einladen` in `LobbyView.vue`).
+    if (raum != null && beiEinladen != null) {
+        LaunchedEffect(Unit) { beiFreundeLaden() }
+        Freundeeinladen(raum, freunde, beiEinladen)
+    }
+
+    // Doppelter Zweck: Jeder hört einmal, wonach er gleich suchen muss — und ob der
+    // Melder überhaupt laut ist.
+    Ueberschrift("Melder")
+    Meldertest()
 
     // Die eine Streamer-Stelle der Lobby: Übertragung der Runde und eigene
     // Live-Meldung in einem Dialog (`LiveKnopf.vue`). Hier und nicht am

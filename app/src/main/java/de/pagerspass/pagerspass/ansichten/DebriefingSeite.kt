@@ -13,6 +13,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
@@ -23,6 +24,7 @@ import de.pagerspass.pagerspass.mobil.Rundenstand
 import de.pagerspass.pagerspass.netz.Ablage
 import de.pagerspass.pagerspass.netz.Archivrunde
 import de.pagerspass.pagerspass.netz.Befund
+import de.pagerspass.pagerspass.netz.Freund
 import de.pagerspass.pagerspass.netz.Netz
 import de.pagerspass.pagerspass.netz.Werkwege
 import de.pagerspass.pagerspass.ui.bausteine.Abschnitt
@@ -56,7 +58,8 @@ import de.pagerspass.pagerspass.ui.theme.flaeche
  * Schicht auffiel, Doppelmeldungen, wer was getan hat, die Mannschaft, die Einsätze
  * mit ihrer Chronik, das Anrufjournal und das Funkprotokoll.
  *
- * Die Schichtkarte (das teilbare Bild) gibt es im Web; sie ist hier noch nicht dabei.
+ * Die Schichtkarte (das teilbare Bild, `Schichtkarte.kt`) klappt aus dem Kopf auf —
+ * zugeklappt, denn zuerst beantwortet die Seite „wie lief der Abend".
  */
 @Composable
 fun DebriefingSeite(
@@ -65,8 +68,16 @@ fun DebriefingSeite(
     stand: Rundenstand = Rundenstand(),
     beiVerlassen: () -> Unit = {},
     eigeneKennung: String = "",
+    level: Int = 1,
+    premium: Boolean = false,
+    server: String? = null,
+    /** Die eigene Freundesliste — für „schon befreundet?" bei der Mannschaft. */
+    freunde: List<Freund> = emptyList(),
+    /** Eine Freundschaftsanfrage stellen; der Rückruf bekommt den Fehlersatz oder `null`. */
+    beiFreundAnfragen: ((String, (String?) -> Unit) -> Unit)? = null,
 ) {
     val gutschrift = stand.gutschrift
+    var karteOffen by remember { mutableStateOf(false) }
     val raum = stand.raum
     val zusammenhang = LocalContext.current
 
@@ -108,8 +119,35 @@ fun DebriefingSeite(
                 raum?.code?.let { "Raum $it" },
                 "Dienstdauer $dienstdauer",
             ).joinToString(" · "),
-            knoepfe = { Knopf("Zum Start", beiVerlassen, kompakt = true) },
+            knoepfe = {
+                Knopf("Schichtkarte", { karteOffen = !karteOffen }, art = Knopfart.Leise, kompakt = true)
+                Knopf("Zum Start", beiVerlassen, kompakt = true)
+            },
         )
+
+        if (karteOffen) {
+            Kartenbereich(
+                daten = Schichtkartendaten(
+                    leitstelle = raum?.settings?.leitstelle?.ifBlank { null } ?: "Leitstelle",
+                    code = raum?.code.orEmpty(),
+                    datum = java.time.format.DateTimeFormatter.ofPattern("dd.MM.yyyy").format(
+                        java.time.Instant.ofEpochMilli(ende ?: beginn ?: System.currentTimeMillis())
+                            .atZone(java.time.ZoneId.systemDefault()),
+                    ),
+                    dienstdauer = dienstdauer,
+                    einsaetze = einsaetze,
+                    abgeschlossen = abgearbeitet,
+                    disposition = dauerText(dispo),
+                    hilfsfrist = dauerText(hilfsfrist),
+                    funksprueche = funk.size,
+                    punkte = gutschrift?.punkte,
+                    rang = gutschrift?.rang?.ifBlank { null },
+                ),
+                level = level,
+                premium = premium,
+                server = server,
+            )
+        }
 
         Kennzahltafel(
             listOf(
@@ -176,16 +214,37 @@ fun DebriefingSeite(
         }
 
         val mitspieler = raum?.players?.filter { !it.istBot && it.id != eigeneKennung }.orEmpty()
+        var angefragt by remember { mutableStateOf(emptySet<String>()) }
+        var anfrageMeldung by remember { mutableStateOf<String?>(null) }
         if (mitspieler.isNotEmpty()) {
             Abschnitt("Mannschaft") {
                 Kasten(abstandInnen = Abstand.Winzig) {
                     mitspieler.forEach { p ->
-                        Row {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
                             Text(p.name, style = Schrift.Normal, color = Farben.Text, modifier = Modifier.weight(1f))
                             SehrLeise(p.rang)
+                            // „+ Freund" nur für die, mit denen man noch nichts zu tun hat —
+                            // auch eine offene oder blockierte Beziehung zählt.
+                            val stand = freunde.firstOrNull { it.kennung == p.id }?.stand
+                            val schon = stand in listOf("Bestaetigt", "Angefragt", "Blockiert")
+                            if (beiFreundAnfragen != null && !schon) {
+                                Knopf(
+                                    if (p.id in angefragt) "Angefragt ✓" else "+ Freund",
+                                    {
+                                        anfrageMeldung = null
+                                        beiFreundAnfragen(p.id) { fehler ->
+                                            if (fehler == null) angefragt = angefragt + p.id else anfrageMeldung = fehler
+                                        }
+                                    },
+                                    art = Knopfart.Leise,
+                                    kompakt = true,
+                                    aktiv = p.id !in angefragt,
+                                )
+                            }
                         }
                     }
                 }
+                anfrageMeldung?.let { Text(it, style = Schrift.MonoKlein, color = Farben.SignalHell) }
             }
         }
 

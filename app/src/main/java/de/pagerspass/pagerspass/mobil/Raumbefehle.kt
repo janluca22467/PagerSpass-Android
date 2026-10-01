@@ -101,6 +101,16 @@ class Raumbefehle internal constructor(
             _neben.update { it.copy(warnung = text, warnungUm = System.currentTimeMillis()) }
         }
 
+        // Ein Handy hat sich als Begleiter an einen Platz gehängt oder ist gegangen.
+        leitung.auf("BegleiterStatus") { a ->
+            val id = a.getOrNull(0)?.let { text(it) } ?: return@auf
+            val an = a.getOrNull(1)?.let { text(it) } == "true"
+            bereich.launch {
+                if (ich == null) ich = runCatching { eigeneKennung() }.getOrNull()
+                if (id == ich) _neben.update { it.copy(begleiterGekoppelt = an) }
+            }
+        }
+
         // ------------------------------------------------------------ Draht
         leitung.auf("DrahtSprecher") { a ->
             val id = a.getOrNull(0)?.let { text(it) } ?: return@auf
@@ -780,6 +790,26 @@ class Raumbefehle internal constructor(
         _neben.update { it.copy(strassen = liste, strassenFuer = landkreisId) }
     }
 
+    // ============================================================ Begleiter
+
+    /**
+     * Der Link für einen Handy-Funkbegleiter dieses Platzes — `null` mit einer Meldung,
+     * wenn der Server ablehnt (ohne Premium, nicht in der Runde).
+     */
+    suspend fun funkbegleiterLink(code: String, server: String): Result<String> = runCatching {
+        val kennung = eigeneKennung() ?: throw IllegalStateException("Kein Konto angemeldet.")
+        val zugang = wege?.funkbegleiterErzeugen(kennung, code)
+            ?: throw IllegalStateException("Keine Verbindung.")
+        "${server.trimEnd('/')}/play/mobile/funk/${zugang.token}"
+    }
+
+    /** Ob schon ein Handy am Platz hängt — weiß nur der Server. */
+    fun begleiterNachfragen() = bereich.launch {
+        val roh = runCatching { leitung.frage("BegleiterGekoppelt") }.getOrNull()
+        val an = (roh as? JsonPrimitive)?.takeIf { it !is JsonNull }?.content == "true"
+        _neben.update { it.copy(begleiterGekoppelt = an) }
+    }
+
     // ============================================================ Übertragung
 
     /** „Ich streame gerade" — die Marke am eigenen Namen, an oder aus. */
@@ -903,6 +933,30 @@ class Raumbefehle internal constructor(
     /** Die Leitstelle über Funk um eine Abfrage bitten — die Antwort kommt über Funk. */
     fun abfrageAnfordern(incidentId: String, beteiligterId: String, art: String) =
         leitung.rufen("AbfrageAnfordern", wert(incidentId), wert(beteiligterId), wert(art))
+
+    /**
+     * Am Abfrageplatz der Leitstelle ein Register abfragen — mit dem, was in die Maske
+     * getippt wurde. Passt es nicht zur Person, antwortet das Register über die Eingabe.
+     */
+    fun polizeiAbfrage(
+        incidentId: String,
+        beteiligterId: String,
+        art: String,
+        name: String?,
+        geburtsdatum: String?,
+        kennzeichen: String?,
+    ) = leitung.rufen(
+        "PolizeiAbfrage", wert(incidentId), wert(beteiligterId), wert(art),
+        opt(name), opt(geburtsdatum), opt(kennzeichen),
+    )
+
+    /** Eine Abfrage am Pult ohne Ersuchen — ein Name oder ein Kennzeichen aus dem Notruf. */
+    fun freieAbfrage(art: String, name: String?, geburtsdatum: String?, kennzeichen: String?) =
+        leitung.rufen("FreieAbfrage", wert(art), opt(name), opt(geburtsdatum), opt(kennzeichen))
+
+    /** Die Leitstelle gibt eine vorliegende Auskunft über Funk an die Streife durch. */
+    fun auskunftDurchgeben(incidentId: String, beteiligterId: String, art: String) =
+        leitung.rufen("AuskunftDurchgeben", wert(incidentId), wert(beteiligterId), wert(art))
 
     fun polizeiMassnahme(incidentId: String, beteiligterId: String, massnahmeId: String) =
         leitung.rufen("PolizeiMassnahme", wert(incidentId), wert(beteiligterId), wert(massnahmeId))
@@ -1040,6 +1094,8 @@ data class Raumneben(
      * Ohne Antwort `false` — dann stehen KI-Funk, KI-Anrufe und KI-Lagen gar nicht da.
      */
     val kiFunkVerfuegbar: Boolean = false,
+    /** Ob an diesem Platz ein Handy als Funkbegleiter hängt (`BegleiterStatus`). */
+    val begleiterGekoppelt: Boolean = false,
 )
 
 /**

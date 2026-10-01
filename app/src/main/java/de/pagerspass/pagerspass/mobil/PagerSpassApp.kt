@@ -201,6 +201,7 @@ fun PagerSpassApp(
                 sitzung = sitzung,
                 runde = runde,
                 daten = null,
+                sozial = sozial,
             )
 
             // <b>Der gekoppelte Begleiter verdrängt genauso.</b> Er ist ein
@@ -300,6 +301,7 @@ private fun Rundenrahmen(
     sitzung: Sitzung,
     runde: Runde,
     daten: Seitenstand?,
+    sozial: Sozial? = null,
 ) {
     val sitzungsstand by sitzung.stand.collectAsStateWithLifecycle()
     val seiten by sitzung.daten.collectAsStateWithLifecycle()
@@ -363,11 +365,19 @@ private fun Rundenrahmen(
             ),
         )
 
-        raum?.beendet == true -> DebriefingSeite(
-            stand = stand,
-            beiVerlassen = { runde.verlassen() },
-            eigeneKennung = sitzungsstand.konto?.kennung.orEmpty(),
-        )
+        raum?.beendet == true -> {
+            LaunchedEffect(Unit) { sitzung.freundeLaden() }
+            DebriefingSeite(
+                stand = stand,
+                beiVerlassen = { runde.verlassen() },
+                eigeneKennung = sitzungsstand.konto?.kennung.orEmpty(),
+                level = sitzungsstand.konto?.level ?: 1,
+                premium = sitzungsstand.konto?.premiumAktiv == true,
+                server = sitzungsstand.server,
+                freunde = seiten.freunde.inhalt.orEmpty(),
+                beiFreundAnfragen = { wen, danach -> sitzung.freundAnfragen(wen, danach) },
+            )
+        }
 
         raum?.laeuft == true && ich?.istLeitstelle == true -> LeitstelleSeite(
             stand = stand,
@@ -408,6 +418,7 @@ private fun Rundenrahmen(
             eigeneKennung = sitzungsstand.konto?.kennung.orEmpty(),
             befehle = runde.befehle,
             neben = neben,
+            server = sitzungsstand.server,
         )
 
         // Wer mitten im Dienst ohne Platz dasteht, gehört in die Lobby — dort
@@ -461,6 +472,11 @@ private fun Rundenrahmen(
             befehle = runde.befehle,
             neben = neben,
             katalog = seiten.katalog.inhalt,
+            freunde = seiten.freunde.inhalt.orEmpty(),
+            beiFreundeLaden = { sitzung.freundeLaden(neu = true) },
+            beiEinladen = sozial?.let { s ->
+                { wen, alsZuschauer, danach -> s.einladenAusLobby(wen, stand.code, alsZuschauer, danach) }
+            },
         )
     }
 
@@ -1358,7 +1374,13 @@ private fun Angemeldet(
     LaunchedEffect(stand.raumcode) {
         val code = stand.raumcode ?: return@LaunchedEffect
         sitzung.raumcodeWegnehmen()
-        runde.beitreten(code, stand.konto?.anzeigename.orEmpty())
+        // Selbst eröffnet: die Vorgabe „Anrufe annehmen" aus dem Einrichtungsbogen —
+        // nur mit beantwortetem Bogen, sonst bleibt die Runde, wie sie immer war.
+        runde.beitreten(
+            code,
+            stand.konto?.anzeigename.orEmpty(),
+            anrufeVorgabe = einrichtung.einrichtung?.takeIf { !it.offen }?.anrufeAnnehmen,
+        )
     }
 
     // Ein Link von außen (`Tieflinks`) — erst hier, wo Konto, Shop und Wache

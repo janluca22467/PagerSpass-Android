@@ -97,6 +97,17 @@
                 <data android:path="/gemeinschaften" />
             </intent-filter>
         </activity>
+
+        <!--
+            Die Schichtkarte zum Teilen (`mobil/Kartenablage.kt`): ein eigener, kleiner
+            Anbieter statt FileProvider — er gibt nur PNGs aus dem Zwischenspeicher
+            heraus, nur lesend und nur an den, dem das Teilen sie zeigt.
+        -->
+        <provider
+            android:name=".mobil.Kartenablage"
+            android:authorities="${applicationId}.karten"
+            android:exported="false"
+            android:grantUriPermissions="true" />
     </application>
 
 </manifest>

@@ -193,7 +193,11 @@ class Lautsprecher {
     fun abspielen(bytes: ByteArray) {
         if (bytes.isEmpty()) return
         runCatching {
-            sicherstellen().write(bytes, 0, bytes.size, AudioTrack.WRITE_NON_BLOCKING)
+            val spur = sicherstellen()
+            // Der Funkregler und „alles außer dem Melder stumm" (`Tonpegel`) — je
+            // Paket, damit ein Schieben mitten in der Durchsage sofort greift.
+            spur.setVolume(Tonpegel.funkWirksam)
+            spur.write(bytes, 0, bytes.size, AudioTrack.WRITE_NON_BLOCKING)
         }.onFailure { Log.w("Sprechfunk", "Abspielen fehlgeschlagen", it) }
     }
 

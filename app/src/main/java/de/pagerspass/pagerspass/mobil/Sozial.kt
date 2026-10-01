@@ -236,6 +236,21 @@ class Sozial(anwendung: Application) : AndroidViewModel(anwendung) {
     }
 
     fun meldungWegnehmen() = _stand.update { it.copy(meldung = null) }
+
+    /**
+     * Aus der Lobby einladen — wie [einladen], aber die Antwort geht an die Zeile, die
+     * gefragt hat (`null` heißt: raus), statt in die allgemeine Meldung. Die Lobby
+     * hakt den Freund dann ab, wie `freundEinladen` im Web.
+     */
+    fun einladenAusLobby(an: String, roomCode: String, alsZuschauer: Boolean, danach: (String?) -> Unit) =
+        viewModelScope.launch {
+            val antwort = runCatching {
+                draht.frage("Einladen", wert(an), wert(roomCode), wert(alsZuschauer))
+            }
+            val fehler = antwort.exceptionOrNull()?.let { "Keine Verbindung." }
+                ?: (antwort.getOrNull() as? JsonPrimitive)?.content?.takeIf { it.isNotBlank() && it != "null" }
+            danach(fehler)
+        }
 }
 
 /** Was die Sozialschicht gerade hält. */

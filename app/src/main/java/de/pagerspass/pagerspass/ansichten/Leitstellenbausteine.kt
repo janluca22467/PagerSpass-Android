@@ -93,6 +93,7 @@ fun Einsatzblende(
     beiAbraeumen: () -> Unit,
     beiZu: () -> Unit,
     beiWarnen: (() -> Unit)? = null,
+    beiAbfrageplatz: ((Abfragefokus?) -> Unit)? = null,
 ) {
     var rueckruf by remember(einsatz.id) { mutableStateOf(false) }
     var zurueck by remember(einsatz.id) { mutableStateOf<Set<String>>(emptySet()) }
@@ -156,6 +157,10 @@ fun Einsatzblende(
             einsatz.einsatzleitung?.let { Marke("EL $it", farbe = Farben.BlauHell) }
         }
         einsatz.wasserlageText?.let { SehrLeise("Wasser: $it") }
+
+        // Die Beteiligten einer Polizeilage: Abfragen ist Arbeit der Leitstelle, das
+        // Feststellen und Handeln bleibt an der Einsatzstelle.
+        if (beiAbfrageplatz != null) BeteiligtePult(einsatz, beiAbfrageplatz)
 
         // ------------------------------------------------------- Die Kräfte
         Row(verticalAlignment = Alignment.CenterVertically) {
