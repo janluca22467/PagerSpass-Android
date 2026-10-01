@@ -349,3 +349,68 @@ fun AlleWaehlen(ids: List<String>, angehakt: Set<String>, beiSetzen: (Set<String
         kompakt = true,
     )
 }
+
+/**
+ * Die Reiterreihe in der Welt — `.reiter` mit dem Welt-Ton aus `welt.css`: eine
+ * eingelassene Leiste, gleich breite Wege, der gewählte in Cyan statt Bernstein.
+ * Bernstein heißt in der Welt „Geld“ und „Bauen“ — ein bernsteinfarbenes „Alle“
+ * über einer Liste mit Beträgen las sich wie ein weiterer Betrag.
+ */
+@Composable
+fun <T> Weltreiter(
+    wege: List<T>,
+    gewaehlt: T,
+    beiWahl: (T) -> Unit,
+    aufschrift: (T) -> String,
+    modifier: Modifier = Modifier,
+    zahl: ((T) -> Int)? = null,
+) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(Abstand.Haar),
+        modifier = modifier
+            .fillMaxWidth()
+            .background(Weltfarben.GlasTief, Rundung.Klein)
+            .border(1.dp, Weltfarben.Kante, Rundung.Klein)
+            .padding(Abstand.Haar),
+    ) {
+        wege.forEach { w ->
+            val an = w == gewaehlt
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(Abstand.Winzig, Alignment.CenterHorizontally),
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .weight(1f)
+                    .defaultMinSize(minHeight = 44.dp)
+                    .then(
+                        if (an) Modifier
+                            .background(
+                                androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Weltfarben.Hauch, Color.Transparent)),
+                                Rundung.Winzig,
+                            )
+                            .border(1.dp, Weltfarben.AkzentTief, Rundung.Winzig)
+                        else Modifier,
+                    )
+                    .clickable { beiWahl(w) }
+                    .padding(horizontal = Abstand.Haar, vertical = Abstand.Winzig),
+            ) {
+                Text(
+                    aufschrift(w),
+                    style = Schrift.Winzig.copy(fontWeight = if (an) FontWeight.SemiBold else FontWeight.Normal),
+                    color = if (an) Weltfarben.Akzent else Farben.TextSehrLeise,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (zahl != null) {
+                    Text(
+                        "${zahl(w)}",
+                        style = Schrift.Winzig.copy(fontFamily = Schrift.Mono),
+                        color = if (an) Weltfarben.Akzent else Farben.TextLeise,
+                        modifier = Modifier
+                            .background(Farben.FlaecheAktiv, Rundung.Rund)
+                            .padding(horizontal = 6.dp),
+                    )
+                }
+            }
+        }
+    }
+}

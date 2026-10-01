@@ -13,6 +13,24 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.text.style.TextAlign
+import de.pagerspass.pagerspass.ui.bausteine.Leerhinweis
+import de.pagerspass.pagerspass.ui.bausteine.Zeichenknopf
+import de.pagerspass.pagerspass.ui.theme.Rundung
+import de.pagerspass.pagerspass.mobil.Weltfahrt
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -73,7 +91,7 @@ fun FahrzeugeSeite(welt: Welt, zustand: Weltzustand, werkbank: Werkbank, karte: 
     val bestand = zustand.fahrzeuge.filter(zustand::fahrzeugImBereich)
     // Das Suchfeld erst, wenn es etwas zu durchsuchen gibt — wie im Web ab sechs.
     if (bestand.size > 5) {
-        Feld(wert = suche, beiAenderung = { suche = it }, platzhalter = "Rufname, Typ, Fähigkeit …")
+        Feld(wert = suche, beiAenderung = { suche = it }, platzhalter = "Rufname, Typ, Fähigkeit …", stil = Schrift.MonoNormal)
     }
     fun passt(f: WeltFahrzeug): Boolean {
         val t = suche.trim().lowercase()
@@ -86,72 +104,154 @@ fun FahrzeugeSeite(welt: Welt, zustand: Weltzustand, werkbank: Werkbank, karte: 
     val liste = bestand.filter(::passt).sortedWith(compareBy({ LAGENRANG[it.lage] ?: 9 }, { it.funkrufname }))
 
     when {
-        bestand.isEmpty() -> Leisesatz("Noch kein Fahrzeug. Erst eine Wache bauen, dann Fahrzeuge kaufen.")
-        liste.isEmpty() -> Leisesatz("Kein Fahrzeug passt zu „${suche.trim()}“.")
+        bestand.isEmpty() -> Leerhinweis("Noch kein Fahrzeug. Erst eine Wache bauen, dann Fahrzeuge kaufen.")
+        liste.isEmpty() -> Leerhinweis("Kein Fahrzeug passt zu „$suche“.")
     }
 
-    liste.forEach { f ->
-        val offen = werkbank.offenesFahrzeug == f.id
-        Weltkasten(an = offen) {
-            Fahrzeugkopf(zustand, f) {
-                werkbank.offenesFahrzeug = if (offen) null else f.id
-                if (!offen) {
-                    werkbank.gewaehltesFahrzeug = f.id
-                    if (f.lage != "Wache") karte.hinschauen(f.lat, f.lon)
+    Column(verticalArrangement = Arrangement.spacedBy(Abstand.Winzig)) {
+        liste.forEach { f ->
+            val offen = werkbank.offenesFahrzeug == f.id
+            Column {
+                Fahrzeugkopf(zustand, f, offen) {
+                    werkbank.offenesFahrzeug = if (offen) null else f.id
+                    if (!offen) {
+                        werkbank.gewaehltesFahrzeug = f.id
+                        if (f.lage != "Wache") karte.hinschauen(f.lat, f.lon)
+                    }
+                }
+                if (offen) {
+                    // Die Griffe hängen unter ihrer Zeile, eingerückt, mit dem Strich in Amber.
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(Abstand.Klein),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = Abstand.Normal)
+                            .background(Farben.Flaeche, RoundedCornerShape(bottomStart = 10.dp, bottomEnd = 10.dp))
+                            .drawBehind { drawLine(Farben.AmberTief, Offset(0f, 0f), Offset(0f, size.height), 2.dp.toPx()) }
+                            .padding(horizontal = Abstand.Klein, vertical = Abstand.Normal),
+                    ) {
+                        Fahrzeuggriffe(welt, zustand, werkbank, f)
+                    }
                 }
             }
-            if (offen) Fahrzeuggriffe(welt, zustand, werkbank, f)
         }
     }
 }
 
+/** Die Farbe des FMS-Status an Zeile und Punkt — `fahrzeugblende__status--N`. */
+private fun statusfarbe(status: Int): Color? = when (status) {
+    1 -> Farben.FmsSprechwunsch
+    2 -> Farben.FmsFrei
+    3 -> Farben.FmsAnfahrt
+    4 -> Farben.FmsVorOrt
+    6 -> Farben.FmsGebunden
+    else -> null
+}
+
+/** Der runde Statuspunkt vorn an einer Fahrzeugzeile — `.fahrzeugblende__status`. */
 @Composable
-private fun Fahrzeugkopf(zustand: Weltzustand, f: WeltFahrzeug, beiDruck: () -> Unit) {
-    val fahrt = zustand.fahrt
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(Abstand.Normal),
-        verticalAlignment = Alignment.Top,
-        modifier = Modifier.fillMaxWidth().clickable(onClick = beiDruck),
+fun Statuspunkt(status: Int) {
+    val farbe = statusfarbe(status)
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier.size(20.dp).background(farbe ?: Farben.FlaecheAktiv, CircleShape),
     ) {
-        Fmsplakette(f.status)
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(f.funkrufname, style = Schrift.MonoKlein.copy(fontWeight = FontWeight.Bold), color = Farben.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            val teile = buildList {
-                add(f.typ)
-                add(taetigkeit(zustand, f))
-                f.lehrgang?.let { add(it) }
-                if (f.inWerkstatt) f.werkstattOrt?.let { add(it) }
-            }
-            Text(teile.joinToString(" · "), style = Schrift.Winzig, color = Farben.TextSehrLeise, maxLines = 2)
-            Umbruchreihe {
-                when {
-                    f.verschlissen -> Weltmarke("verschlissen", Farben.SignalHell)
-                    f.werkstattFaellig -> Weltmarke("Werkstatt bald", Farben.Amber)
-                }
-                if (f.geliehen) {
-                    val rest = fahrt.restMs(f.geliehenBis)?.let { ms ->
-                        if (ms <= 0) "fährt heim" else {
-                            val h = Math.ceil(ms / 3_600_000.0).toInt()
-                            if (h < 24) "noch $h h" else "noch ${tage(Math.ceil(h / 24.0).toInt())}"
-                        }
-                    }
-                    Weltmarke("geliehen" + (rest?.let { " · $it" } ?: ""), Farben.BlauHell)
-                }
-                f.lehrgangFertigUm?.let { um ->
-                    fahrt.restMinuten(um)?.let { Weltmarke(if (it <= 0) "gleich fertig" else "noch ${dauer(it)}", Farben.ViolettHell) }
-                }
-                f.werkstattFertigUm?.let { um ->
-                    fahrt.restMinuten(um)?.let { Weltmarke(if (it <= 0) "gleich fertig" else "noch ${dauer(it)}", Farben.TextLeise) }
-                }
-            }
-            if (f.losUm != null && f.ankunftUm != null && f.lage != "Wache" && f.lage != "VorOrt") {
-                Weltbalken(fahrt.anteil(f.losUm, f.ankunftUm).toFloat())
-            }
-        }
-        fahrt.restMinuten(f.ankunftUm)?.takeIf { f.lage != "Wache" && f.lage != "VorOrt" }?.let {
-            Text(dauer(it), style = Schrift.Winzig.copy(fontFamily = Schrift.Mono), color = Farben.TextLeise)
-        }
+        Text(
+            "$status",
+            style = Schrift.Winzig.copy(fontFamily = Schrift.Mono, fontWeight = FontWeight.Bold),
+            color = if (farbe != null) Farben.AufFarbe else Farben.TextLeise,
+        )
     }
+}
+
+@Composable
+private fun Fahrzeugkopf(zustand: Weltzustand, f: WeltFahrzeug, offen: Boolean, beiDruck: () -> Unit) {
+    val fahrt = zustand.fahrt
+    val kante = (if (f.lage == "Ausrueckt") Farben.FmsAnfahrt else statusfarbe(f.status)) ?: Farben.AmberTief
+    val form = if (offen) RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp) else RoundedCornerShape(14.dp)
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(form)
+            .background(if (offen) Farben.FlaecheHoch else Farben.Flaeche)
+            .border(1.dp, Farben.Rand, form)
+            .drawBehind { drawRect(kante, size = Size(3.dp.toPx(), size.height)) }
+            .clickable(onClick = beiDruck)
+            .padding(start = Abstand.Normal, end = Abstand.Klein, top = Abstand.Klein, bottom = Abstand.Klein),
+    ) {
+        Statuspunkt(f.status)
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Abstand.Haar)) {
+            Text(f.funkrufname, style = Schrift.MonoKlein, color = Farben.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                buildAnnotatedString {
+                    append("${f.typ} · ${taetigkeit(zustand, f)}")
+                    if (f.lehrgang != null) append(" · ${f.lehrgang}")
+                    else if (f.inWerkstatt && f.werkstattOrt != null) append(" · ${f.werkstattOrt}")
+                    if (!f.inWerkstatt && f.verschlissen) {
+                        append(" · ")
+                        withStyle(SpanStyle(color = Farben.SignalHell, fontWeight = FontWeight.SemiBold)) { append("verschlissen") }
+                    } else if (!f.inWerkstatt && f.werkstattFaellig) {
+                        append(" · ")
+                        withStyle(SpanStyle(color = Farben.AmberHell)) { append("bald fällig") }
+                    }
+                    if (f.naechsteLageId != null) append(" · fährt danach weiter")
+                },
+                style = Schrift.Klein,
+                color = Farben.TextLeise,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        if (f.geliehen) Weltmarke("geliehen", Farben.BlauHell)
+        val restText = restzeit(fahrt, f.lehrgangFertigUm)
+            ?: restzeit(fahrt, f.werkstattFertigUm)
+            ?: fahrt.restMinuten(f.ankunftUm)?.takeIf { f.lage != "Wache" }?.let { min ->
+                if (min >= 60) "${min / 60} h ${min % 60} min" else "$min min"
+            }
+            ?: geliehenRest(fahrt, f)
+        if (restText != null) {
+            Text(restText, style = Schrift.Winzig.copy(fontFamily = Schrift.Mono), color = Farben.TextLeise, textAlign = TextAlign.End)
+        }
+        if (f.lage != "Wache" && f.lage != "Bereitstellung") {
+            Box(
+                Modifier
+                    .width(48.dp)
+                    .height(6.dp)
+                    .background(Farben.BgTief, Rundung.Rund),
+            ) {
+                Box(
+                    Modifier
+                        .fillMaxWidth(fahrt.anteil(f.losUm, f.ankunftUm).toFloat().coerceIn(0f, 1f))
+                        .height(6.dp)
+                        .background(androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(Farben.AmberTief, Farben.AmberHell)), Rundung.Rund),
+                )
+            }
+        }
+        Text(
+            "›",
+            style = Schrift.Gross,
+            color = if (offen) Farben.Amber else Farben.TextSehrLeise,
+            modifier = Modifier.rotate(if (offen) 90f else 0f),
+        )
+    }
+}
+
+/** „noch 1 h 5 min“ bis zu einer Uhrzeit — Lehrgang und Werkstatt. */
+private fun restzeit(fahrt: Weltfahrt, bis: String?): String? {
+    val ms = fahrt.restMs(bis) ?: return null
+    if (ms <= 0) return "gleich fertig"
+    val min = Math.ceil(ms / 60_000.0).toInt()
+    return if (min >= 60) "noch ${min / 60} h ${min % 60} min" else "noch $min min"
+}
+
+private fun geliehenRest(fahrt: Weltfahrt, f: WeltFahrzeug): String? {
+    if (!f.geliehen) return null
+    val ms = fahrt.restMs(f.geliehenBis) ?: return null
+    if (ms <= 0) return "fährt heim"
+    val h = Math.ceil(ms / 3_600_000.0).toInt()
+    return if (h < 24) "noch $h h" else "noch ${tage(Math.ceil(h / 24.0).toInt())}"
 }
 
 
@@ -191,35 +291,43 @@ private fun Fahrzeuggriffe(welt: Welt, zustand: Weltzustand, werkbank: Werkbank,
         }
     }
 
-    // Was die Besatzung dazugelernt hat — die Vorlage steht am Typ.
-    val gelernt = (f.gelernt + lehrgaenge.filter { it.gelernt }.map { it.faehigkeit }).distinct()
-    if (gelernt.isNotEmpty()) Leisesatz("Gelernt: ${gelernt.joinToString(", ")}", winzig = true)
+    // Was die Besatzung im Lehrgang dazugelernt hat — Marken wie im Web.
+    val gelernt = lehrgaenge.filter { it.gelernt }.map { it.faehigkeit }
+    if (gelernt.isNotEmpty()) {
+        Umbruchreihe { gelernt.forEach { Weltmarke(it, Farben.BlauHell) } }
+    }
 
     if (f.geliehen) {
         Leisesatz(
-            "Geliehen — alarmieren geht, Rufname, Umzug, Lehrgang und Verkauf bleiben beim Besitzer.",
+            "Geliehen (${geliehenRest(zustand.fahrt, f) ?: "endet gleich"}) — umbenennen, umsetzen und verkaufen kann " +
+                "nur der Besitzer.",
             winzig = true,
         )
-        if (rueckgabeGefragt) {
-            Rueckfrage(
-                frage = "Vorzeitig zurückgeben? Es fährt heim, die Miete bleibt bezahlt.",
-                ja = "Zurückgeben",
-                beiJa = { tun("Das ging nicht.") { welt.wege.leiheZurueckgeben(it, f.id); welt.betriebLaden() } },
-                beiNein = { rueckgabeGefragt = false },
-                aktiv = !sendet,
-            )
-        } else {
-            Knopf("Zurückgeben", { rueckgabeGefragt = true }, kompakt = true, art = Knopfart.Leise)
+        Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
+            if (!rueckgabeGefragt) {
+                Knopf("Zurückgeben", { rueckgabeGefragt = true }, kompakt = true, art = Knopfart.Leise, aktiv = !sendet)
+            } else {
+                Knopf("Ohne Erstattung zurückgeben", {
+                    tun("Das ging nicht.") { welt.wege.leiheZurueckgeben(it, f.id); welt.betriebLaden() }
+                }, kompakt = true, aktiv = !sendet)
+                Knopf("Nein", { rueckgabeGefragt = false }, kompakt = true, art = Knopfart.Leise)
+            }
         }
     } else {
         // ------------------------------------------------------------ Rufname
-        Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein), verticalAlignment = Alignment.Bottom) {
-            Feld(wert = rufname, beiAenderung = { rufname = it.take(40) }, etikett = "Rufname", modifier = Modifier.weight(1f))
+        Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein), verticalAlignment = Alignment.CenterVertically) {
+            Feld(
+                wert = rufname,
+                beiAenderung = { rufname = it.take(48) },
+                platzhalter = f.funkrufname,
+                stil = Schrift.MonoNormal,
+                modifier = Modifier.weight(1f),
+            )
             Knopf(if (rufname.isBlank()) "Wie im Buch" else "Übernehmen", {
                 tun("Der Rufname ging nicht.", schliessen = false) { welt.wege.fahrzeugUmbenennen(it, f.id, rufname.trim()); welt.allesLaden() }
-            }, kompakt = true, aktiv = !sendet && (rufname.trim() != f.funkrufname || rufname.isBlank()))
+            }, kompakt = true, aktiv = !sendet && rufname.trim() != f.funkrufname)
         }
-        if (f.rufnameVonHand) Leisesatz("Von Hand gesetzt — leer lassen und übernehmen nimmt ihn zurück.", winzig = true)
+        if (f.rufnameVonHand) Leisesatz("Selbst vergeben — ein leeres Feld stellt den Namen aus dem Buch wieder her.", winzig = true)
     }
 
     // ------------------------------------------------------------- Einsatz
@@ -227,26 +335,42 @@ private fun Fahrzeuggriffe(welt: Welt, zustand: Weltzustand, werkbank: Werkbank,
         it.zustand != "Erledigt" && it.id != f.lageId && (zustand.istVormerkbar(f) || zustand.istAlarmierbar(f, it))
     }
     if (zustand.istAlarmierbar(f) || zustand.istVormerkbar(f) || moegliche.isNotEmpty()) {
-        if (moegliche.isEmpty()) {
-            Leisesatz("Gerade keine Lage, auf die es fahren könnte.", winzig = true)
-        } else {
-            Auswahl(
-                etikett = if (zustand.istVormerkbar(f)) "Danach fahren zu …" else "Auf Einsatz schicken …",
-                eintraege = moegliche,
-                gewaehlt = zielLage,
-                aufschrift = { "${it.stichwort} · ${entfernungText(it.entfernungMeter)} · ${deckungstext(it)}" },
-                beiWahl = { zielLage = it },
-            )
-            Knopf(if (zustand.istVormerkbar(f)) "Vormerken" else "Alarmieren", {
-                val l = zielLage ?: run { fehler = "Wähle den Einsatz."; return@Knopf }
-                sendet = true
-                bereich.launch {
-                    fehler = welt.alarmieren(l.id, listOf(f.id))
-                    sendet = false
-                    if (fehler == null) werkbank.offenesFahrzeug = null
-                }
-            }, art = Knopfart.Alarm, kompakt = true, aktiv = !sendet && zielLage != null)
+        if (moegliche.isNotEmpty()) {
+            Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein), verticalAlignment = Alignment.Bottom) {
+                Auswahl(
+                    etikett = "Einsatz",
+                    eintraege = moegliche,
+                    gewaehlt = zielLage,
+                    aufschrift = { "${it.stichwort} · ${entfernungText(it.entfernungMeter)} · ${deckungstext(it)}" },
+                    beiWahl = { zielLage = it },
+                    platzhalter = if (zustand.istVormerkbar(f)) "Danach fahren zu …" else "Auf Einsatz schicken …",
+                    modifier = Modifier.weight(1f),
+                )
+                Knopf(
+                    when {
+                        sendet -> "Alarmiert …"
+                        zustand.istVormerkbar(f) -> "Vormerken"
+                        else -> "Alarmieren"
+                    },
+                    {
+                        val l = zielLage ?: return@Knopf
+                        sendet = true
+                        bereich.launch {
+                            fehler = welt.alarmieren(l.id, listOf(f.id))
+                            sendet = false
+                            if (fehler == null) werkbank.offenesFahrzeug = null
+                        }
+                    },
+                    kompakt = true,
+                    aktiv = !sendet && zielLage != null,
+                )
+            }
         }
+        Leisesatz(
+            if (zustand.istVormerkbar(f) && moegliche.isNotEmpty()) "Es fährt los, sobald die Arbeit hier getan ist."
+            else "Gerade kein offener Einsatz — neue kommen von selbst.",
+            winzig = true,
+        )
     }
     if (f.lage == "Ausrueckt" || f.lage == "Anfahrt") {
         Knopf("Anfahrt abbrechen", {
@@ -257,93 +381,114 @@ private fun Fahrzeuggriffe(welt: Welt, zustand: Weltzustand, werkbank: Werkbank,
     // ------------------------------------------------------------- Streife
     if (f.streifenfaehig && !f.geliehen) Streifengriffe(welt, zustand, werkbank, f)
 
-    if (!f.geliehen) {
+    if (!f.geliehen && f.lage == "Wache") {
         // ---------------------------------------------------------- Umsetzen
         val andere = zustand.stand?.wachen.orEmpty().filter { it.id != f.wacheId && traegtFahrzeuge(it.art) }
-        if (andere.isNotEmpty() && f.lage == "Wache") {
+        Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein), verticalAlignment = Alignment.Bottom) {
             Auswahl(
-                etikett = "Umsetzen nach …",
+                etikett = "Zielwache",
                 eintraege = andere,
                 gewaehlt = zielWache,
                 aufschrift = { "${it.name} · ${it.belegt}/${it.stellplaetze}" },
-                beiWahl = { zielWache = it },
+                beiWahl = { if (it.belegt < it.stellplaetze) zielWache = it },
+                platzhalter = "Umsetzen nach …",
+                modifier = Modifier.weight(1f),
             )
             Knopf(if (sendet) "Fährt …" else "Umsetzen", {
-                val z = zielWache ?: run { fehler = "Wähle die Zielwache."; return@Knopf }
+                val z = zielWache ?: return@Knopf
                 tun("Der Umzug ging nicht.") { welt.wege.fahrzeugUmsetzen(it, f.id, z.id); welt.betriebLaden() }
             }, kompakt = true, aktiv = !sendet && zielWache != null)
         }
 
         // ---------------------------------------------------------- Lehrgang
         val einrichtungen = zustand.stand?.wachen.orEmpty().filter { it.art == "Lehrgangseinrichtung" }
-        if (einrichtungen.isNotEmpty() && lehrgaenge.isNotEmpty() && f.lage == "Wache" && f.lehrgang == null) {
+        if (einrichtungen.isNotEmpty()) {
             val offen = lehrgaenge.filter { it.grund == null }
-            Auswahl(
-                etikett = if (offen.isNotEmpty()) "Zum Lehrgang …" else "Kein Lehrgang offen",
-                eintraege = lehrgaenge,
-                gewaehlt = lehrgang,
-                aufschrift = { "${it.name} · ${zahl(it.kosten)} · ${Math.round(it.dauerMinuten / 60.0)} h" },
-                unterschrift = { it.grund ?: "lernt: ${it.faehigkeit}" },
-                beiWahl = { if (it.grund == null) lehrgang = it },
-            )
+            Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein), verticalAlignment = Alignment.Bottom) {
+                Auswahl(
+                    etikett = "Lehrgang",
+                    eintraege = offen,
+                    gewaehlt = lehrgang,
+                    aufschrift = { "${it.name} · ${zahl(it.kosten)} · ${Math.round(it.dauerMinuten / 60.0)} h" },
+                    beiWahl = { lehrgang = it },
+                    platzhalter = if (offen.isNotEmpty()) "Zum Lehrgang …" else "Kein Lehrgang offen",
+                    modifier = Modifier.weight(1f),
+                )
+                Knopf(if (sendet) "Fährt …" else "Anmelden", {
+                    val l = lehrgang ?: run { fehler = "Wähle einen Lehrgang."; return@Knopf }
+                    val ziel = (einrichtung ?: einrichtungen.first()).id
+                    tun("Die Anmeldung ging nicht.") { welt.wege.zumLehrgang(it, f.id, ziel, l.id); welt.betriebLaden() }
+                }, kompakt = true, aktiv = !sendet && lehrgang != null)
+            }
             if (einrichtungen.size > 1) {
                 Auswahl(
                     etikett = "Einrichtung",
-                    eintraege = einrichtungen,
-                    gewaehlt = einrichtung ?: einrichtungen.first(),
-                    aufschrift = { it.name },
+                    eintraege = listOf<WeltWache?>(null) + einrichtungen,
+                    gewaehlt = einrichtung,
+                    aufschrift = { it?.name ?: "Erste Einrichtung" },
                     beiWahl = { einrichtung = it },
                 )
             }
-            lehrgang?.let { Leisesatz("Danach kann die Besatzung: ${it.faehigkeit}.", winzig = true) }
-            Knopf(if (sendet) "Fährt …" else "Anmelden", {
-                val l = lehrgang ?: run { fehler = "Wähle einen Lehrgang."; return@Knopf }
-                val ziel = (einrichtung ?: einrichtungen.first()).id
-                tun("Die Anmeldung ging nicht.") { welt.wege.zumLehrgang(it, f.id, ziel, l.id); welt.betriebLaden() }
-            }, kompakt = true, aktiv = !sendet && lehrgang != null)
+            lehrgang?.let {
+                Text(
+                    buildAnnotatedString {
+                        append("Danach kann die Besatzung ")
+                        withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(it.faehigkeit) }
+                        append(". Das Fahrzeug fehlt so lange zu Hause.")
+                    },
+                    style = Schrift.Winzig,
+                    color = Farben.TextSehrLeise,
+                )
+            }
         }
 
         // ---------------------------------------------------------- Werkstatt
-        werkstattwahl?.takeIf { it.preis > 0 && it.werkstaetten.isNotEmpty() }?.let { w ->
+        werkstattwahl?.takeIf { f.zustand < 100 && it.werkstaetten.isNotEmpty() }?.let { w ->
             val frei = w.werkstaetten.filter { it.beanstandung == null }
-            Leisesatz(
-                "Zustand ${f.zustand} %" + (if (f.verschlissen) " — nicht mehr alarmierbar" else "") +
-                    ". Instandsetzung: ${zahl(w.preis)} $WAEHRUNG · ${w.dauerMinuten} min.",
+            Text(
+                "Zustand ${f.zustand} %" + (if (f.verschlissen) " — rückt nicht mehr aus" else "") +
+                    ". Instandsetzung ${credits(w.preis)} · ${w.dauerMinuten} min.",
+                style = Schrift.Winzig,
+                color = if (f.verschlissen) Farben.SignalHell else Farben.TextSehrLeise,
             )
-            Auswahl(
-                etikett = "Werkstatt",
-                eintraege = w.werkstaetten,
-                gewaehlt = werkstatt ?: frei.firstOrNull(),
-                aufschrift = { "${it.name} · ${it.belegt}/${it.buehnen}" },
-                unterschrift = { it.beanstandung ?: entfernungText(it.entfernungMeter) },
-                beiWahl = { if (it.beanstandung == null) werkstatt = it },
-            )
-            Knopf(if (frei.isEmpty()) "Bühnen belegt" else "In die Werkstatt", {
-                val ziel = (werkstatt ?: frei.firstOrNull())?.id ?: run { fehler = "Wähle eine Werkstatt."; return@Knopf }
-                tun("Die Fahrt in die Werkstatt ging nicht.") { welt.wege.zurWerkstatt(it, f.id, ziel); welt.betriebLaden() }
-            }, kompakt = true, aktiv = !sendet && frei.isNotEmpty())
+            Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein), verticalAlignment = Alignment.Bottom) {
+                if (w.werkstaetten.size > 1) {
+                    Auswahl(
+                        etikett = "Werkstatt",
+                        eintraege = listOf<WeltWerkstatt?>(null) + w.werkstaetten,
+                        gewaehlt = werkstatt,
+                        aufschrift = { it?.let { x -> "${x.name} · ${x.belegt}/${x.buehnen}" + (x.beanstandung?.let { b -> " — $b" } ?: "") } ?: "Erste freie Werkstatt" },
+                        beiWahl = { if (it?.beanstandung == null) werkstatt = it },
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+                Knopf(if (frei.isEmpty()) "Bühnen belegt" else "In die Werkstatt", {
+                    val ziel = (werkstatt ?: frei.firstOrNull())?.id ?: return@Knopf
+                    tun("Die Fahrt in die Werkstatt ging nicht.") { welt.wege.zurWerkstatt(it, f.id, ziel); welt.betriebLaden() }
+                }, kompakt = true, aktiv = !sendet && frei.isNotEmpty())
+            }
         }
 
         // ---------------------------------------------------------- Verkauf
         val erloes = Math.round(f.preis / 2.0 * (f.zustand / 100.0))
-        if (verkaufGefragt) {
-            Rueckfrage(
-                frage = "${f.funkrufname} verkaufen? Zurück kommen etwa ${zahl(erloes)} $WAEHRUNG.",
-                ja = "Verkaufen",
-                beiJa = { tun("Der Verkauf ging nicht.") { welt.wege.fahrzeugVerkaufen(it, f.id); welt.allesLaden() } },
-                beiNein = { verkaufGefragt = false },
-                aktiv = !sendet,
-            )
-        } else if (f.lage == "Wache") {
-            Knopf("Verkaufen für ${zahl(erloes)} $WAEHRUNG", { verkaufGefragt = true }, kompakt = true, art = Knopfart.Leise)
+        Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
+            if (!verkaufGefragt) {
+                Knopf("Verkaufen für ${credits(erloes)}", { verkaufGefragt = true }, kompakt = true, art = Knopfart.Leise)
+            } else {
+                Knopf("Wirklich verkaufen", {
+                    tun("Der Verkauf ging nicht.") { welt.wege.fahrzeugVerkaufen(it, f.id); welt.allesLaden() }
+                }, kompakt = true, art = Knopfart.Gefahr, aktiv = !sendet)
+                Knopf("Nein", { verkaufGefragt = false }, kompakt = true, art = Knopfart.Leise)
+            }
         }
     }
     Warnsatz(fehler)
 }
 
 /**
- * Die Streife eines Polizeifahrzeugs — Stationen aus den vorgeschlagenen
- * Orten, auf der Karte gesetzt oder als gespeicherte Route aufgelegt.
+ * Die Streife eines Polizeifahrzeugs — `.fahrzeugblende__streife`: Stationen aus
+ * den vorgeschlagenen Orten, auf der Karte gesetzt oder als gespeicherte Route
+ * aufgelegt.
  */
 @Composable
 private fun Streifengriffe(welt: Welt, zustand: Weltzustand, werkbank: Werkbank, f: WeltFahrzeug) {
@@ -367,14 +512,22 @@ private fun Streifengriffe(welt: Welt, zustand: Weltzustand, werkbank: Werkbank,
     }
     val entwurf = werkbank.pfad
 
-    Ueberschrift("Streife")
-    Leisesatz(
-        if (f.streifenpfad.isEmpty()) "Keine Streife gesetzt."
-        else "Pfad: " + f.streifenpfad.joinToString(" → ") { it.name },
-        winzig = true,
+    Text(
+        buildAnnotatedString {
+            append("Streife ")
+            if (f.streifenpfad.isEmpty()) append("· keine")
+            else withStyle(SpanStyle(fontFamily = Schrift.Mono)) { append("· " + f.streifenpfad.joinToString(" → ") { it.name }) }
+        },
+        style = Schrift.Klein,
+        color = Farben.TextLeise,
     )
+    fehler?.let { Text(it, style = Schrift.Klein, color = Farben.SignalHell) }
     if (orte.isEmpty()) {
-        Leisesatz("Keine Orte in der Nähe vorgeschlagen — setz die Stationen auf der Karte.", winzig = true)
+        Leerhinweis(
+            "Keine Stationen in der Nähe. Sie kommen aus den Sonderobjekten und Kliniken deines Landkreises und " +
+                "aus deinen eigenen Punkten — setze einen unter „Bauen“, dann steht er hier. Oder tippe die Punkte " +
+                "gleich auf der Karte.",
+        )
     } else {
         Umbruchreihe {
             orte.forEach { o ->
@@ -390,19 +543,24 @@ private fun Streifengriffe(welt: Welt, zustand: Weltzustand, werkbank: Werkbank,
             }
         }
     }
+    if (entwurf.isEmpty()) {
+        Text("Noch kein Punkt. Setze welche auf der Karte oder nimm einen Ort von oben.", style = Schrift.Klein, color = Farben.TextSehrLeise)
+    }
     entwurf.forEachIndexed { i, s ->
         Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein), verticalAlignment = Alignment.CenterVertically) {
-            Text("${i + 1}", style = Schrift.MonoKlein, color = Farben.Amber)
+            Text("${i + 1}", style = Schrift.MonoKlein, color = Farben.TextLeise)
             Text(s.name, style = Schrift.Klein, color = Farben.Text, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
             Knopf("↑", {
-                if (i > 0) werkbank.pfad = entwurf.toMutableList().also { l -> l[i] = l[i - 1].also { l[i - 1] = l[i] } }
-            }, kompakt = true, art = Knopfart.Leise, aktiv = i > 0)
-            Knopf("✕", { werkbank.pfad = entwurf.filterIndexed { j, _ -> j != i } }, kompakt = true, art = Knopfart.Leise)
+                werkbank.pfad = entwurf.toMutableList().also { l -> l[i] = l[i - 1].also { l[i - 1] = l[i] } }
+            }, kompakt = true, aktiv = i > 0)
+            Knopf("↓", {
+                werkbank.pfad = entwurf.toMutableList().also { l -> l[i] = l[i + 1].also { l[i + 1] = l[i] } }
+            }, kompakt = true, aktiv = i < entwurf.size - 1)
+            Knopf("✕", { werkbank.pfad = entwurf.filterIndexed { j, _ -> j != i } }, kompakt = true)
         }
     }
     Umbruchreihe {
         Knopf("Auf der Karte setzen", { werkbank.karteWaehlen(Kartenmodus.Pfad) }, kompakt = true)
-        if (entwurf.isNotEmpty()) Knopf("Leeren", { werkbank.pfad = emptyList() }, kompakt = true, art = Knopfart.Leise)
         Knopf(if (entwurf.isNotEmpty()) "Streife setzen" else "Streife beenden", {
             sendet = true
             fehler = null
@@ -413,17 +571,19 @@ private fun Streifengriffe(welt: Welt, zustand: Weltzustand, werkbank: Werkbank,
                 }
                 sendet = false
             }
-        }, kompakt = true, art = Knopfart.Haupt, aktiv = !sendet)
+        }, kompakt = true, aktiv = !sendet)
     }
     if (zustand.streifenrouten.isNotEmpty()) {
-        Auswahl(
-            etikett = "Route auflegen …",
-            eintraege = zustand.streifenrouten,
-            gewaehlt = route,
-            aufschrift = { "${it.name} · ${it.stationen.size} ${if (it.stationen.size == 1) "Station" else "Stationen"}" },
-            beiWahl = { route = it },
-        )
-        Umbruchreihe {
+        Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein), verticalAlignment = Alignment.Bottom) {
+            Auswahl(
+                etikett = "Gespeicherte Route",
+                eintraege = zustand.streifenrouten,
+                gewaehlt = route,
+                aufschrift = { "${it.name} · ${it.stationen.size} ${if (it.stationen.size == 1) "Station" else "Stationen"}" },
+                beiWahl = { route = it },
+                platzhalter = "Route auflegen …",
+                modifier = Modifier.weight(1f),
+            )
             Knopf("Auflegen", {
                 val r = route ?: return@Knopf
                 sendet = true
@@ -433,29 +593,31 @@ private fun Streifengriffe(welt: Welt, zustand: Weltzustand, werkbank: Werkbank,
                     if (fehler == null) werkbank.pfad = r.stationen
                 }
             }, kompakt = true, aktiv = route != null && !sendet)
-            Knopf("Route löschen", {
-                val r = route ?: return@Knopf
+            Zeichenknopf({
+                val r = route ?: return@Zeichenknopf
                 bereich.launch {
                     fehler = welt.streifenrouteEntfernen(r.id)
                     route = null
                 }
-            }, kompakt = true, art = Knopfart.Leise, aktiv = route != null)
+            }, "Route entfernen", kompakt = true, aktiv = route != null && !sendet) {
+                Text("✕", style = Schrift.Klein, color = Farben.Text)
+            }
         }
     }
-    Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein), verticalAlignment = Alignment.Bottom) {
-        Feld(wert = routenName, beiAenderung = { routenName = it.take(40) }, etikett = "Als Route sichern", platzhalter = "Innenstadt Nacht", modifier = Modifier.weight(1f))
-        Knopf("Sichern", {
-            if (entwurf.isEmpty()) { fehler = "Eine Route ohne Stationen ist keine."; return@Knopf }
-            if (routenName.isBlank()) { fehler = "Die Route braucht einen Namen."; return@Knopf }
-            sendet = true
-            bereich.launch {
-                fehler = welt.streifenrouteSichern(routenName.trim(), entwurf)
-                sendet = false
-                if (fehler == null) routenName = ""
-            }
-        }, kompakt = true, aktiv = !sendet)
+    if (entwurf.isNotEmpty()) {
+        Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein), verticalAlignment = Alignment.CenterVertically) {
+            Feld(wert = routenName, beiAenderung = { routenName = it.take(60) }, platzhalter = "Route benennen …", modifier = Modifier.weight(1f))
+            Knopf("Sichern", {
+                if (routenName.isBlank()) { fehler = "Die Route braucht einen Namen."; return@Knopf }
+                sendet = true
+                bereich.launch {
+                    fehler = welt.streifenrouteSichern(routenName.trim(), entwurf)
+                    sendet = false
+                    if (fehler == null) routenName = ""
+                }
+            }, kompakt = true, aktiv = !sendet)
+        }
     }
-    Warnsatz(fehler)
 }
 
 /**

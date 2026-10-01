@@ -8,8 +8,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
-import de.pagerspass.pagerspass.ui.bausteine.Reiter
-import de.pagerspass.pagerspass.ui.bausteine.Reiterreihe
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -138,9 +136,7 @@ fun LagenSeite(welt: Welt, zustand: Weltzustand, werkbank: Werkbank, karte: Welt
 
     // Das Sieb ist eine Reiterreihe wie im Web (`.reiter` mit Zahl), keine Pillen:
     // Es teilt dieselbe Liste in Zustände, es filtert nicht nach Belieben.
-    Reiterreihe(Modifier.padding(bottom = Abstand.Klein)) {
-        Sieb.entries.forEach { s -> Reiter(s.wort, sieb == s, { sieb = s }, marke = gesiebt(s).size) }
-    }
+    Weltreiter(Sieb.entries, sieb, { sieb = it }, { it.wort }, Modifier.padding(bottom = Abstand.Klein), zahl = { gesiebt(it).size })
 
     val liste = gesiebt(sieb)
     val offen = liste.filter { it.zustand != "Erledigt" }
@@ -700,7 +696,7 @@ private fun Wagenzeile(
     val fremd = lage.bereich.isNotBlank() && zustand.bereichVonFahrzeug(f)?.let { it != lage.bereich } == true
     Wahlzeile(an = an, beiWechsel = beiWechsel) {
         Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein), verticalAlignment = Alignment.CenterVertically) {
-            Fmsplakette(f.status)
+            Statuspunkt(f.status)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein), verticalAlignment = Alignment.CenterVertically) {
                     Text(f.funkrufname, style = Schrift.MonoKlein, color = Farben.Text, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))

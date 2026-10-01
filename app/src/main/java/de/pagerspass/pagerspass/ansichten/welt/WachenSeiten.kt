@@ -12,6 +12,18 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
+import androidx.compose.ui.draw.clip
+import de.pagerspass.pagerspass.ui.theme.flaechenmarke
+import de.pagerspass.pagerspass.ui.theme.flaeche
+import de.pagerspass.pagerspass.ui.theme.Rundung
+import de.pagerspass.pagerspass.ui.bausteine.Leerhinweis
+import de.pagerspass.pagerspass.ui.bausteine.Zeichenknopf
+import androidx.compose.material3.Icon
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -48,9 +60,10 @@ import kotlinx.coroutines.launch
 /**
  * Die eigenen Wachen — das Gegenstück zu `WachenBlende.vue`.
  *
- * <b>Die Liste zeigt Wachen, nicht Einstellungen.</b> Ausbauen, Umbenennen und
- * Abreißen stehen hinter einem Knopf an der Zeile; aufgeschlagen wird die Wache
- * mit ihrer eigenen Seite (Fahrzeuge, Züge, Wappen, Chronik).
+ * <b>Die Liste zeigt Wachen, nicht Einstellungen.</b> Aufschlagen, Umbenennen,
+ * Ausbauen und Abreißen stehen hinter dem Knopf „…“ an der Zeile, untereinander
+ * als Fortsetzung der Zeile; aufgeschlagen wird die Wache mit ihrer eigenen
+ * Seite (Fahrzeuge, Züge, Wappen, Chronik).
  */
 @Composable
 fun WachenSeite(welt: Welt, zustand: Weltzustand, werkbank: Werkbank, karte: Weltkartenstand) {
@@ -75,72 +88,117 @@ fun WachenSeite(welt: Welt, zustand: Weltzustand, werkbank: Werkbank, karte: Wel
         compareBy<WeltWache>({ rang[it.bereich] ?: rang.size }).thenBy { it.name },
     )
     val deckel = zustand.stand?.wachendeckel ?: 0
-    Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Normal)) {
-        Text("${wachen.size}/$deckel", style = Schrift.MonoKlein, color = Farben.Text)
-        Text("Wachen", style = Schrift.Klein, color = Farben.TextLeise)
-        Text("${wachen.sumOf { it.belegt }}/${wachen.sumOf { it.stellplaetze }}", style = Schrift.MonoKlein, color = Farben.Text)
-        Text("Stellplätze", style = Schrift.Klein, color = Farben.TextLeise)
+    Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Winzig), verticalAlignment = Alignment.Bottom) {
+            Text("${wachen.size}/$deckel", style = Schrift.MonoKlein.copy(fontWeight = FontWeight.Bold), color = Farben.Text)
+            Text("Wachen", style = Schrift.Klein, color = Farben.TextLeise)
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Winzig), verticalAlignment = Alignment.Bottom) {
+            Text("${wachen.sumOf { it.belegt }}/${wachen.sumOf { it.stellplaetze }}", style = Schrift.MonoKlein.copy(fontWeight = FontWeight.Bold), color = Farben.Text)
+            Text("Stellplätze", style = Schrift.Klein, color = Farben.TextLeise)
+        }
     }
     Warnsatz(fehler)
     if (wachen.isEmpty()) {
         // Kein eigener Knopf hierher: Der Reiter „Bauen“ atmet, solange keine
         // Wache steht — ein zweiter Weg zum selben Ziel wäre einer zu viel.
-        Leisesatz("Noch keine Wache. „Bauen“ in der Leiste setzt die erste.")
+        Leerhinweis("Noch keine Wache. „Bauen“ in der Bar setzt die erste.")
         return
     }
     val fahrt = zustand.fahrt
 
     wachen.forEach { w ->
         val offen = menue == w.id
-        Weltkasten(an = offen) {
+        Column(
+            verticalArrangement = Arrangement.spacedBy(Abstand.Winzig),
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(Rundung.Normal)
+                .flaeche()
+                .flaechenmarke()
+                .padding(start = Abstand.Normal, end = Abstand.Klein, top = Abstand.Klein, bottom = Abstand.Klein),
+        ) {
             Row(
-                horizontalArrangement = Arrangement.spacedBy(Abstand.Normal),
+                horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Box(Modifier.size(12.dp).background(wachenfarbe(w.art), androidx.compose.foundation.shape.RoundedCornerShape(3.dp)))
-                Column(
-                    Modifier.weight(1f).clickable {
-                        werkbank.gewaehlteWache = w.id
-                        karte.hinschauen(w.lat, w.lon)
-                        werkbank.seite = Werkzeug.Wachenseite
-                    },
-                ) {
-                    Text(w.name, style = Schrift.Klein.copy(fontWeight = FontWeight.Bold), color = Farben.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    val plaetze = when (w.art) {
-                        "Lehrgangseinrichtung" -> "${w.stellplaetze} ${if (w.stellplaetze == 1) "Lehrsaal" else "Lehrsäle"}"
-                        "Werkstatt" -> "${w.buehnenBelegt}/${w.buehnen.takeIf { it > 0 } ?: w.stellplaetze} Bühnen"
-                        else -> "${w.belegt}/${w.stellplaetze} Plätze"
-                    }
-                    Text(
-                        "${artname(w.art)} · $plaetze" + if (zustand.mehrereBereiche) " · ${w.bereich}" else "",
-                        style = Schrift.Winzig,
-                        color = Farben.TextSehrLeise,
+                if (benennt == w.id) {
+                    Feld(
+                        wert = neuerName,
+                        beiAenderung = { neuerName = it.take(60) },
+                        platzhalter = "Neuer Name",
+                        modifier = Modifier.weight(1f),
                     )
+                    Knopf("Speichern", {
+                        bereich.launch {
+                            fehler = welt.handlung("Das Umbenennen ging nicht.") {
+                                welt.wege.wacheUmbenennen(it, w.id, neuerName.trim())
+                                welt.standLaden()
+                            }
+                            if (fehler == null) { benennt = null; menue = null }
+                        }
+                    }, kompakt = true, aktiv = neuerName.trim().length >= 3)
+                    Knopf("Abbrechen", { benennt = null }, kompakt = true, art = Knopfart.Leise)
+                } else {
+                    Column(Modifier.weight(1f)) {
+                        Text(w.name, style = Schrift.Normal.copy(fontWeight = FontWeight.SemiBold), color = Farben.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        val plaetze = when (w.art) {
+                            "Lehrgangseinrichtung" -> "${w.stellplaetze} ${if (w.stellplaetze == 1) "Lehrsaal" else "Lehrsäle"}"
+                            "Werkstatt" -> "${w.buehnenBelegt}/${w.buehnen.takeIf { it > 0 } ?: w.stellplaetze} Bühnen"
+                            else -> "${w.belegt}/${w.stellplaetze} Plätze"
+                        }
+                        Text(
+                            "${artname(w.art)} · $plaetze" + if (zustand.mehrereBereiche) " · ${w.bereich}" else "",
+                            style = Schrift.Klein,
+                            color = Farben.TextLeise,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    Zeichenknopf(
+                        {
+                            menue = if (offen) null else w.id
+                            gefragt = null
+                            benennt = null
+                        },
+                        "${w.name} bearbeiten",
+                        kompakt = true,
+                        art = if (offen) Knopfart.Haupt else Knopfart.Normal,
+                    ) {
+                        Icon(Weltzeichen.Mehr, contentDescription = null, modifier = Modifier.size(18.dp))
+                    }
                 }
-                Knopf(if (offen) "Zu" else "…", {
-                    menue = if (offen) null else w.id
-                    gefragt = null
-                    benennt = null
-                }, kompakt = true, art = Knopfart.Leise)
             }
             w.ausbauFertigUm?.let { um ->
                 val min = fahrt.restMinuten(um) ?: 0
                 Text(
-                    "Anbau läuft — " + if (min <= 0) "gleich fertig" else "fertig in ${dauer(min)}",
+                    "Anbau läuft — " + when {
+                        min <= 0 -> "gleich fertig"
+                        min >= 60 -> "fertig in ${min / 60} h ${min % 60} min"
+                        else -> "fertig in $min min"
+                    },
                     style = Schrift.MonoKlein,
-                    color = Farben.Amber,
+                    color = Farben.AmberHell,
                 )
             }
             if (offen) {
-                Umbruchreihe {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(Abstand.Haar),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .drawBehind { drawLine(Farben.Rand, Offset(0f, 0f), Offset(size.width, 0f), 1.dp.toPx()) }
+                        .padding(top = Abstand.Winzig),
+                ) {
                     Knopf("Wache aufschlagen", {
                         menue = null
                         werkbank.gewaehlteWache = w.id
+                        karte.hinschauen(w.lat, w.lon)
                         werkbank.seite = Werkzeug.Wachenseite
-                    }, kompakt = true)
-                    if (w.ausbauPreis != null && w.ausbauFertigUm == null) {
-                        Knopf("Ausbauen: +2 Plätze für ${zahl(w.ausbauPreis)} · ${dauerGrob(w.ausbauDauerMinuten ?: 0)}", {
+                    }, kompakt = true, art = Knopfart.Leise, breit = true)
+                    Knopf("Umbenennen", { benennt = w.id; neuerName = w.name; fehler = null }, kompakt = true, art = Knopfart.Leise, breit = true)
+                    if (w.ausbauFertigUm == null && w.ausbauPreis != null) {
+                        Knopf("Ausbauen: +2 Plätze für ${credits(w.ausbauPreis)} · ${dauerGrob(w.ausbauDauerMinuten ?: 0)}", {
                             baut = true
                             fehler = null
                             bereich.launch {
@@ -148,38 +206,23 @@ fun WachenSeite(welt: Welt, zustand: Weltzustand, werkbank: Werkbank, karte: Wel
                                 baut = false
                                 if (fehler == null) menue = null
                             }
-                        }, kompakt = true, aktiv = !baut)
+                        }, kompakt = true, art = Knopfart.Leise, breit = true, aktiv = !baut)
+                    } else if (w.ausbauFertigUm == null) {
+                        Leisesatz("Voll ausgebaut.", Modifier.padding(horizontal = Abstand.Normal, vertical = Abstand.Winzig), winzig = true)
                     }
-                    Knopf("Umbenennen", { benennt = w.id; neuerName = w.name }, kompakt = true, art = Knopfart.Leise)
-                    Knopf("Abreißen", { gefragt = w.id }, kompakt = true, art = Knopfart.Leise)
-                }
-                if (benennt == w.id) {
-                    Feld(wert = neuerName, beiAenderung = { neuerName = it.take(60) }, etikett = "Neuer Name")
-                    Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
-                        Knopf("Speichern", {
-                            bereich.launch {
-                                fehler = welt.handlung("Das Umbenennen ging nicht.") {
-                                    welt.wege.wacheUmbenennen(it, w.id, neuerName.trim())
-                                    welt.standLaden()
+                    if (gefragt != w.id) {
+                        Knopf("Abreißen", { gefragt = w.id }, kompakt = true, art = Knopfart.Leise, breit = true)
+                    } else {
+                        Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
+                            Knopf("Wirklich abreißen", {
+                                bereich.launch {
+                                    fehler = welt.handlung("Der Abriss ging nicht.") { welt.wege.wacheAbreissen(it, w.id); welt.allesLaden() }
+                                    if (fehler == null) { gefragt = null; menue = null }
                                 }
-                                if (fehler == null) { benennt = null; menue = null }
-                            }
-                        }, kompakt = true, aktiv = neuerName.trim().length >= 3)
-                        Knopf("Abbrechen", { benennt = null }, kompakt = true, art = Knopfart.Leise)
+                            }, kompakt = true, art = Knopfart.Gefahr)
+                            Knopf("Nein", { gefragt = null }, kompakt = true, art = Knopfart.Leise)
+                        }
                     }
-                }
-                if (gefragt == w.id) {
-                    Rueckfrage(
-                        frage = "${w.name} abreißen? Die Fahrzeuge darauf werden mit verkauft; ein Teil der Kaufpreise kommt zurück (wie viel, hängt von deiner Stufe ab).",
-                        ja = "Abreißen",
-                        beiJa = {
-                            bereich.launch {
-                                fehler = welt.handlung("Der Abriss ging nicht.") { welt.wege.wacheAbreissen(it, w.id); welt.allesLaden() }
-                                if (fehler == null) { gefragt = null; menue = null }
-                            }
-                        },
-                        beiNein = { gefragt = null },
-                    )
                 }
             }
         }
@@ -206,8 +249,9 @@ private fun chronikzeichen(z: WeltChronikzeile): String = when (z.art) {
 }
 
 /**
- * Die Seite einer Wache — das Gegenstück zu `WachenseiteBlende.vue`: was auf dem
- * Hof steht, welche Züge daraus gebildet sind, das Wappen und die Chronik.
+ * Die Seite einer Wache — das Gegenstück zu `WachenseiteBlende.vue`: Kopf mit
+ * Wappen, die drei Zahlen, was auf dem Hof steht, welche Züge daraus gebildet
+ * sind, und die Chronik.
  */
 @Composable
 fun WachenDetailSeite(welt: Welt, zustand: Weltzustand, werkbank: Werkbank) {
@@ -223,6 +267,7 @@ fun WachenDetailSeite(welt: Welt, zustand: Weltzustand, werkbank: Werkbank) {
     var zugArt by remember { mutableStateOf<WeltZugvorgabe?>(null) }
     var zugName by remember { mutableStateOf("") }
     var zugFehler by remember { mutableStateOf<String?>(null) }
+    var zugLaeuft by remember { mutableStateOf(false) }
     var offenerZug by remember { mutableStateOf<String?>(null) }
 
     suspend fun laden() {
@@ -242,138 +287,178 @@ fun WachenDetailSeite(welt: Welt, zustand: Weltzustand, werkbank: Werkbank) {
     }
     LaunchedEffect(id) { laden() }
 
+    Warnsatz(fehler)
     if (id == null) {
-        Leisesatz("Tipp eine Wache auf der Karte oder in der Liste an.")
+        Leerhinweis("Wähle eine Wache in der Wachenliste.")
         return
     }
-    Warnsatz(fehler)
     val s = seite
     if (s == null || s.wache.id != id) {
-        if (laedt) Ladezeile()
+        if (laedt) Leerhinweis("Wird geladen …")
         return
     }
     val w = s.wache
+    val istEinrichtung = !traegtFahrzeuge(w.art)
 
-    Weltkasten(randfarbe = Farben.AmberTief) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Abstand.Normal)) {
-            // Dasselbe Kontobild wie im Profil und in jeder Liste (`WachenseiteBlende.vue`):
-            // die Wachenkennung als Farbschlüssel, der Wachenname für die Initialen —
-            // und beim Gestalten schon der Entwurf, damit man sieht, was man wählt.
-            Kontobild(
-                kennung = w.id,
-                anzeigename = w.name,
-                wappen = if (gestaltet) zeichen else w.wappenZeichen,
-                wappenfarbe = if (gestaltet) farbe else w.wappenFarbe,
-                bildAdresse = if (if (gestaltet) foto else w.fotoZeigen) bildweg(LocalWeltServer.current, s.profilbild) else null,
-                groesse = 56.dp,
-            )
-            Column(Modifier.weight(1f)) {
-                Text(w.name, style = Schrift.Gross.copy(fontWeight = FontWeight.Bold), color = Farben.Text)
-                Text(
-                    "${w.bauart.ifBlank { artname(w.art) }} · ${s.bereich.name}" + if (s.bereich.istZweigstelle) " · Zweigstelle" else "",
-                    style = Schrift.Winzig,
-                    color = Farben.TextSehrLeise,
-                )
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Abstand.Normal),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(Rundung.Normal)
+            .flaeche()
+            .flaechenmarke()
+            .padding(start = Abstand.Normal, end = Abstand.Klein, top = Abstand.Klein, bottom = Abstand.Klein),
+    ) {
+        // Dasselbe Kontobild wie im Profil und in jeder Liste: die Wachenkennung
+        // als Farbschlüssel, der Wachenname für die Initialen — und beim
+        // Gestalten schon der Entwurf, damit man sieht, was man wählt.
+        Kontobild(
+            kennung = w.id,
+            anzeigename = w.name,
+            wappen = if (gestaltet) zeichen else w.wappenZeichen,
+            wappenfarbe = if (gestaltet) farbe else w.wappenFarbe,
+            bildAdresse = if (if (gestaltet) foto else w.fotoZeigen) bildweg(LocalWeltServer.current, s.profilbild) else null,
+            groesse = 56.dp,
+        )
+        Column(Modifier.weight(1f)) {
+            Text(w.name, style = Schrift.Gross.copy(fontWeight = FontWeight.Bold), color = Farben.Text)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Abstand.Winzig)) {
+                Text("${w.bauart.ifBlank { artname(w.art) }} · ${s.bereich.name}", style = Schrift.Klein, color = Farben.TextLeise)
+                if (s.bereich.istZweigstelle) Weltmarke("Zweigstelle", Farben.AmberHell)
             }
-            Knopf(if (gestaltet) "Abbrechen" else "Gestalten", {
-                if (gestaltet) {
-                    zeichen = w.wappenZeichen; farbe = w.wappenFarbe; foto = w.fotoZeigen
-                }
-                gestaltet = !gestaltet
-            }, kompakt = true, art = Knopfart.Leise)
         }
+        Knopf(if (gestaltet) "Abbrechen" else "Gestalten", {
+            if (gestaltet) {
+                zeichen = w.wappenZeichen; farbe = w.wappenFarbe; foto = w.fotoZeigen
+            }
+            gestaltet = !gestaltet
+        }, kompakt = true, art = Knopfart.Leise)
     }
 
     if (gestaltet) {
-        Leisesatz("Das Wappen steht an der Wache auf der Karte und auf dieser Seite.", winzig = true)
-        Auswahl(
-            etikett = "Zeichen",
-            eintraege = WAPPENZEICHEN,
-            gewaehlt = WAPPENZEICHEN.firstOrNull { it.first == zeichen },
-            aufschrift = { it.second },
-            beiWahl = { zeichen = it.first },
-        )
-        Text("Farbe", style = Schrift.Klein, color = Farben.TextLeise)
-        Umbruchreihe {
-            Wappen.PALETTE.forEachIndexed { nummer, ton ->
-                Box(
-                    modifier = Modifier
-                        .size(32.dp)
-                        .background(ton, CircleShape)
-                        .border(2.dp, if (farbe == nummer) Farben.Text else Farben.Rand, CircleShape)
-                        .clickable { farbe = nummer },
-                )
+        Column(
+            verticalArrangement = Arrangement.spacedBy(Abstand.Klein),
+            modifier = Modifier.fillMaxWidth().flaeche().padding(Abstand.Klein),
+        ) {
+            Leisesatz(
+                "Wappen und Farbe stehen auf der Karte und in jeder Liste. Das Foto ist dein freigegebenes " +
+                    "Profilbild — ein eigenes je Wache gibt es nicht.",
+            )
+            Auswahl(
+                etikett = "Zeichen",
+                eintraege = WAPPENZEICHEN,
+                gewaehlt = WAPPENZEICHEN.firstOrNull { it.first == zeichen },
+                aufschrift = { it.second },
+                beiWahl = { zeichen = it.first },
+            )
+            Text("Farbe", style = Schrift.Klein, color = Farben.Text)
+            Umbruchreihe {
+                Wappen.PALETTE.forEachIndexed { nummer, ton ->
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier.size(44.dp).clickable(onClickLabel = "Farbe ${nummer + 1}") { farbe = nummer },
+                    ) {
+                        Box(
+                            Modifier
+                                .size(32.dp)
+                                .background(ton, CircleShape)
+                                .border(2.dp, if (farbe == nummer) Farben.Text else Farben.Rand, CircleShape),
+                        )
+                    }
+                }
             }
+            Hakenzeile("Mein Profilbild an dieser Wache zeigen", foto, { foto = it })
+            Knopf("Übernehmen", {
+                bereich.launch {
+                    fehler = welt.handlung("Das Wappen ließ sich nicht setzen.") {
+                        welt.wege.wappenSetzen(it, w.id, zeichen, farbe, foto)
+                    }
+                    if (fehler == null) {
+                        gestaltet = false
+                        laden()
+                        welt.standLaden()
+                    }
+                }
+            }, art = Knopfart.Haupt, kompakt = true)
         }
-        Hakenzeile("Mein Profilbild an dieser Wache zeigen", foto, { foto = it })
-        Knopf("Übernehmen", {
-            bereich.launch {
-                fehler = welt.handlung("Das Wappen ließ sich nicht setzen.") {
-                    welt.wege.wappenSetzen(it, w.id, zeichen, farbe, foto)
-                }
-                if (fehler == null) {
-                    gestaltet = false
-                    laden()
-                    welt.standLaden()
-                }
-            }
-        }, art = Knopfart.Haupt, kompakt = true)
     }
 
-    Umbruchreihe {
-        if (traegtFahrzeuge(w.art)) Kennzahl("${w.belegt}/${w.stellplaetze}", "Stellplätze")
+    Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein), modifier = Modifier.fillMaxWidth()) {
+        if (!istEinrichtung) Kennzahl("${w.belegt}/${w.stellplaetze}", "Stellplätze", Modifier.weight(1f))
         else Kennzahl(
             "${w.buehnenBelegt}/${w.buehnen.takeIf { it > 0 } ?: w.stellplaetze}",
             if (w.art == "Werkstatt") "Hebebühnen" else "Lehrsäle",
+            Modifier.weight(1f),
         )
-        Kennzahl("${w.ausbaustufe}", "Ausbaustufe")
-        Kennzahl("${s.einsaetze}", "Einsätze")
+        Kennzahl("${w.ausbaustufe}", "Ausbaustufe", Modifier.weight(1f))
+        Kennzahl("${s.einsaetze}", "Einsätze", Modifier.weight(1f))
     }
     if (w.ausbauPreis != null) {
-        Leisesatz("Nächste Ausbaustufe: +2 Plätze für ${credits(w.ausbauPreis)} · ${w.ausbauDauerMinuten ?: 0} min", winzig = true)
+        Leisesatz("Nächster Ausbau: ${credits(w.ausbauPreis)} · ${w.ausbauDauerMinuten ?: 0} min")
     }
 
-    if (traegtFahrzeuge(w.art)) {
-        Ueberschrift("Fahrzeuge")
-        if (s.fahrzeuge.isEmpty()) Leisesatz("Noch kein Fahrzeug auf dieser Wache.")
-        s.fahrzeuge.forEach { f ->
-            Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein), verticalAlignment = Alignment.CenterVertically) {
-                Fmsplakette(f.status)
-                Text(f.funkrufname, style = Schrift.MonoKlein, color = Farben.Text, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(f.typ, style = Schrift.Winzig, color = Farben.TextLeise)
-                when {
-                    f.verschlissen -> Weltmarke("verschlissen (${f.zustand} %)", Farben.SignalHell)
-                    f.werkstattFaellig -> Weltmarke("bald fällig (${f.zustand} %)", Farben.Amber)
+    if (!istEinrichtung) {
+        Ueberschrift("Fahrzeuge", Modifier.padding(top = Abstand.Klein))
+        if (s.fahrzeuge.isEmpty()) Leerhinweis("Noch kein Fahrzeug auf dieser Wache.")
+        Column(verticalArrangement = Arrangement.spacedBy(Abstand.Winzig)) {
+            s.fahrzeuge.forEach { f ->
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth().flaeche().padding(horizontal = Abstand.Normal, vertical = Abstand.Klein),
+                ) {
+                    Text(f.funkrufname, style = Schrift.MonoKlein, color = Farben.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(f.typ, style = Schrift.Klein, color = Farben.TextLeise, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    when {
+                        f.verschlissen -> Text("verschlissen (${f.zustand} %)", style = Schrift.Klein, color = Farben.SignalHell)
+                        f.werkstattFaellig -> Text("bald fällig (${f.zustand} %)", style = Schrift.Klein, color = Farben.Amber)
+                    }
                 }
             }
         }
-        Knopf("Fahrzeug kaufen", { werkbank.seite = Werkzeug.Fahrzeugkauf }, kompakt = true)
 
         // ------------------------------------------------------------ Züge
-        Ueberschrift("Züge")
-        Warnsatz(zugFehler)
-        if (s.zuege.isEmpty()) Leisesatz("Noch kein Zug. Ein Zug alarmiert mehrere Fahrzeuge mit einem Griff.", winzig = true)
-        s.zuege.sortedBy { it.vollstaendig }.forEach { z ->
-            Weltkasten {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(z.name, style = Schrift.Klein.copy(fontWeight = FontWeight.Bold), color = Farben.Text, modifier = Modifier.weight(1f))
-                    Weltmarke(if (z.vollstaendig) "steht" else "fehlt: ${z.offen.joinToString(", ")}", if (z.vollstaendig) Farben.GruenHell else Farben.Amber)
+        Ueberschrift("Züge", Modifier.padding(top = Abstand.Klein))
+        zugFehler?.let { Text(it, style = Schrift.Klein, color = Farben.SignalHell) }
+        if (s.zuege.isEmpty()) {
+            Leerhinweis(
+                "Noch kein Zug auf dieser Wache. Ein Zug fasst zusammen, was zusammen ausrückt — danach genügt ein Griff.",
+            )
+        }
+        s.zuege.forEach { z ->
+            Column(
+                verticalArrangement = Arrangement.spacedBy(Abstand.Winzig),
+                modifier = Modifier.fillMaxWidth().flaeche().padding(Abstand.Klein),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
+                    Text(z.name, style = Schrift.Normal.copy(fontWeight = FontWeight.SemiBold), color = Farben.Text, modifier = Modifier.weight(1f))
+                    Text(
+                        if (z.vollstaendig) "steht" else "fehlt: ${z.offen.joinToString(", ")}",
+                        style = Schrift.MonoKlein,
+                        color = if (z.vollstaendig) Farben.TextLeise else Farben.Amber,
+                    )
                 }
                 z.plaetze.forEach { p ->
+                    val offen = p.pflicht && p.fahrzeug == null
                     Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
                         Text(
-                            p.bezeichnung + (p.beispiel?.let { " ($it)" } ?: "") + if (!p.pflicht) " · Kür" else "",
-                            style = Schrift.Winzig,
-                            color = Farben.TextLeise,
+                            buildAnnotatedString {
+                                append(p.bezeichnung)
+                                p.beispiel?.let { withStyle(SpanStyle(color = Farben.TextLeise)) { append(" ($it)") } }
+                                if (!p.pflicht) withStyle(SpanStyle(color = Farben.TextSehrLeise)) { append(" Kür") }
+                            },
+                            style = Schrift.Klein,
+                            color = if (offen) Farben.Amber else Farben.Text,
                             modifier = Modifier.weight(1f),
                         )
-                        Text(p.fahrzeug ?: "— offen —", style = Schrift.Winzig.copy(fontFamily = Schrift.Mono), color = if (p.fahrzeug == null) Farben.TextSehrLeise else Farben.Text)
+                        Text(p.fahrzeug ?: "— offen —", style = Schrift.MonoKlein, color = if (p.fahrzeug == null) Farben.TextSehrLeise else Farben.Text)
                     }
                 }
-                Umbruchreihe {
+                Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
                     Knopf(if (offenerZug == z.id) "Fertig" else "Fahrzeuge wählen", {
                         offenerZug = if (offenerZug == z.id) null else z.id
-                    }, kompakt = true, art = Knopfart.Leise)
+                    }, kompakt = true)
                     Knopf("Auflösen", {
                         bereich.launch {
                             zugFehler = welt.handlung("Der Zug ließ sich nicht auflösen.") { welt.wege.zugAufloesen(it, z.id) }
@@ -381,77 +466,73 @@ fun WachenDetailSeite(welt: Welt, zustand: Weltzustand, werkbank: Werkbank) {
                             laden()
                             welt.zuegeLaden()
                         }
-                    }, kompakt = true, art = Knopfart.Leise)
+                    }, kompakt = true)
                 }
                 if (offenerZug == z.id) {
                     s.fahrzeuge.forEach { f ->
                         val drin = f.id in z.fahrzeugIds
-                        Wahlzeile(an = drin, beiWechsel = {
-                            bereich.launch {
-                                zugFehler = welt.handlung("Das Fahrzeug ließ sich nicht setzen.") {
-                                    welt.wege.zugFahrzeug(it, z.id, f.id, !drin)
+                        Hakenzeile(
+                            buildAnnotatedString {
+                                withStyle(SpanStyle(fontFamily = Schrift.Mono)) { append(f.funkrufname) }
+                                withStyle(SpanStyle(color = Farben.TextLeise)) { append("  ${f.typ}") }
+                            },
+                            drin,
+                            {
+                                bereich.launch {
+                                    zugFehler = welt.handlung("Das Fahrzeug ließ sich nicht setzen.") {
+                                        welt.wege.zugFahrzeug(it, z.id, f.id, !drin)
+                                    }
+                                    laden()
+                                    welt.zuegeLaden()
                                 }
-                                laden()
-                                welt.zuegeLaden()
-                            }
-                        }) {
-                            Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
-                                Text(f.funkrufname, style = Schrift.MonoKlein, color = Farben.Text)
-                                Text(f.typ, style = Schrift.Winzig, color = Farben.TextLeise)
-                            }
-                        }
+                            },
+                        )
                     }
                 }
             }
         }
-        if (s.zugvorgaben.isNotEmpty()) {
-            Auswahl(
-                etikett = "Zugart",
-                eintraege = s.zugvorgaben,
-                gewaehlt = zugArt,
-                aufschrift = { it.name },
-                unterschrift = { v -> v.plaetze.joinToString(", ") { it.bezeichnung } },
-                beiWahl = { zugArt = it },
-            )
-            Feld(wert = zugName, beiAenderung = { zugName = it.take(40) }, etikett = "Name (frei)", platzhalter = "1. Löschzug")
-            Knopf("Zug aufstellen", {
-                val art = zugArt ?: return@Knopf
-                bereich.launch {
-                    zugFehler = welt.handlung("Der Zug ließ sich nicht aufstellen.") {
-                        welt.wege.zugAufstellen(it, w.id, art.id, zugName.trim().ifBlank { null })
-                    }
-                    if (zugFehler == null) {
-                        zugArt = null
-                        zugName = ""
-                    }
-                    laden()
-                    welt.zuegeLaden()
+        Auswahl(
+            etikett = "Zugart",
+            eintraege = s.zugvorgaben,
+            gewaehlt = zugArt,
+            aufschrift = { it.name },
+            unterschrift = { v -> v.plaetze.joinToString(", ") { it.bezeichnung } },
+            beiWahl = { zugArt = it },
+        )
+        Feld(wert = zugName, beiAenderung = { zugName = it.take(40) }, etikett = "Name (frei)", platzhalter = "Löschzug 1")
+        Knopf("Zug aufstellen", {
+            val art = zugArt ?: return@Knopf
+            zugLaeuft = true
+            bereich.launch {
+                zugFehler = welt.handlung("Der Zug ließ sich nicht aufstellen.") {
+                    welt.wege.zugAufstellen(it, w.id, art.id, zugName.trim().ifBlank { null })
                 }
-            }, kompakt = true, aktiv = zugArt != null)
-        }
+                if (zugFehler == null) {
+                    zugArt = null
+                    zugName = ""
+                }
+                laden()
+                welt.zuegeLaden()
+                zugLaeuft = false
+            }
+        }, kompakt = true, aktiv = zugArt != null && !zugLaeuft)
     }
 
-    Ueberschrift("Chronik")
-    if (s.chronik.isEmpty()) Leisesatz("Hier ist noch nichts geschehen.", winzig = true)
+    Ueberschrift("Chronik", Modifier.padding(top = Abstand.Klein))
+    if (s.chronik.isEmpty()) Leerhinweis("Hier steht noch nichts. Was an dieser Wache geschieht, landet hier.")
     s.chronik.forEach { z ->
         Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein), verticalAlignment = Alignment.Top) {
             Text(chronikzeichen(z), style = Schrift.MonoKlein, color = Farben.Amber)
             Text(z.text, style = Schrift.Klein, color = Farben.Text, modifier = Modifier.weight(1f))
-            Text(tagUndUhr(z.um), style = Schrift.Winzig.copy(fontFamily = Schrift.Mono), color = Farben.TextSehrLeise)
+            Text(tagUndUhr(z.um), style = Schrift.Klein.copy(fontFamily = Schrift.Mono), color = Farben.TextLeise)
         }
     }
 }
 
 @Composable
-private fun Kennzahl(wert: String, wort: String) {
-    Column(
-        modifier = Modifier
-            .background(Farben.BgTief, androidx.compose.foundation.shape.RoundedCornerShape(9.dp))
-            .border(1.dp, Farben.Rand, androidx.compose.foundation.shape.RoundedCornerShape(9.dp))
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-    ) {
+private fun Kennzahl(wert: String, wort: String, modifier: Modifier = Modifier) {
+    Column(modifier = modifier.flaeche().padding(horizontal = Abstand.Normal, vertical = Abstand.Klein)) {
         Text(wert, style = Schrift.MonoNormal.copy(fontWeight = FontWeight.Bold), color = Farben.Text)
-        Text(wort, style = Schrift.Winzig, color = Farben.TextSehrLeise)
+        Text(wort, style = Schrift.Klein, color = Farben.TextLeise)
     }
 }
-

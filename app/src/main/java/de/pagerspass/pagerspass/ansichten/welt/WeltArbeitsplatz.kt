@@ -26,6 +26,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.draw.shadow
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -396,21 +398,6 @@ fun WeltArbeitsplatz(welt: Welt, zustand: Weltzustand, beiVerlassen: () -> Unit)
             modifier = Modifier.align(Alignment.TopCenter).padding(top = oben),
         )
 
-        // Der Takt ist gerissen — es steht dran, statt still eingefrorene Daten
-        // zu zeigen. Unter dem Kopf, damit Guthaben und Stufe lesbar bleiben.
-        zustand.fehler?.let { f ->
-            Text(
-                text = "$f — es wird weiter versucht.",
-                style = Schrift.MonoKlein,
-                color = Farben.Text,
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(top = kopfhoehe + Abstand.Klein, start = Abstand.Normal, end = Abstand.Normal)
-                    .background(Farben.SignalTief, Rundung.Klein)
-                    .border(1.dp, Farben.Signal, Rundung.Klein)
-                    .padding(horizontal = Abstand.Normal, vertical = Abstand.Klein),
-            )
-        }
 
         // Unten: der Hinweis des Wahlmodus samt Zeichenleiste, die Einführung,
         // darunter die Reiter. Beim Standortwählen tritt die Einführung zur
@@ -432,6 +419,26 @@ fun WeltArbeitsplatz(welt: Welt, zustand: Weltzustand, beiVerlassen: () -> Unit)
             beiOeffnen = { werkbank.seite = Werkzeug.Chat },
             modifier = Modifier.align(Alignment.TopCenter).padding(top = kopfhoehe + Abstand.Klein),
         )
+
+        // Der Takt ist gerissen — es steht dran, statt still eingefrorene Daten
+        // zu zeigen. Wie `.weltplatz__fehler`: oben über allem, auch über dem
+        // Kopf (`--ebene-meldung`), schmal und mittig; die Karte darunter
+        // bleibt anfassbar, der Takt versucht es weiter.
+        zustand.fehler?.let { f ->
+            Text(
+                text = "$f — es wird weiter versucht.",
+                style = Schrift.MonoKlein,
+                color = Farben.Text,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = oben + Abstand.Klein, start = Abstand.Normal, end = Abstand.Normal)
+                    .widthIn(max = 560.dp)
+                    .shadow(12.dp, Rundung.Klein)
+                    .background(Farben.SignalTief, Rundung.Klein)
+                    .border(1.dp, Farben.Signal, Rundung.Klein)
+                    .padding(horizontal = Abstand.Normal, vertical = Abstand.Klein),
+            )
+        }
 
         werkbank.fremdfahrzeug?.let { id ->
             val f = zustand.betrieb?.fremde?.firstOrNull { it.id == id }
