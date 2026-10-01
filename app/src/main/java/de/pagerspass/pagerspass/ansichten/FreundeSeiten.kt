@@ -20,9 +20,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
 import de.pagerspass.pagerspass.mobil.Bereich as Bereichsstand
 import de.pagerspass.pagerspass.mobil.Kreisstand
 import de.pagerspass.pagerspass.netz.Anwesenheit
@@ -45,6 +48,7 @@ import de.pagerspass.pagerspass.ui.bausteine.Reiter
 import de.pagerspass.pagerspass.ui.bausteine.Reiterreihe
 import de.pagerspass.pagerspass.ui.bausteine.SehrLeise
 import de.pagerspass.pagerspass.ui.bausteine.Seite
+import de.pagerspass.pagerspass.ui.bausteine.Segment
 import de.pagerspass.pagerspass.ui.bausteine.Textweg
 import de.pagerspass.pagerspass.ui.bausteine.Ueberschrift
 import de.pagerspass.pagerspass.ui.schmuck.Kontobild
@@ -95,6 +99,8 @@ class FreundeGriffe(
     val einladungAnnehmen: (Einladung) -> Unit = {},
     val einladungAblehnen: (Einladung) -> Unit = {},
     val meldungWeg: () -> Unit = {},
+    /** Zum Dienst — der Ausweg aus leeren Vorschlägen („Schicht fahren"). */
+    val dienst: () -> Unit = {},
 )
 
 @Composable
@@ -150,7 +156,18 @@ fun FreundeSeite(
         Meldungszeile(kreis.meldung, kreis.hinweis, griffe.meldungWeg)
 
         when (reiter) {
-            0 -> brett()
+            0 -> {
+                // Wer gerade fährt, steht über dem Brett — das Einzige hier, das in
+                // Minuten veraltet. Fährt niemand, fehlt die Karte ganz.
+                ImDienstLeiste(
+                    freunde = bestaetigte.filter { it.anwesenheit != null },
+                    server = server,
+                    beiProfil = griffe.profil,
+                    beiDazuschalten = griffe.dazuschalten,
+                    beiAlle = { reiter = 1 },
+                )
+                brett()
+            }
             else -> Bereich(
                 laedt = freunde.laedt,
                 fehler = freunde.fehler,
@@ -158,8 +175,8 @@ fun FreundeSeite(
                 beiErneut = griffe.laden,
             ) {
                 when (reiter) {
-                    1 -> FreundeListe(bestaetigte, server, griffe)
-                    2 -> Gespraechsliste(bestaetigte, server, griffe)
+                    1 -> FreundeListe(bestaetigte, server, griffe, beiKontakte = { reiter = 3 })
+                    2 -> Gespraechsliste(bestaetigte, server, griffe, beiKontakte = { reiter = 3 })
                     else -> Kontakte(alle, einladungen, kreis, server, griffe)
                 }
             }
@@ -186,15 +203,20 @@ private fun Ausweis(
 ) {
     val ton = Wappen.ton(konto.kennung, profil?.wappenfarbe ?: 0)
 
+    // Am Handy sagt der Ausweis, wo man ist, nicht wer man ist (`mobil.css`,
+    // `.freunde-kopf .ich`): Wappen klein, „Freunde" als Titel, der Weg ins
+    // eigene Profil — Name und Kennung stehen einen Tipp weiter im Profil. Die
+    // drei Zahlen sind eine leise Zeile statt dreier Kästchen. So endet der
+    // Kopf bei 177 statt 260 Punkten, und das Brett beginnt früher.
     Column(
-        verticalArrangement = Arrangement.spacedBy(Abstand.Normal),
+        verticalArrangement = Arrangement.spacedBy(Abstand.Klein),
         modifier = Modifier
             .fillMaxWidth()
             .clipToBounds()
-            .flaeche()
+            .flaeche(randfarbe = Farben.Amber.copy(alpha = 0.28f).compositeOver(Farben.Rand))
             .kopfband(profil?.kopfmuster ?: "keines", ton, zeile = true)
             .clickable(onClick = beiDruck, role = Role.Button)
-            .padding(Abstand.Normal),
+            .padding(horizontal = Abstand.Normal, vertical = Abstand.Klein),
     ) {
         Row(
             horizontalArrangement = Arrangement.spacedBy(Abstand.Normal),
@@ -207,46 +229,42 @@ private fun Ausweis(
                 wappenfarbe = profil?.wappenfarbe ?: 0,
                 bildAdresse = bildweg(server, profil?.profilbild),
                 rahmen = profil?.profilrahmen ?: "keiner",
-                groesse = 52.dp,
+                groesse = 34.dp,
             )
-            Column(modifier = Modifier.weight(1f)) {
-                Etikett("Freunde")
-                Kontoname(
-                    name = konto.anzeigename,
-                    premium = konto.premiumAktiv,
-                    teammitglied = konto.teammitglied,
-                    stil = Schrift.Gross,
-                )
-                Text(
-                    text = konto.benutzername,
-                    style = Schrift.MonoKlein,
-                    color = Farben.TextLeise,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
+            Text(
+                "Freunde",
+                style = Schrift.Gross.copy(fontWeight = FontWeight.Bold),
+                color = Farben.Text,
+                modifier = Modifier.weight(1f),
+            )
             Text("Mein Profil ›", style = Schrift.Klein, color = Farben.AmberHell)
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(Abstand.SehrGross)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Normal)) {
             Ausweiswert(freunde, "Freunde")
-            Ausweiswert(imDienst, "im Dienst")
-            Ausweiswert(ungelesen, "ungelesen", offen = ungelesen > 0)
+            // Grün wie der Ring am Wappen: „sitzt in einer Runde". Rot nur, was auf
+            // Antwort wartet. Eine Null bleibt weiß — sie meldet nichts.
+            Ausweiswert(imDienst, "im Dienst", farbe = if (imDienst > 0) Farben.GruenHell else Farben.Text)
+            Ausweiswert(ungelesen, "ungelesen", farbe = if (ungelesen > 0) Farben.SignalHell else Farben.Text)
         }
     }
 }
 
 @Composable
-private fun Ausweiswert(zahl: Int, wort: String, offen: Boolean = false) {
+private fun Ausweiswert(zahl: Int, wort: String, farbe: androidx.compose.ui.graphics.Color = Farben.Text) {
     Row(
         horizontalArrangement = Arrangement.spacedBy(Abstand.Winzig),
-        verticalAlignment = Alignment.CenterVertically,
+        verticalAlignment = Alignment.Bottom,
     ) {
         Text(
             text = zahl.toString(),
-            style = Schrift.MonoNormal,
-            color = if (offen) Farben.SignalHell else Farben.Text,
+            style = Schrift.MonoKlein.copy(fontWeight = FontWeight.ExtraBold),
+            color = farbe,
         )
-        Text(text = wort, style = Schrift.Winzig, color = Farben.TextLeise)
+        Text(
+            text = wort.uppercase(),
+            style = Schrift.Winzig.copy(fontWeight = FontWeight.Bold, letterSpacing = 0.08.em),
+            color = Farben.TextLeise,
+        )
     }
 }
 
@@ -264,6 +282,7 @@ private fun ColumnScope.FreundeListe(
     bestaetigte: List<Freund>,
     server: String,
     griffe: FreundeGriffe,
+    beiKontakte: () -> Unit = {},
 ) {
     var suche by rememberSaveable { mutableStateOf("") }
 
@@ -275,28 +294,41 @@ private fun ColumnScope.FreundeListe(
     val dienst = gezeigt.filter { it.anwesenheit != null }
     val ruhend = gezeigt.filter { it.anwesenheit == null }
 
-    when {
-        bestaetigte.isEmpty() -> Leerhinweis(
-            "Noch niemand. Unter „Kontakte“ findest du Leute, mit denen du schon gefahren bist.",
-        )
-        suche.isNotBlank() && gezeigt.isEmpty() -> Leerhinweis("Niemand mit diesem Namen.")
+    // Wer noch niemanden hat, bekommt den Weg zu den Leuten, mit denen er gefahren ist.
+    if (bestaetigte.isEmpty()) {
+        Buchkarte("Deine Freunde", zahl = "0") {
+            Leerhinweis("Noch niemand. Unter „Kontakte“ findest du Leute, mit denen du schon gefahren bist.") {
+                Knopf("Zu den Kontakten", beiKontakte, art = Knopfart.Haupt)
+            }
+        }
+        return
+    }
+    if (suche.isNotBlank() && gezeigt.isEmpty()) {
+        Leerhinweis("Niemand mit diesem Namen.") {
+            Knopf("Suche leeren", { suche = "" })
+        }
     }
 
-    listOf("Im Dienst" to dienst, "Gerade nicht im Dienst" to ruhend).forEach { (titel, leute) ->
-        if (leute.isEmpty()) return@forEach
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Ueberschrift(titel)
-            SehrLeise(leute.size.toString(), mono = true)
+    // „Im Dienst" steht auch leer da (außer beim Suchen) — mit dem Satz, dass
+    // gerade niemand fährt, statt einer Lücke.
+    listOf(
+        Triple("Im Dienst", dienst, dienst.isNotEmpty() || suche.isBlank()),
+        Triple("Gerade nicht im Dienst", ruhend, ruhend.isNotEmpty()),
+    ).forEach { (titel, leute, zeigen) ->
+        if (!zeigen) return@forEach
+        Buchkarte(titel, zahl = leute.size.toString(), dicht = leute.isNotEmpty(), abstandInnen = 0.dp) {
+        if (leute.isEmpty()) {
+            Leerhinweis(
+                "Gerade fährt niemand aus deiner Liste. Wer in den Dienst geht, rückt hier von allein nach oben.",
+            )
         }
-        leute.forEach { f ->
+        leute.forEachIndexed { i, f ->
             Freundzeile(
                 freund = f,
                 server = server,
                 unterzeile = lage(f.anwesenheit, f.zuletztGesehen).ifBlank { f.benutzername },
                 beiDruck = { griffe.profil(f.benutzername) },
+                letzte = i == leute.lastIndex,
                 unten = {
                     Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
                         f.anwesenheit?.let { wo ->
@@ -319,13 +351,7 @@ private fun ColumnScope.FreundeListe(
                 },
             )
         }
-    }
-
-    if (bestaetigte.isNotEmpty() && bestaetigte.none { it.anwesenheit != null } && suche.isBlank()) {
-        SehrLeise(
-            "Gerade fährt niemand aus deiner Liste. Wer in den Dienst geht, rückt hier " +
-                "von allein nach oben.",
-        )
+        }
     }
 }
 
@@ -343,6 +369,7 @@ private fun ColumnScope.Gespraechsliste(
     bestaetigte: List<Freund>,
     server: String,
     griffe: FreundeGriffe,
+    beiKontakte: () -> Unit = {},
 ) {
     var suche by rememberSaveable { mutableStateOf("") }
     var sieb by rememberSaveable { mutableStateOf("Alle") }
@@ -351,21 +378,20 @@ private fun ColumnScope.Gespraechsliste(
 
     if (bestaetigte.size > 4) {
         Feld(wert = suche, beiAenderung = { suche = it.take(48) }, platzhalter = "Name suchen …")
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
-            Pille("Alle", an = sieb == "Alle", beiDruck = { sieb = "Alle" })
-            Pille(
-                "Ungelesen",
-                an = sieb == "Ungelesen",
-                beiDruck = { sieb = "Ungelesen" },
-                zahl = ungelesen.takeIf { it > 0 },
-            )
-            Pille(
-                "Im Dienst",
-                an = sieb == "ImDienst",
-                beiDruck = { sieb = "ImDienst" },
-                zahl = imDienst.takeIf { it > 0 },
-            )
-        }
+        // Der Wahlschalter des Web — eine Wahl aus dreien, die Zahl steht in der Aufschrift.
+        Segment(
+            seiten = listOf("Alle", "Ungelesen", "ImDienst"),
+            gewaehlt = sieb,
+            beiWahl = { sieb = it },
+            aufschrift = {
+                when (it) {
+                    "Ungelesen" -> if (ungelesen > 0) "Ungelesen $ungelesen" else "Ungelesen"
+                    "ImDienst" -> if (imDienst > 0) "Im Dienst $imDienst" else "Im Dienst"
+                    else -> "Alle"
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+        )
     }
 
     val gezeigt = bestaetigte.filter { f ->
@@ -384,9 +410,23 @@ private fun ColumnScope.Gespraechsliste(
         sieb == "ImDienst" && gezeigt.isEmpty() -> "Gerade fährt niemand von deinen Freunden."
         else -> null
     }
-    leer?.let { Leerhinweis(it) }
+    Buchkarte("Gespräche", zahl = gezeigt.size.toString(), dicht = leer == null, abstandInnen = 0.dp) {
+    // Der leere Zustand steht in der Karte und trägt den Weg hinaus: zu den
+    // Kontakten, wenn es niemanden gibt, sonst zurück zur ganzen Liste.
+    leer?.let {
+        Leerhinweis(it) {
+            if (bestaetigte.isEmpty()) {
+                Knopf("Zu den Kontakten", beiKontakte, art = Knopfart.Haupt)
+            } else {
+                Knopf("Ganze Liste zeigen", {
+                    suche = ""
+                    sieb = "Alle"
+                })
+            }
+        }
+    }
 
-    gezeigt.forEach { f ->
+    gezeigt.forEachIndexed { i, f ->
         val vorschau = when {
             f.anwesenheit != null -> lage(f.anwesenheit, f.zuletztGesehen)
             f.letzteNachricht != null ->
@@ -410,7 +450,9 @@ private fun ColumnScope.Gespraechsliste(
                 }
             },
             unten = dazuschaltknopf(f.anwesenheit, griffe),
+            letzte = i == gezeigt.lastIndex,
         )
+    }
     }
 }
 
@@ -441,76 +483,149 @@ private fun ColumnScope.Kontakte(
     val vorschlaege = kreis.vorschlaege.inhalt.orEmpty()
     val offeneVorschlaege = vorschlaege.filter { it.kennung !in kreis.weggelegt }
 
+    // Die Reihenfolge des Web am Handy: was auf mich wartet (Einladungen,
+    // Anfragen), was sich von selbst ergibt (Vorschläge), dann das Werkzeug
+    // (Suche) und das Abgeräumte hinter einer Klappe. Jede Gruppe ist eine Karte
+    // mit Kopf und Zähler — dieselben Bausteine wie im Dienstbuch.
     if (einladungen.isNotEmpty()) {
-        Ueberschrift("Einladungen in eine Runde")
-        einladungen.forEach { e ->
-            Kasten(marke = true, wartet = true, abstandInnen = Abstand.Klein) {
-                Text(
-                    text = "${e.vonName} lädt dich " +
-                        (if (e.alsZuschauer) "zum Zuschauen in eine Runde" else "in eine Runde"),
-                    style = Schrift.Normal,
-                    color = Farben.Text,
-                )
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
-                    verticalArrangement = Arrangement.spacedBy(Abstand.Winzig),
-                ) {
-                    Marke(e.roomCode)
-                    (e.landkreis ?: e.ort.ifBlank { null })?.let { SehrLeise(it) }
-                    if (e.zustand != null) SehrLeise("${e.spieler}/${e.maxSpieler} Spieler", mono = true)
-                }
-                if (e.mitspieler.isNotEmpty()) SehrLeise("Dabei: ${e.mitspieler.joinToString(", ")}")
-                e.hinweis?.let { Text(it, style = Schrift.Klein, color = Farben.SignalHell) }
-                Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
-                    Knopf(
-                        if (e.alsZuschauer) "Zuschauen" else "Annehmen",
-                        { griffe.einladungAnnehmen(e) },
-                        art = Knopfart.Haupt,
-                        aktiv = e.annehmbar,
-                        kompakt = true,
+        Buchkarte(
+            "Einladungen in eine Runde",
+            zahl = einladungen.size.toString(),
+            dicht = true,
+            abstandInnen = 0.dp,
+        ) {
+            einladungen.forEachIndexed { i, e ->
+                Kartenzeile(letzte = i == einladungen.lastIndex, hinterlegt = Farben.HauchAmber) {
+                    Text(
+                        text = "${e.vonName} lädt dich " +
+                            (if (e.alsZuschauer) "zum Zuschauen in eine Runde" else "in eine Runde"),
+                        style = Schrift.Normal,
+                        color = Farben.Text,
                     )
-                    Knopf(
-                        if (e.annehmbar) "Ablehnen" else "Wegräumen",
-                        { griffe.einladungAblehnen(e) },
-                        art = Knopfart.Leise,
-                        kompakt = true,
-                    )
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
+                        verticalArrangement = Arrangement.spacedBy(Abstand.Winzig),
+                    ) {
+                        Marke(e.roomCode)
+                        (e.landkreis ?: e.ort.ifBlank { null })?.let { SehrLeise(it) }
+                        if (e.zustand != null) SehrLeise("${e.spieler}/${e.maxSpieler} Spieler", mono = true)
+                    }
+                    if (e.mitspieler.isNotEmpty()) SehrLeise("Dabei: ${e.mitspieler.joinToString(", ")}")
+                    e.hinweis?.let { Text(it, style = Schrift.Klein, color = Farben.SignalHell) }
+                    Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
+                        Knopf(
+                            if (e.alsZuschauer) "Zuschauen" else "Annehmen",
+                            { griffe.einladungAnnehmen(e) },
+                            art = Knopfart.Haupt,
+                            aktiv = e.annehmbar,
+                            kompakt = true,
+                        )
+                        Knopf(
+                            if (e.annehmbar) "Ablehnen" else "Wegräumen",
+                            { griffe.einladungAblehnen(e) },
+                            art = Knopfart.Leise,
+                            kompakt = true,
+                        )
+                    }
                 }
             }
         }
     }
 
     if (offeneAnfragen.isNotEmpty()) {
-        Ueberschrift("Warten auf deine Antwort")
-        offeneAnfragen.forEach { f ->
-            Freundzeile(
-                freund = f,
-                server = server,
-                unterzeile = listOf(f.benutzername, f.rang).filter { it.isNotBlank() }.joinToString(" · "),
-                beiDruck = { griffe.profil(f.benutzername) },
-                unten = {
-                    Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
-                        Knopf(
-                            "Annehmen",
-                            { griffe.antworten(f.kennung, true) },
-                            art = Knopfart.Haupt,
-                            kompakt = true,
-                        )
-                        Knopf(
-                            "Ablehnen",
-                            { griffe.antworten(f.kennung, false) },
-                            art = Knopfart.Leise,
-                            kompakt = true,
-                        )
-                    }
-                },
-            )
+        Buchkarte(
+            "Warten auf deine Antwort",
+            zahl = offeneAnfragen.size.toString(),
+            dicht = true,
+            abstandInnen = 0.dp,
+        ) {
+            offeneAnfragen.forEachIndexed { i, f ->
+                Freundzeile(
+                    freund = f,
+                    server = server,
+                    unterzeile = listOf(f.benutzername, f.rang).filter { it.isNotBlank() }.joinToString(" · "),
+                    beiDruck = { griffe.profil(f.benutzername) },
+                    letzte = i == offeneAnfragen.lastIndex,
+                    unten = {
+                        Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
+                            Knopf(
+                                "Annehmen",
+                                { griffe.antworten(f.kennung, true) },
+                                art = Knopfart.Haupt,
+                                kompakt = true,
+                            )
+                            Knopf(
+                                "Ablehnen",
+                                { griffe.antworten(f.kennung, false) },
+                                art = Knopfart.Leise,
+                                kompakt = true,
+                            )
+                        }
+                    },
+                )
+            }
+        }
+    }
+
+    // Vorschläge — die Karte steht immer da: Wer frisch anfängt, sähe sonst nur ein
+    // Suchfeld und wüsste nicht, dass sich diese Seite von selbst füllt.
+    Buchkarte(
+        "Leute, mit denen du gefahren bist",
+        zahl = offeneVorschlaege.size.takeIf { it > 0 }?.toString(),
+        dicht = offeneVorschlaege.isNotEmpty(),
+        abstandInnen = 0.dp,
+        // Ein Satzknopf im Kopf statt eines Absatzes unter der Liste: Er gehört zur
+        // ganzen Karte, nicht zur letzten Zeile.
+        kopfweg = if (kreis.weggelegt.isNotEmpty() && offeneVorschlaege.isNotEmpty()) {
+            { Textweg("${kreis.weggelegt.size} weggelegt · zeigen", griffe.zurueckholen) }
+        } else {
+            null
+        },
+    ) {
+        when {
+            offeneVorschlaege.isNotEmpty() -> offeneVorschlaege.forEachIndexed { i, v ->
+                Profilzeile(
+                    kennung = v.kennung,
+                    anzeigename = v.anzeigename,
+                    // Der Grund, warum dieser Mensch hier steht. Ohne ihn ist ein
+                    // Vorschlag eine Behauptung; mit ihm eine Erinnerung.
+                    unterzeile = "${v.rang} · ${v.gemeinsameSchichten} " +
+                        (if (v.gemeinsameSchichten == 1) "gemeinsame Schicht" else "gemeinsame Schichten") +
+                        ", zuletzt ${tag(v.zuletztZusammen)}",
+                    bildAdresse = bildweg(server, v.profilbild),
+                    premium = v.premium,
+                    teammitglied = v.teammitglied,
+                    beiDruck = { griffe.profil(v.benutzername) },
+                    randlos = true,
+                    modifier = Modifier.zeilenstrich(i == offeneVorschlaege.lastIndex),
+                    unten = {
+                        Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
+                            Knopf(
+                                "Anfragen",
+                                { griffe.anfragen(v.kennung) },
+                                art = Knopfart.Haupt,
+                                aktiv = !kreis.laeuft,
+                                kompakt = true,
+                            )
+                            Knopf("Weglegen", { griffe.weglegen(v.kennung) }, art = Knopfart.Leise, kompakt = true)
+                        }
+                    },
+                )
+            }
+            kreis.weggelegt.isNotEmpty() && vorschlaege.isNotEmpty() -> Leerhinweis("Alle Vorschläge weggelegt.") {
+                Knopf("Wieder zeigen", griffe.zurueckholen)
+            }
+            else -> Leerhinweis(
+                "Nach einer gemeinsamen Schicht stehen hier Leute, mit denen du gefahren bist. " +
+                    "Einladungen in eine Runde und offene Anfragen landen ebenfalls auf dieser Seite.",
+            ) {
+                Knopf("Schicht fahren", griffe.dienst)
+            }
         }
     }
 
     // Suche — über den eindeutigen Benutzernamen, nicht über den Anzeigenamen.
-    Ueberschrift("Jemanden hinzufügen")
-    Kasten(abstandInnen = Abstand.Klein) {
+    Buchkarte("Jemanden hinzufügen") {
         Row(
             horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
             verticalAlignment = Alignment.Bottom,
@@ -534,118 +649,74 @@ private fun ColumnScope.Kontakte(
             "Gesucht wird über den eindeutigen Benutzernamen, nicht über den Anzeigenamen — " +
                 "deinen findest du in deinem Profil.",
         )
-    }
 
-    kreis.treffer?.let { t ->
-        Profilzeile(
-            kennung = t.kennung,
-            anzeigename = t.anzeigename,
-            unterzeile = listOfNotNull(t.benutzername, t.rang).joinToString(" · "),
-            bildAdresse = bildweg(server, t.profilbild),
-            premium = t.premium,
-            teammitglied = t.teammitglied,
-            beiDruck = { griffe.profil(t.benutzername) },
-            hinten = {
-                when (t.stand) {
-                    null -> Knopf(
-                        "Anfragen",
-                        { griffe.anfragen(t.kennung) },
-                        art = Knopfart.Haupt,
-                        aktiv = !kreis.laeuft,
-                        kompakt = true,
-                    )
-                    "Bestaetigt" -> Marke("Schon befreundet")
-                    "Angefragt" -> Marke("Anfrage läuft")
-                    else -> Marke("Nicht möglich")
-                }
-            },
-        )
-    }
-
-    if (offeneVorschlaege.isNotEmpty()) {
-        Ueberschrift("Leute, mit denen du gefahren bist")
-        offeneVorschlaege.forEach { v ->
+        kreis.treffer?.let { t ->
             Profilzeile(
-                kennung = v.kennung,
-                anzeigename = v.anzeigename,
-                // Der Grund, warum dieser Mensch hier steht. Ohne ihn ist ein
-                // Vorschlag eine Behauptung; mit ihm eine Erinnerung.
-                unterzeile = "${v.rang} · ${v.gemeinsameSchichten} " +
-                    (if (v.gemeinsameSchichten == 1) "gemeinsame Schicht" else "gemeinsame Schichten") +
-                    ", zuletzt ${tag(v.zuletztZusammen)}",
-                bildAdresse = bildweg(server, v.profilbild),
-                premium = v.premium,
-                teammitglied = v.teammitglied,
-                beiDruck = { griffe.profil(v.benutzername) },
-                unten = {
-                    Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
-                        Knopf(
+                kennung = t.kennung,
+                anzeigename = t.anzeigename,
+                unterzeile = listOfNotNull(t.benutzername, t.rang).joinToString(" · "),
+                bildAdresse = bildweg(server, t.profilbild),
+                premium = t.premium,
+                teammitglied = t.teammitglied,
+                beiDruck = { griffe.profil(t.benutzername) },
+                hinten = {
+                    when (t.stand) {
+                        null -> Knopf(
                             "Anfragen",
-                            { griffe.anfragen(v.kennung) },
+                            { griffe.anfragen(t.kennung) },
                             art = Knopfart.Haupt,
                             aktiv = !kreis.laeuft,
                             kompakt = true,
                         )
-                        Knopf("Weglegen", { griffe.weglegen(v.kennung) }, art = Knopfart.Leise, kompakt = true)
+                        "Bestaetigt" -> Marke("Schon befreundet")
+                        "Angefragt" -> Marke("Anfrage läuft")
+                        else -> Marke("Nicht möglich")
                     }
                 },
             )
         }
     }
 
-    if (kreis.weggelegt.isNotEmpty() && vorschlaege.isNotEmpty()) {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            SehrLeise(
-                if (offeneVorschlaege.isEmpty()) "Alle Vorschläge weggelegt."
-                else "${kreis.weggelegt.size} weggelegt.",
-            )
-            Textweg("Wieder zeigen", griffe.zurueckholen)
-        }
-    }
-
-    if (einladungen.isEmpty() && offeneAnfragen.isEmpty() && vorschlaege.isEmpty()) {
-        Leerhinweis(
-            "Nach einer gemeinsamen Schicht stehen hier Vorschläge: Leute, mit denen du " +
-                "gefahren bist. Einladungen in eine Runde und offene Anfragen landen ebenfalls hier.",
-        )
-    }
-
-    // Was sonst noch offen oder abgeräumt ist — hinter einer Klappe.
+    // Was sonst noch offen oder abgeräumt ist — eine Karte, die aufklappt.
     if (gestellte.isNotEmpty() || blockierte.isNotEmpty()) {
-        Textweg(
-            (if (klappeOffen) "▾ " else "▸ ") +
-                "Eigene Anfragen und Blockiertes · ${gestellte.size + blockierte.size}",
-            { klappeOffen = !klappeOffen },
-            farbe = Farben.TextLeise,
-        )
-        if (klappeOffen) {
-            gestellte.forEach { f ->
-                Freundzeile(
-                    freund = f,
-                    server = server,
-                    unterzeile = "Deine Anfrage läuft.",
-                    hinten = {
-                        Knopf("Zurückziehen", { griffe.loesen(f.kennung) }, art = Knopfart.Leise, kompakt = true)
-                    },
-                )
-            }
-            blockierte.forEach { f ->
-                // Ohne Bild, Band und Wappen, mit Absicht: Wer jemanden
-                // blockiert hat, soll dessen Gesicht nicht wiedersehen, nur weil
-                // er nachschlägt, wen er blockiert hat. Der Name genügt.
-                Profilzeile(
-                    kennung = f.kennung,
-                    anzeigename = f.anzeigename,
-                    unterzeile = "Blockiert — weder Anfragen noch Nachrichten.",
-                    premium = f.premium,
-                    teammitglied = f.teammitglied,
-                    hinten = {
-                        Knopf("Aufheben", { griffe.loesen(f.kennung) }, art = Knopfart.Leise, kompakt = true)
-                    },
-                )
+        Buchkarte(
+            "Eigene Anfragen und Blockiertes",
+            zahl = (gestellte.size + blockierte.size).toString(),
+            dicht = true,
+            abstandInnen = 0.dp,
+            modifier = Modifier.clickable(role = Role.Button) { klappeOffen = !klappeOffen },
+            kopfweg = { Text(if (klappeOffen) "⌄" else "›", style = Schrift.Gross, color = Farben.TextLeise) },
+        ) {
+            if (klappeOffen) {
+                val zahl = gestellte.size + blockierte.size
+                gestellte.forEachIndexed { i, f ->
+                    Freundzeile(
+                        freund = f,
+                        server = server,
+                        unterzeile = "Deine Anfrage läuft.",
+                        letzte = i == zahl - 1,
+                        hinten = {
+                            Knopf("Zurückziehen", { griffe.loesen(f.kennung) }, art = Knopfart.Leise, kompakt = true)
+                        },
+                    )
+                }
+                blockierte.forEachIndexed { i, f ->
+                    // Ohne Bild, Band und Wappen, mit Absicht: Wer jemanden
+                    // blockiert hat, soll dessen Gesicht nicht wiedersehen, nur weil
+                    // er nachschlägt, wen er blockiert hat. Der Name genügt.
+                    Profilzeile(
+                        kennung = f.kennung,
+                        anzeigename = f.anzeigename,
+                        unterzeile = "Blockiert — weder Anfragen noch Nachrichten.",
+                        premium = f.premium,
+                        teammitglied = f.teammitglied,
+                        randlos = true,
+                        modifier = Modifier.zeilenstrich(gestellte.size + i == zahl - 1),
+                        hinten = {
+                            Knopf("Aufheben", { griffe.loesen(f.kennung) }, art = Knopfart.Leise, kompakt = true)
+                        },
+                    )
+                }
             }
         }
     }
@@ -678,8 +749,12 @@ private fun Freundzeile(
     beiDruck: (() -> Unit)? = null,
     hinten: (@Composable () -> Unit)? = null,
     unten: (@Composable ColumnScope.() -> Unit)? = null,
+    /** Gesetzt, wenn die Zeile in einer Karte steht: randlos, mit Trennstrich bis auf die letzte. */
+    letzte: Boolean? = null,
 ) {
     Profilzeile(
+        modifier = if (letzte != null) Modifier.zeilenstrich(letzte) else Modifier,
+        randlos = letzte != null,
         kennung = freund.kennung,
         anzeigename = freund.anzeigename.ifBlank { freund.benutzername },
         unterzeile = unterzeile.ifBlank { null },

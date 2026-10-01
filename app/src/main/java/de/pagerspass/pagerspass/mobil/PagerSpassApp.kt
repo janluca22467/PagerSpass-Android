@@ -903,6 +903,7 @@ private fun Angemeldet(
                         },
                         einladungAblehnen = { e -> sozial.einladungBeantworten(e.nr, false) },
                         meldungWeg = { kreis.meldungWegnehmen() },
+                        dienst = { zurWahl(steuerung, Weg.Dienst) },
                     ),
                     brett = {
                         BrettTeil(
@@ -1266,6 +1267,8 @@ private fun Angemeldet(
                     laeuft = stand.laeuft,
                     beiLaden = { sitzung.garageLaden() },
                     beiHolen = { vorlage, kaufen -> sitzung.fahrzeugHolen(vorlage, kaufen) },
+                    katalog = daten.katalog.inhalt?.fahrzeuge.orEmpty(),
+                    beiShop = { zurWahl(steuerung, Weg.Shop) },
                     beiZurueck = { steuerung.popBackStack() },
                 )
             }

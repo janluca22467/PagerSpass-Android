@@ -278,17 +278,23 @@ fun Profilzeile(
     hinten: (@Composable () -> Unit)? = null,
     beiDruck: (() -> Unit)? = null,
     unten: (@Composable ColumnScope.() -> Unit)? = null,
+    /**
+     * Ohne eigenen Kasten — als Zeile einer Karte, von Kante zu Kante (`.zeile`
+     * in einer `.db-karte`). Den Trennstrich setzt dann die Karte.
+     */
+    randlos: Boolean = false,
 ) {
     val ton = Wappen.ton(kennung, wappenfarbe)
+    val form = if (randlos) androidx.compose.ui.graphics.RectangleShape else Rundung.Klein
 
     Column(
         verticalArrangement = Arrangement.spacedBy(Abstand.Klein),
         modifier = modifier
             .fillMaxWidth()
-            .clip(Rundung.Klein)
+            .clip(form)
             .background(Farben.Flaeche)
             .kopfband(kopfmuster, ton, zeile = true)
-            .border(1.dp, Farben.Rand, Rundung.Klein)
+            .then(if (randlos) Modifier else Modifier.border(1.dp, Farben.Rand, form))
             .then(
                 if (beiDruck != null) {
                     Modifier.clickable(

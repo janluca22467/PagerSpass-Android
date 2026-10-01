@@ -36,6 +36,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -66,6 +67,7 @@ import de.pagerspass.pagerspass.ui.bausteine.SehrLeise
 import de.pagerspass.pagerspass.ui.bausteine.Segment
 import de.pagerspass.pagerspass.ui.bausteine.Seite
 import de.pagerspass.pagerspass.ui.bausteine.Seitenkopf
+import de.pagerspass.pagerspass.ui.bausteine.Textweg
 import de.pagerspass.pagerspass.ui.bausteine.Ueberschrift
 import de.pagerspass.pagerspass.ui.schmuck.Kontoname
 import de.pagerspass.pagerspass.ui.schmuck.Schmuck
@@ -194,21 +196,43 @@ fun WachenStufe(s: Wachenstatistik) {
                     ""
                 },
         )
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(Abstand.SehrGross)) {
-            Kennwert("Schichten", zahl(s.schichten))
-            Kennwert("Einsätze", zahl(s.einsaetze))
-            Kennwert("Ø Hilfsfrist", s.hilfsfristSekunden?.let { hilfsfrist(it.toInt()) } ?: "—")
-            Kennwert("30 Tage", zahl(s.aktivitaetPunkte))
-        }
+        // Die Zahlen stehen nicht mehr hier, sondern als Tafel unter dem Kopf
+        // (`Wachentafel`) — dieselbe Handschrift wie oben im Dienstbuch.
     }
 }
 
+/**
+ * Die Kennzahlen der Wache als Tafel — dieselbe wie oben auf der Übersicht des
+ * Dienstbuchs. Bis 5.0.0.26 standen sie als vier nackte Zahlen im Fuß des Kopfs;
+ * wer vom eigenen Dienstbuch herüberkam, las dieselbe Auskunft in einer zweiten
+ * Handschrift.
+ */
 @Composable
-private fun Kennwert(was: String, wert: String) {
-    Column {
-        Etikett(was)
-        Text(wert, style = Schrift.MonoNormal, color = Farben.Text)
-    }
+fun Wachentafel(s: Wachenstatistik) {
+    // „m:ss" aus ganzen Sekunden — sonst stünde bei 59,6 Sekunden „0:60".
+    val frist = s.hilfsfristSekunden?.let { hilfsfrist(Math.round(it).toInt()) }
+    val jeSchicht = if (s.schichten > 0) kommazahl(s.einsaetze.toDouble() / s.schichten) else null
+    val zuletzt = s.letzteSchicht?.let { tag(it).takeIf { t -> t != "—" }?.take(5) }
+    Kennzahltafel(
+        listOf(
+            { m -> Kennzahlkachel("Schichten", zahl(s.schichten), zuletzt?.let { "zuletzt $it" } ?: "noch keine", m) },
+            { m ->
+                Kennzahlkachel("Einsätze", zahl(s.einsaetze), jeSchicht?.let { "$it je Schicht" } ?: "—", m, farbe = Farben.BlauHell)
+            },
+            { m ->
+                Kennzahlkachel("Ø Hilfsfrist", frist?.let { "$it min" } ?: "—", "über alle Einsätze", m, farbe = Farben.GruenHell)
+            },
+            { m ->
+                Kennzahlkachel(
+                    "30 Tage",
+                    "${zahl(s.aktivitaetPunkte)} P",
+                    "${s.aktivitaetSchichten} ${if (s.aktivitaetSchichten == 1) "Schicht" else "Schichten"}",
+                    m,
+                    farbe = Farben.ViolettHell,
+                )
+            },
+        ),
+    )
 }
 
 // ---------------------------------------------------------------- Wachentag
@@ -237,14 +261,15 @@ fun WachenTag(
     val gueltig = eingabe.isEmpty() || eingabe.length >= 2
     val vorschau = (if (bearbeitet) eingabe else aktuell).ifBlank { "TAG" }
 
-    Kasten(abstandInnen = Abstand.Klein) {
+    // Eine Karte wie die übrigen der Wachenseite. Das Etikett „Wachentag", das
+    // bis dahin über dem Satz stand, ist jetzt ihr Titel.
+    Buchkarte("Wachentag") {
         Row(
             horizontalArrangement = Arrangement.spacedBy(Abstand.Normal),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Wachentagplakette(aktuell.ifBlank { vorschau })
             Column(modifier = Modifier.weight(1f)) {
-                Etikett("Wachentag")
                 Text(
                     text = when {
                         erreicht && aktuell.isNotBlank() -> "Eure Wache trägt $aktuell"
@@ -350,7 +375,9 @@ fun WachenLaufbahn(statistik: Wachenstatistik, stufen: List<Wachenrang>) {
         band.scrollTo((index * karte).coerceAtMost(band.maxValue))
     }
 
-    Abschnitt("Laufbahn der Wache") {
+    // Eine Karte wie die übrigen der Wachenseite: Kopf mit Titel, darunter der
+    // Stand und das Band, das seitwärts rollt.
+    Buchkarte("Laufbahn der Wache") {
         SehrLeise(
             "Stufe ${statistik.stufe} · ${zahl(statistik.erfahrung)} Punkte · " +
                 (statistik.bisZurNaechsten?.let { "noch ${zahl(it)} bis Stufe ${statistik.stufe + 1}" }
@@ -814,6 +841,18 @@ fun Landkreiswahl(
 
 // ------------------------------------------------------------------ Aussehen
 
+/** Die Reiter des Anpassen-Dialogs — erst der Farbton, er färbt alles andere. */
+private val BEREICHE = listOf("Wachenfarbe", "Kopfmuster", "Emblemrahmen", "Emblemzeichen", "Beiname")
+
+/** Wie ein Platz am Reiter heißt. */
+private val REITERNAME = mapOf(
+    "Wachenfarbe" to "Farbe",
+    "Kopfmuster" to "Muster",
+    "Emblemrahmen" to "Rahmen",
+    "Emblemzeichen" to "Zeichen",
+    "Beiname" to "Beiname",
+)
+
 /** Wie ein Platz in der Überschrift heißt. */
 private fun platzname(art: String): String = when (art) {
     "Kopfmuster" -> "Kopfmuster"
@@ -853,6 +892,9 @@ fun AussehenBlende(
     val darf = schatz.darfKaufen
     val ton = Wappen.ton(gemeinschaft.id, gemeinschaft.wappenfarbe)
     val beiname = schatz.schmuck.firstOrNull { it.art == "Beiname" && it.stueckId == gemeinschaft.beiname }?.name
+    // Ein Platz zur Zeit, als Reiter — vorher standen alle fünf untereinander, und
+    // wer ein Muster suchte, rollte an allen Farben und Rahmen vorbei.
+    var bereich by remember { mutableStateOf("Wachenfarbe") }
 
     Blende(titel = "Wache anpassen", beiSchliessen = beiSchliessen) {
         Row(
@@ -872,10 +914,42 @@ fun AussehenBlende(
             }
         }
 
+        // Was die Wache gerade trägt, auf einen Blick — und jede Zeile führt zu
+        // ihrem Reiter. Die Vorschau zeigt es, diese Liste sagt es.
+        val farbname = when {
+            gemeinschaft.wappenfarbe == 0 -> "Automatisch"
+            gemeinschaft.wappenfarbe < 8 -> "Farbton ${gemeinschaft.wappenfarbe}"
+            else -> schatz.schmuck.firstOrNull { it.art == "Wachenfarbe" && it.stueckId.toIntOrNull() == gemeinschaft.wappenfarbe }
+                ?.name ?: "Farbton ${gemeinschaft.wappenfarbe}"
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(Abstand.Haar)) {
+            BEREICHE.forEach { art ->
+                val wert = if (art == "Wachenfarbe") {
+                    farbname
+                } else {
+                    schatz.schmuck.firstOrNull { it.art == art && it.stueckId == getragen(gemeinschaft, art) }?.name ?: "Keines"
+                }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth().clickable(role = Role.Tab) { bereich = art },
+                ) {
+                    SehrLeise(REITERNAME[art] ?: art, modifier = Modifier.width(88.dp))
+                    Text(wert, style = Schrift.Klein, color = Farben.BlauHell, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+        }
+
         if (!darf) {
             SehrLeise("Das Aussehen der Wache wählen Leitung und Zugführer. Ansehen darf es jeder.")
         }
 
+        Rollreiter(
+            reiter = BEREICHE.map { REITERNAME[it] ?: it },
+            offen = BEREICHE.indexOf(bereich).coerceAtLeast(0),
+            beiWahl = { bereich = BEREICHE[it] },
+        )
+
+        if (bereich == "Wachenfarbe") {
         Ueberschrift("Farbton")
         SehrLeise("Die ersten acht gehören jeder Wache. Was danach kommt, steht im Laden.")
         FlowRow(
@@ -903,9 +977,14 @@ fun AussehenBlende(
             }
         }
 
-        listOf("Kopfmuster", "Emblemrahmen", "Emblemzeichen", "Beiname").forEach { art ->
+        }
+
+        listOf("Kopfmuster", "Emblemrahmen", "Emblemzeichen", "Beiname").filter { it == bereich }.forEach { art ->
             val alle = schatz.schmuck.filter { it.art == art }
-            if (alle.isEmpty()) return@forEach
+            if (alle.isEmpty()) {
+                SehrLeise("Für diesen Platz gibt es noch nichts.")
+                return@forEach
+            }
             Row(
                 horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
                 verticalAlignment = Alignment.CenterVertically,
@@ -1027,53 +1106,157 @@ fun WachenranglisteSeite(
         ) { plaetze ->
             if (plaetze.isEmpty()) {
                 Leerhinweis("Noch keine Wache hat Punkte gesammelt.")
+                return@Bereich
             }
-            plaetze.forEach { w ->
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(Abstand.Normal),
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .flaeche(ecke = 9.dp, randfarbe = if (w.istEigene) Farben.Amber else Farben.Rand)
-                        .padding(horizontal = Abstand.Normal, vertical = Abstand.Klein),
-                ) {
+            val podest = plaetze.filter { it.platz in 1..3 }.sortedBy { it.platz }
+            val rest = plaetze.filter { it !in podest }
+            val eigene = plaetze.firstOrNull { it.istEigene }
+
+            // Die eigene Wache als Wink über der Liste — der Grund, warum man sie
+            // öffnet. Steht sie auf dem Podest, sieht man sie dort.
+            if (eigene != null && eigene !in podest) {
+                val vorne = plaetze.firstOrNull { it.platz == eigene.platz - 1 }
+                val platz = if (eigene.platz > 0) eigene.platz.toString() else "—"
+                Buchwink(zeichen = emptyList(), wartet = true, marke = platz) {
                     Text(
-                        if (w.platz > 0) w.platz.toString() else "—",
-                        style = Schrift.MonoNormal,
-                        color = if (w.platz in 1..3) Farben.Amber else Farben.TextLeise,
-                        modifier = Modifier.width(28.dp),
+                        "${eigene.name} steht auf Platz $platz",
+                        style = Schrift.Normal.copy(fontWeight = FontWeight.Bold),
+                        color = Farben.Text,
                     )
-                    Column(modifier = Modifier.weight(1f)) {
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                w.name,
-                                style = Schrift.Normal,
-                                color = Farben.Text,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f, fill = false),
-                            )
-                            if (w.istEigene) Marke("Eure", farbe = Farben.AmberHell)
+                    SehrLeise(
+                        "Stufe ${eigene.stufe} · ${zahl(eigene.erfahrung)} Punkte" +
+                            when {
+                                eigene.platz <= 0 -> " · nicht in der Wertung"
+                                vorne != null -> " · ${zahl(vorne.erfahrung - eigene.erfahrung)} hinter ${vorne.name}"
+                                else -> ""
+                            },
+                    )
+                }
+            }
+
+            // Das Podest: Silber links, Gold in der Mitte und höher, Bronze rechts.
+            if (podest.isNotEmpty()) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
+                    verticalAlignment = Alignment.Bottom,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    listOf(2, 1, 3).forEach { p ->
+                        val w = podest.firstOrNull { it.platz == p }
+                        if (w == null) {
+                            Box(Modifier.weight(1f))
+                        } else {
+                            Podeststufe(w, Modifier.weight(1f))
                         }
-                        SehrLeise(
-                            listOfNotNull(
-                                "Stufe ${w.stufe} · ${w.bezeichnung}",
-                                "${w.mitglieder} ${if (w.mitglieder == 1) "Mitglied" else "Mitglieder"}",
-                                w.landkreis,
-                            ).joinToString(" · "),
-                            mono = true,
-                        )
                     }
-                    Column(horizontalAlignment = Alignment.End) {
-                        Text(zahl(w.erfahrung), style = Schrift.MonoNormal, color = Farben.Text)
-                        SehrLeise("${zahl(w.aktivitaetPunkte)} / 30 T.", mono = true)
+                }
+            }
+
+            // Ab Platz 4 — dieselbe Rangliste wie im Dienstbuch, die eigene Wache
+            // mit amberner Kante; der Balken zeigt, wer gerade fährt.
+            if (rest.isNotEmpty()) {
+                val spitze = plaetze.maxOf { it.aktivitaetPunkte }.coerceAtLeast(1)
+                Buchkarte("Ab Platz 4", zahl = "nach Gesamterfahrung", dicht = true, abstandInnen = 0.dp) {
+                    rest.forEachIndexed { i, w ->
+                        Rangzeile(
+                            platz = w.platz,
+                            wert = zahl(w.erfahrung),
+                            letzte = i == rest.lastIndex,
+                            eigen = w.istEigene,
+                            vorn = { Wachenschild(w.id, w.name, 28.dp) },
+                        ) {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    w.name,
+                                    style = Schrift.Normal,
+                                    color = if (w.istEigene) Farben.Amber else Farben.Text,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f, fill = false),
+                                )
+                                if (w.istEigene) Marke("Eure", farbe = Farben.AmberHell)
+                            }
+                            SehrLeise(
+                                listOfNotNull(
+                                    "Stufe ${w.stufe} · ${w.bezeichnung}",
+                                    "${w.mitglieder} ${if (w.mitglieder == 1) "Mitglied" else "Mitglieder"}",
+                                    w.landkreis,
+                                ).joinToString(" · "),
+                                mono = true,
+                            )
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Box(Modifier.width(56.dp)) {
+                                    Fortschritt(anteil = w.aktivitaetPunkte.toFloat() / spitze)
+                                }
+                                SehrLeise("${zahl(w.aktivitaetPunkte)} / 30 T.", mono = true)
+                            }
+                        }
                     }
                 }
             }
         }
+    }
+}
+
+/** Ein Schild mit den Initialen einer Wache in ihrem Ton — für Ranglisten. */
+@Composable
+private fun Wachenschild(id: String, name: String, groesse: Dp) {
+    val ton = Wappen.ton(id)
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier.size(groesse).background(ton, RoundedCornerShape(groesse / 4)),
+    ) {
+        Text(
+            Wappen.initialen(name, "W"),
+            style = (if (groesse >= 40.dp) Schrift.Gross else Schrift.Winzig).copy(fontWeight = FontWeight.Bold),
+            color = Wappen.schrift(ton),
+        )
+    }
+}
+
+/** Eine Stufe des Podests — Medaille, Schild, Name, Punkte. Gold steht höher. */
+@Composable
+private fun Podeststufe(w: Wachenplatz, modifier: Modifier) {
+    val medaille = when (w.platz) {
+        1 -> Farben.Amber
+        2 -> Farben.TextLeise
+        else -> Farben.OrangeHell
+    }
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(Abstand.Winzig),
+        modifier = modifier
+            .flaeche(randfarbe = if (w.istEigene) Farben.Amber else Farben.Rand)
+            .padding(
+                horizontal = Abstand.Klein,
+                vertical = if (w.platz == 1) Abstand.Gross else Abstand.Normal,
+            ),
+    ) {
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier.size(26.dp).background(medaille.copy(alpha = 0.22f), CircleShape),
+        ) {
+            Text("${w.platz}", style = Schrift.MonoKlein.copy(fontWeight = FontWeight.ExtraBold), color = medaille)
+        }
+        Wachenschild(w.id, w.name, 44.dp)
+        Text(
+            w.name,
+            style = Schrift.Klein.copy(fontWeight = FontWeight.Bold),
+            color = Farben.Text,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+        )
+        SehrLeise("Stufe ${w.stufe}")
+        Text(zahl(w.erfahrung), style = Schrift.MonoNormal.copy(fontWeight = FontWeight.Bold), color = Farben.Text)
+        SehrLeise("${zahl(w.aktivitaetPunkte)} / 30 T.", mono = true)
+        if (w.istEigene) Marke("Eure", farbe = Farben.AmberHell)
     }
 }
 
@@ -1118,13 +1301,18 @@ fun WachenShopSeite(
             knoepfe = { Knopf("Zurück", beiZurueck, art = Knopfart.Leise, kompakt = true) },
         )
 
+        // Derselbe Eingang wie im Konto-Shop, nur mit der anderen Kasse. Der Stand
+        // steht schon da, bevor die Ware geladen ist.
         Kasten(abstandInnen = Abstand.Klein) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Etikett("Wachenkasse")
-                    Text("${zahl(schatz?.coins ?: 0)} Coins", style = Schrift.Titel, color = Farben.AmberHell)
+                    Etikett("Wachengemeinschaft")
+                    Text("Wachen-Shop", style = Schrift.Titel, color = Farben.Text)
                 }
-                if (schatz != null) Knopf("Wache anpassen", beiAnpassen, kompakt = true)
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(zahl(schatz?.coins ?: 0), style = Schrift.Titel.copy(fontFamily = Schrift.Mono), color = Farben.Amber)
+                    SehrLeise("Coins")
+                }
             }
             SehrLeise(
                 "Coins verdient die Wache mit Stufenaufstiegen, Clanrunden und Einzahlungen aus der " +
@@ -1139,16 +1327,69 @@ fun WachenShopSeite(
             return@Seite
         }
 
-        SehrLeise(
-            if (schatz.darfKaufen) "Du darfst für die Wache kaufen."
-            else "Kaufen dürfen Leitung und Zugführer — wünschen darfst du dir alles.",
-        )
+        // Wer was darf, und der Weg zum Anpassen — als Wink über der Ware. Wer den
+        // Laden öffnet, hat oft schon etwas und will es anziehen, nicht kaufen.
+        Buchwink(
+            zeichen = listOf("M12 3 4 6v6c0 4.4 3.4 8 8 9 4.6-1 8-4.6 8-9V6l-8-3Z", "m9 12 2 2 4-4"),
+        ) {
+            Text(
+                if (schatz.darfKaufen) "Du darfst für die Wache kaufen." else "Kaufen dürfen Leitung und Zugführer.",
+                style = Schrift.Normal.copy(fontWeight = FontWeight.Bold),
+                color = Farben.Text,
+            )
+            SehrLeise(
+                if (schatz.darfKaufen) {
+                    "Bezahlt wird aus der Wachenkasse. Was die Wache hat, legst du unter „Wache anpassen“ an."
+                } else {
+                    "Wünschen darfst du dir alles — dein Wunsch steht am Stück, für alle sichtbar."
+                },
+            )
+        }
+        Knopf("Wache anpassen", beiAnpassen, breit = true)
 
         val ausbau = schatz.artikel.filter { !it.zierde }
         val zierde = schatz.artikel.filter { it.zierde }
 
+        // Die Tafel: was der Laden diese Woche hergibt und was die Mannschaft will.
+        // Der Kassenstand steht nicht darauf — er steht groß im Eingang darüber.
+        val ausgebaut = ausbau.sumOf { it.gekauft }
+        val offeneWuensche = schatz.artikel
+            .filter { !it.ausverkauft && !(it.zierde && it.gekauft > 0) }
+            .sumOf { it.wuensche }
+        Kennzahltafel(
+            listOf(
+                { m ->
+                    Kennzahlkachel(
+                        "Auslage",
+                        "${zierde.size} ${if (zierde.size == 1) "Stück" else "Stücke"}",
+                        restzeit(schatz.wechseltUm)?.let { "wechselt $it" } ?: "wechselt wöchentlich",
+                        m,
+                        farbe = Farben.BlauHell,
+                    )
+                },
+                { m ->
+                    Kennzahlkachel(
+                        "Ausbauten",
+                        zahl(ausgebaut),
+                        "${ausbau.size} ${if (ausbau.size == 1) "Art" else "Arten"} im Laden",
+                        m,
+                        farbe = Farben.GruenHell,
+                    )
+                },
+                { m -> Kennzahlkachel("Offene Wünsche", zahl(offeneWuensche), "aus der Mannschaft", m, farbe = Farben.ViolettHell) },
+                { m ->
+                    Kennzahlkachel(
+                        "Deine Credits",
+                        zahl(meineCredits),
+                        "reicht für ${meineCredits / 10} ${if (meineCredits / 10 == 1) "Coin" else "Coins"}",
+                        m,
+                    )
+                },
+            ),
+        )
+
         if (ausbau.isNotEmpty()) {
-            Abschnitt("Ausbau") {
+            Buchkarte("Ausbau", zahl = ausbau.size.toString()) {
                 ausbau.forEach { a ->
                     Ware(a, schatz, scharf, laeuft, ausbau = true, beiKaufen = {
                         if (scharf != a.id) scharf = a.id else {
@@ -1161,12 +1402,15 @@ fun WachenShopSeite(
         }
 
         if (zierde.isNotEmpty()) {
-            Abschnitt("Diese Woche im Laden") {
-                restzeit(schatz.wechseltUm)?.let { SehrLeise("Wechselt $it", mono = true) }
+            Buchkarte("Diese Woche im Laden", zahl = zierde.size.toString()) {
+                // Kein Countdown auf die Sekunde: Ein Sortiment, das eine Woche steht,
+                // braucht keine laufende Uhr.
+                restzeit(schatz.wechseltUm)?.let { Text(it, style = Schrift.Klein, color = Farben.AmberHell) }
                 SehrLeise(
                     "Zehn Stücke je Woche, eines davon im Angebot. Gekauft ist gekauft — was ihr habt, " +
                         "bleibt euch, auch wenn es nächste Woche nicht mehr hier steht.",
                 )
+                Textweg("Den ganzen Katalog ansehen", beiAnpassen)
                 zierde.forEach { a ->
                     Ware(a, schatz, scharf, laeuft, ausbau = false, beiKaufen = {
                         if (scharf != a.id) scharf = a.id else {
@@ -1178,10 +1422,26 @@ fun WachenShopSeite(
             }
         }
 
-        Abschnitt("Einzahlen") {
+        Buchkarte(
+            "Einzahlen",
+            kopfweg = { SehrLeise("10 Credits = 1 Coin", mono = true) },
+        ) {
             val credits = einzahlung.toIntOrNull() ?: 0
             val coins = credits / 10
-            Kasten(abstandInnen = Abstand.Klein) {
+            Column(verticalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
+                // Schnellbeträge — nur die, die man sich leisten kann.
+                val schnell = listOf(100, 500, 1000).filter { it <= meineCredits }
+                if (schnell.isNotEmpty()) {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
+                        schnell.forEach { b ->
+                            de.pagerspass.pagerspass.ui.bausteine.Pille(
+                                b.toString(),
+                                an = credits == b,
+                                beiDruck = { einzahlung = b.toString() },
+                            )
+                        }
+                    }
+                }
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
                     verticalAlignment = Alignment.Bottom,
@@ -1216,19 +1476,24 @@ fun WachenShopSeite(
         }
 
         if (schatz.auszug.isNotEmpty()) {
-            Abschnitt("Letzte Bewegungen") {
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(Abstand.Klein),
-                    modifier = Modifier.fillMaxWidth().flaeche(ecke = 9.dp).padding(Abstand.Normal),
-                ) {
-                    schatz.auszug.forEach { p ->
-                        Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
+            // Der Auszug: warum eigentlich 80 Coins? Datum, Text, Betrag rechtsbündig;
+            // grün herein, rot hinaus.
+            Buchkarte("Letzte Bewegungen", zahl = schatz.auszug.size.toString(), dicht = true, abstandInnen = 0.dp) {
+                Column {
+                    schatz.auszug.forEachIndexed { i, p ->
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .zeilenstrich(i == schatz.auszug.lastIndex)
+                                .padding(horizontal = Abstand.Normal, vertical = Abstand.Klein),
+                        ) {
                             SehrLeise(kurzdatumIso(p.um), mono = true)
                             Text(p.text, style = Schrift.Klein, color = Farben.Text, modifier = Modifier.weight(1f))
                             Text(
                                 (if (p.betrag > 0) "+" else "") + p.betrag,
                                 style = Schrift.MonoKlein,
-                                color = if (p.betrag < 0) Farben.TextLeise else Farben.GruenHell,
+                                color = if (p.betrag < 0) Farben.SignalHell else Farben.GruenHell,
                             )
                         }
                     }

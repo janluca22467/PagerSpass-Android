@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -185,6 +187,7 @@ fun WachenSeite(
                     landkreise = landkreise,
                     beiAntraege = beiAntraege,
                     griffe = griffe,
+                    level = konto?.level ?: 1,
                 )
             }
         }
@@ -209,7 +212,11 @@ private fun ColumnScope.EigeneWacheSeite(
     var reiter by rememberSaveable { mutableStateOf(0) }
     var einstellungenOffen by remember { mutableStateOf(false) }
     var aussehenOffen by remember { mutableStateOf(false) }
+    var planenOffen by remember { mutableStateOf(false) }
     val id = gemeinschaft.id
+    val termine = detail?.termine?.filter { !it.abgesagt }.orEmpty()
+    // Ältere Server schicken keine Obergrenze — dann gilt die der ersten Stufe.
+    val maxTermine = detail?.statistik?.maxTermine?.takeIf { it > 0 } ?: 1
     val offen = (detail?.antraege?.size ?: 0) + (detail?.meldungen?.size ?: 0)
     // Was gerade gekauft oder angelegt wurde, steht zuerst im Detail — der Kopf
     // der Liste folgt einen Atemzug später. Für das Aussehen gilt das frischere.
@@ -289,9 +296,8 @@ private fun ColumnScope.EigeneWacheSeite(
             horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
             verticalArrangement = Arrangement.spacedBy(Abstand.Klein),
         ) {
-            if (gemeinschaft.darfFuehren) {
-                Knopf("Clanrunde", { griffe.clanrunde(id) }, art = Knopfart.Haupt, kompakt = true)
-            }
+            // „Clanrunde" steht nicht mehr hier, sondern im Band „Gemeinsam fahren"
+            // darunter, neben „Dienst planen" — siehe `Wachenplan.kt`.
             // Anpassen darf, wer auch kauft. Der Knopf steht neben den
             // Einstellungen und nicht darin: Wie die Wache aussieht, ändert man
             // oft und gern, wie sie aufnimmt, selten und mit Bedacht.
@@ -307,27 +313,30 @@ private fun ColumnScope.EigeneWacheSeite(
         detail?.statistik?.let { WachenStufe(it) }
     }
 
+    // Die Kennzahlen der Wache als Tafel — dieselbe wie oben auf der Übersicht des
+    // Dienstbuchs. Über den Reitern und nicht in einem: Sie gehören zum Namen der
+    // Wache wie der Kopf darüber.
+    detail?.statistik?.let { Wachentafel(it) }
+
     Meldungszeile(kreis.meldung, kreis.hinweis, griffe.meldungWeg)
 
-    // Der Hinweis auf die laufende Clanrunde — mit „Dazustoßen".
-    gemeinschaft.laufendeRundeCode?.let { code ->
-        Kasten(marke = true, wartet = true, abstandInnen = Abstand.Klein) {
-            Text("Eine Clanrunde läuft unter $code.", style = Schrift.Klein, color = Farben.Text)
-            Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
-                Knopf("Dazustoßen", { griffe.dazustossen(code) }, art = Knopfart.Haupt, kompakt = true)
-                // Die Runde läuft dann weiter, sie lädt nur niemanden mehr dazu ein.
-                if (gemeinschaft.darfRundeSchliessen) {
-                    Knopf(
-                        "Nicht mehr anzeigen",
-                        { griffe.clanrundeSchliessen(id) },
-                        art = Knopfart.Leise,
-                        aktiv = !kreis.laeuft,
-                        kompakt = true,
-                    )
-                }
-            }
-        }
-    }
+    // Jetzt fahren oder später: laufende Clanrunde, nächster Dienst, „Clanrunde
+    // starten" und „Dienst planen" in einem Wink über den Reitern.
+    GemeinsamFahren(
+        laufendeRunde = gemeinschaft.laufendeRundeCode,
+        termine = termine,
+        ich = meineKennung,
+        darfFuehren = gemeinschaft.darfFuehren,
+        darfRundeSchliessen = gemeinschaft.darfRundeSchliessen,
+        landkreis = gemeinschaft.landkreis,
+        maxTermine = maxTermine,
+        laeuft = kreis.laeuft,
+        beiStarten = { griffe.clanrunde(id) },
+        beiPlanen = { planenOffen = true },
+        beiBeitreten = griffe.dazustossen,
+        beiSchliessen = { griffe.clanrundeSchliessen(id) },
+        beiAntworten = { nr, antwort -> griffe.terminAntworten(id, nr, antwort) },
+    )
 
     Reiterreihe {
         Reiter("Chat", offen = reiter == 0, beiDruck = { reiter = 0 })
@@ -377,6 +386,25 @@ private fun ColumnScope.EigeneWacheSeite(
         )
     }
 
+    // Der Dialog schließt erst, wenn der Server den Dienst angenommen hat — so
+    // steht ein abgewiesener Termin nicht still verschwunden da.
+    if (planenOffen) {
+        var gesendet by remember { mutableStateOf(false) }
+        LaunchedEffect(kreis.laeuft, termine.size) {
+            if (gesendet && !kreis.laeuft) planenOffen = false
+        }
+        DienstPlanenBlende(
+            belegt = termine.size,
+            maxTermine = maxTermine,
+            laeuft = kreis.laeuft,
+            beiPlanen = { titel, wann ->
+                griffe.terminAnlegen(id, titel, wann)
+                gesendet = true
+            },
+            beiSchliessen = { planenOffen = false },
+        )
+    }
+
     if (aussehenOffen && schatz != null) {
         AussehenBlende(
             gemeinschaft = kopf,
@@ -400,34 +428,52 @@ private fun ColumnScope.WachenChat(
     var aushangOffen by remember { mutableStateOf(false) }
     var zeileOffen by remember { mutableStateOf<Gemeinschaftsnachricht?>(null) }
 
-    // Der Aushang — angeheftet über dem Verlauf, wie die Pinnwand des Web.
-    if (!gemeinschaft.ankuendigung.isNullOrBlank()) {
-        Kasten(abstandInnen = Abstand.Klein) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(Abstand.Normal),
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Etikett("Aushang")
-                    Text(text = gemeinschaft.ankuendigung, style = Schrift.Klein, color = Farben.Text)
+    // Der Aushang — eine Karte mit amberner Kante über dem Verlauf: das, was die
+    // Leitung gelesen haben will, bevor jemand in den Chat rollt. Bearbeitet wird
+    // er an Ort und Stelle, wie die Pinnwand des Web.
+    if (!gemeinschaft.ankuendigung.isNullOrBlank() || (gemeinschaft.darfFuehren && aushangOffen)) {
+        Buchkarte(
+            titel = if (aushangOffen) "Aushang an der Pinnwand" else "Aushang",
+            akzent = true,
+            kopfweg = if (gemeinschaft.darfFuehren && !aushangOffen) {
+                { Knopf("Ändern", { aushangOffen = true }, art = Knopfart.Leise, kompakt = true) }
+            } else {
+                null
+            },
+        ) {
+            if (aushangOffen) {
+                var text by remember { mutableStateOf(gemeinschaft.ankuendigung.orEmpty()) }
+                Feld(
+                    wert = text,
+                    beiAenderung = { text = it.take(500) },
+                    platzhalter = "Was alle wissen sollen — leer lassen nimmt den Aushang ab.",
+                    einzeilig = false,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
+                    Knopf("Anheften", {
+                        // Leer nimmt den Aushang ab — wie im Web.
+                        griffe.pinnwand(gemeinschaft.id, text.trim().ifBlank { null })
+                        aushangOffen = false
+                    }, art = Knopfart.Haupt, kompakt = true)
+                    Knopf("Abbrechen", { aushangOffen = false }, art = Knopfart.Leise, kompakt = true)
                 }
-                if (gemeinschaft.darfFuehren) {
-                    Knopf("Ändern", { aushangOffen = true }, art = Knopfart.Leise, kompakt = true)
-                }
+            } else {
+                Text(text = gemeinschaft.ankuendigung.orEmpty(), style = Schrift.Normal, color = Farben.Text)
             }
         }
-    } else if (gemeinschaft.darfFuehren) {
-        Textweg("Aushang anheften", { aushangOffen = true })
     }
 
-    if (zeilen.isEmpty()) {
-        Leerhinweis("Noch nichts geschrieben — sag Hallo.")
-    } else {
-        Column(
-            verticalArrangement = Arrangement.spacedBy(Abstand.Klein),
-            modifier = Modifier.fillMaxWidth().flaeche(ecke = 9.dp).padding(Abstand.Normal),
-        ) {
+    Buchkarte(
+        titel = "Wachenchat",
+        kopfweg = if (gemeinschaft.darfFuehren && gemeinschaft.ankuendigung.isNullOrBlank() && !aushangOffen) {
+            { Knopf("Aushang anheften", { aushangOffen = true }, art = Knopfart.Leise, kompakt = true) }
+        } else {
+            null
+        },
+    ) {
+        if (zeilen.isEmpty()) {
+            SehrLeise("Noch nichts geschrieben — sag Hallo.")
+        } else {
             zeilen.takeLast(60).forEach { zeile ->
                 Chatzeile(
                     zeile = zeile,
@@ -437,49 +483,26 @@ private fun ColumnScope.WachenChat(
                 )
             }
         }
-    }
 
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
-        verticalAlignment = Alignment.Bottom,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Feld(
-            wert = satz,
-            beiAenderung = { satz = it.take(500) },
-            platzhalter = "An die Wache …",
-            modifier = Modifier.weight(1f),
-        )
-        Knopf(
-            "Senden",
-            {
-                griffe.chatSenden(gemeinschaft.id, satz)
-                satz = ""
-            },
-            aktiv = satz.isNotBlank(),
-            kompakt = true,
-        )
-    }
-
-    if (aushangOffen) {
-        var text by remember { mutableStateOf(gemeinschaft.ankuendigung.orEmpty()) }
-        Blende(
-            titel = "Aushang an der Pinnwand",
-            beiSchliessen = { aushangOffen = false },
-            fuss = {
-                Knopf("Abbrechen", { aushangOffen = false }, art = Knopfart.Leise, kompakt = true)
-                Knopf("Anheften", {
-                    // Leer nimmt den Aushang ab — wie im Web.
-                    griffe.pinnwand(gemeinschaft.id, text.trim().ifBlank { null })
-                    aushangOffen = false
-                }, art = Knopfart.Haupt, kompakt = true)
-            },
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
+            verticalAlignment = Alignment.Bottom,
+            modifier = Modifier.fillMaxWidth(),
         ) {
             Feld(
-                wert = text,
-                beiAenderung = { text = it.take(500) },
-                platzhalter = "Was alle wissen sollen — leer lassen nimmt den Aushang ab.",
-                einzeilig = false,
+                wert = satz,
+                beiAenderung = { satz = it.take(500) },
+                platzhalter = "An die Wache …",
+                modifier = Modifier.weight(1f),
+            )
+            Knopf(
+                "Senden",
+                {
+                    griffe.chatSenden(gemeinschaft.id, satz)
+                    satz = ""
+                },
+                aktiv = satz.isNotBlank(),
+                kompakt = true,
             )
         }
     }
@@ -629,10 +652,12 @@ private fun ColumnScope.Mannschaft(
     var einladenOffen by remember { mutableStateOf(false) }
 
     // Beitrittsanträge — nur Entscheider bekommen sie überhaupt.
+    // Die amberne Kante: Hier liegt etwas, das auf eine Antwort wartet — man sieht
+    // es, bevor man die Überschrift liest.
     detail?.antraege?.takeIf { it.isNotEmpty() }?.let { antraege ->
-        Ueberschrift("Beitrittsanträge")
-        antraege.forEach { antrag ->
-            Kasten(abstandInnen = Abstand.Klein) {
+        Buchkarte("Beitrittsanträge", zahl = antraege.size.toString(), akzent = true, dicht = true, abstandInnen = 0.dp) {
+        antraege.forEachIndexed { i, antrag ->
+            Kartenzeile(letzte = i == antraege.lastIndex) {
                 // Der Name führt ins Profil — man will sehen, wen man aufnimmt.
                 val weg = antrag.benutzername
                 Text(
@@ -656,14 +681,15 @@ private fun ColumnScope.Mannschaft(
                 }
             }
         }
+        }
     }
 
     // Gemeldete Zeilen — über der Mannschaft: Aufgaben, die liegen bleiben,
     // wenn man sie erst beim Scrollen findet.
     detail?.meldungen?.takeIf { it.isNotEmpty() }?.let { meldungen ->
-        Ueberschrift("Gemeldete Zeilen")
-        meldungen.forEach { meldung ->
-            Kasten(abstandInnen = Abstand.Klein) {
+        Buchkarte("Gemeldete Zeilen", zahl = meldungen.size.toString(), akzent = true, dicht = true, abstandInnen = 0.dp) {
+        meldungen.forEachIndexed { i, meldung ->
+            Kartenzeile(letzte = i == meldungen.lastIndex) {
                 Text(meldung.verfasserName, style = Schrift.Normal, color = Farben.Text)
                 Text("„${meldung.text}“", style = Schrift.Klein, color = Farben.TextLeise)
                 SehrLeise(
@@ -683,23 +709,27 @@ private fun ColumnScope.Mannschaft(
                 }
             }
         }
-    }
-
-    // Mannschaft — sortiert kommt sie vom Server, hier wird nicht umsortiert.
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(Abstand.Normal),
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Ueberschrift("Mannschaft")
-        Marke("${gemeinschaft.mitglieder} / ${gemeinschaft.maxMitglieder}")
-        Spacer(Modifier.weight(1f))
-        if (gemeinschaft.darfFuehren) {
-            Knopf("Einladen", { einladenOffen = true }, art = Knopfart.Leise, kompakt = true)
         }
     }
-    detail?.mitglieder?.forEach { mitglied ->
+
+    // Mannschaft — sortiert kommt sie vom Server, hier wird nicht umsortiert. Der
+    // Zähler gehört in den Kopf: „Wie voll sind wir" ist die erste Frage an die Liste.
+    Buchkarte(
+        titel = "Mannschaft",
+        zahl = "${gemeinschaft.mitglieder} / ${gemeinschaft.maxMitglieder}",
+        kopfweg = if (gemeinschaft.darfFuehren) {
+            { Knopf("Einladen", { einladenOffen = true }, art = Knopfart.Leise, kompakt = true) }
+        } else {
+            null
+        },
+        dicht = true,
+        abstandInnen = 0.dp,
+    ) {
+    val mitglieder = detail?.mitglieder.orEmpty()
+    mitglieder.forEachIndexed { i, mitglied ->
         Profilzeile(
+            randlos = true,
+            modifier = Modifier.zeilenstrich(i == mitglieder.lastIndex),
             kennung = mitglied.kennung,
             anzeigename = mitglied.anzeigename,
             unterzeile = listOfNotNull(
@@ -721,42 +751,27 @@ private fun ColumnScope.Mannschaft(
             },
         )
     }
+    }
 
-    // Wer fährt am meisten — die interne Rangliste. Wer seine Statistik nicht
-    // teilt, fehlt hier.
+    // Wer fährt am meisten — eine Rangliste wie die des Dienstbuchs: Gold, Silber,
+    // Bronze für die ersten drei, die eigene Zeile in Amber. Wer seine Statistik
+    // nicht teilt, fehlt hier.
     detail?.beitraege?.takeIf { it.isNotEmpty() }?.let { beitraege ->
-        Ueberschrift("Wer fährt am meisten")
-        Column(
-            verticalArrangement = Arrangement.spacedBy(Abstand.Klein),
-            modifier = Modifier.fillMaxWidth().flaeche(ecke = 9.dp).padding(Abstand.Normal),
-        ) {
+        Buchkarte("Wer fährt am meisten", dicht = true, abstandInnen = 0.dp) {
             beitraege.forEachIndexed { i, b ->
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(Abstand.Normal),
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .then(
-                            b.benutzername?.let { weg ->
-                                Modifier.clickable(role = Role.Button) { griffe.profil(weg) }
-                            } ?: Modifier,
-                        ),
+                Rangzeile(
+                    platz = i + 1,
+                    wert = zahl(b.punkte),
+                    letzte = i == beitraege.lastIndex,
+                    eigen = b.kennung == meineKennung,
+                    beiDruck = b.benutzername?.let { weg -> { griffe.profil(weg) } },
                 ) {
-                    Text(
-                        (i + 1).toString(),
-                        style = Schrift.MonoNormal,
-                        color = if (i < 3) Farben.Amber else Farben.TextLeise,
-                        modifier = Modifier.width(24.dp),
+                    Kontoname(name = b.anzeigename, premium = b.premium, teammitglied = b.teammitglied)
+                    SehrLeise(
+                        "${b.schichten} ${if (b.schichten == 1) "Schicht" else "Schichten"} · " +
+                            "${b.einsaetze} Einsätze",
+                        mono = true,
                     )
-                    Column(modifier = Modifier.weight(1f)) {
-                        Kontoname(name = b.anzeigename, premium = b.premium, teammitglied = b.teammitglied)
-                        SehrLeise(
-                            "${b.schichten} ${if (b.schichten == 1) "Schicht" else "Schichten"} · " +
-                                "${b.einsaetze} Einsätze",
-                            mono = true,
-                        )
-                    }
-                    Text(zahl(b.punkte), style = Schrift.MonoNormal, color = Farben.Text)
                 }
             }
         }
@@ -907,13 +922,9 @@ private fun ColumnScope.WacheTeil(
     griffe: WachenGriffe,
 ) {
     val id = gemeinschaft.id
-    var terminOffen by remember { mutableStateOf(false) }
     var austrittGefragt by remember { mutableStateOf(false) }
 
-    LaunchedEffect(id) {
-        griffe.hilfsfristen(id)
-        griffe.laufbahn()
-    }
+    LaunchedEffect(id) { griffe.laufbahn() }
 
     // Der Wachentag — das Ziel, auf das die Laufbahn zuläuft.
     detail?.statistik?.let { s ->
@@ -927,76 +938,78 @@ private fun ColumnScope.WacheTeil(
         )
     }
 
-    // Dienstplan.
+    // Der Dienstplan — mit Deckel: „2 / 3" sagt auch, ob noch einer hineinpasst.
+    // Eingetragen wird oben im Band „Gemeinsam fahren".
     val termine = detail?.termine?.filter { !it.abgesagt }.orEmpty()
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(Abstand.Normal),
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.fillMaxWidth(),
+    Buchkarte(
+        titel = "Dienstplan",
+        zahl = if (termine.isNotEmpty()) {
+            "${termine.size} / ${detail?.statistik?.maxTermine?.takeIf { it > 0 } ?: 1}"
+        } else {
+            null
+        },
+        dicht = true,
+        abstandInnen = 0.dp,
     ) {
-        Ueberschrift("Dienstplan")
-        if (termine.isNotEmpty()) Marke(termine.size.toString())
-        Spacer(Modifier.weight(1f))
-        if (gemeinschaft.darfFuehren) {
-            Knopf("Dienst planen", { terminOffen = true }, art = Knopfart.Leise, kompakt = true)
-        }
+        Dienstplan(
+            termine = termine,
+            ich = meineKennung,
+            darfPlanen = gemeinschaft.darfFuehren,
+            beiAntworten = { nr, antwort -> griffe.terminAntworten(id, nr, antwort) },
+            beiAbsagen = { griffe.terminAbsagen(id, it) },
+            beiBeitreten = griffe.dazustossen,
+        )
     }
-    if (termine.isEmpty()) {
-        Leerhinweis("Kein Dienst geplant.")
-    } else {
-        termine.forEach { termin ->
-            Terminzeile(termin, meineKennung, gemeinschaft, griffe)
-        }
-    }
-
-    HilfsfristVerlauf(eigene = schichten, mitglieder = kreis.hilfsfristen)
 
     // Logbuch — die gefahrenen Clanrunden; eine laufende kann man noch erreichen.
     detail?.logbuch?.takeIf { it.isNotEmpty() }?.let { logbuch ->
-        Ueberschrift("Logbuch")
-        Column(
-            verticalArrangement = Arrangement.spacedBy(Abstand.Klein),
-            modifier = Modifier.fillMaxWidth().flaeche(ecke = 9.dp).padding(Abstand.Normal),
-        ) {
-            logbuch.forEach { r ->
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(Abstand.Normal),
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
-                            Text(
-                                tag(r.gestartetUm) + (r.landkreis?.let { " · $it" } ?: ""),
-                                style = Schrift.MonoKlein,
-                                color = Farben.Text,
+        Buchkarte("Logbuch", zahl = logbuch.size.toString(), dicht = true, abstandInnen = 0.dp) {
+            logbuch.forEachIndexed { i, r ->
+                Kartenzeile(letzte = i == logbuch.lastIndex) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(Abstand.Normal),
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    tag(r.gestartetUm) + (r.landkreis?.let { " · $it" } ?: ""),
+                                    style = Schrift.MonoKlein,
+                                    color = Farben.Text,
+                                )
+                                // Grün und vorn dabei: die eine Zeile, an der man noch
+                                // teilnehmen kann.
+                                if (r.beendetUm == null) Marke("läuft", farbe = Farben.GruenHell)
+                            }
+                            SehrLeise(
+                                if (r.beendetUm != null) {
+                                    "${r.teilnehmer} dabei · ${r.einsaetze} Einsätze · ${zahl(r.punkte)} Punkte"
+                                } else {
+                                    "läuft gerade · eröffnet von ${r.vonName ?: "—"}"
+                                },
                             )
-                            if (r.beendetUm == null) Marke("läuft", farbe = Farben.GruenHell)
                         }
-                        SehrLeise(
-                            if (r.beendetUm != null) {
-                                "${r.teilnehmer} dabei · ${r.einsaetze} Einsätze · ${zahl(r.punkte)} Punkte"
-                            } else {
-                                "läuft gerade · eröffnet von ${r.vonName ?: "—"}"
-                            },
-                        )
-                    }
-                    if (r.beendetUm == null) {
-                        Knopf("Dazustoßen", { griffe.dazustossen(r.roomCode) }, art = Knopfart.Leise, kompakt = true)
-                    } else {
-                        SehrLeise(r.roomCode, mono = true)
+                        if (r.beendetUm == null) {
+                            Knopf("Dazustoßen", { griffe.dazustossen(r.roomCode) }, art = Knopfart.Leise, kompakt = true)
+                        } else {
+                            SehrLeise(r.roomCode, mono = true)
+                        }
                     }
                 }
             }
         }
     }
 
-    // Mitgliedschaft — der Austritt mit Rückfrage im zweiten Klick.
-    Ueberschrift("Mitgliedschaft")
-    Kasten(abstandInnen = Abstand.Klein) {
+    // Mitgliedschaft — der Austritt schließt die Wache-Spalte ab, mit Signalkante
+    // statt eines roten Kastens und der Rückfrage im zweiten Druck.
+    Buchkarte("Mitgliedschaft", kante = Farben.SignalHell) {
         if (!austrittGefragt) {
             SehrLeise("Du bist in dieser Wachengemeinschaft. Ein Konto gehört immer nur einer an.")
-            Knopf("Gemeinschaft verlassen", { austrittGefragt = true }, art = Knopfart.Leise, kompakt = true)
+            Knopf("Gemeinschaft verlassen", { austrittGefragt = true }, art = Knopfart.Leise, aktiv = !kreis.laeuft)
         } else {
             Text(
                 "Wirklich austreten? Bist du die Leitung, rückt der Dienstälteste nach; bist du die " +
@@ -1005,83 +1018,14 @@ private fun ColumnScope.WacheTeil(
                 color = Farben.Text,
             )
             Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
-                Knopf("Ja, austreten", { griffe.austreten(id) }, art = Knopfart.Gefahr, kompakt = true)
-                Knopf("Abbrechen", { austrittGefragt = false }, art = Knopfart.Leise, kompakt = true)
+                Knopf("Ja, austreten", { griffe.austreten(id) }, art = Knopfart.Alarm, aktiv = !kreis.laeuft)
+                Knopf("Abbrechen", { austrittGefragt = false }, art = Knopfart.Leise)
             }
         }
     }
 
+    // Die Laufbahn als Band — Verwaltung und Fernziel, kein Tagesgeschäft.
     detail?.statistik?.let { WachenLaufbahn(it, kreis.laufbahn) }
-
-    if (terminOffen) {
-        var titel by remember { mutableStateOf("") }
-        var datum by remember { mutableStateOf("") }
-        var zeit by remember { mutableStateOf("19:30") }
-        Blende(
-            titel = "Dienst planen",
-            beiSchliessen = { terminOffen = false },
-            fuss = {
-                Knopf("Anlegen", {
-                    griffe.terminAnlegen(id, titel.trim(), "${datum}T$zeit:00+02:00")
-                    terminOffen = false
-                }, art = Knopfart.Haupt, aktiv = titel.isNotBlank() && datum.length == 10, kompakt = true)
-            },
-        ) {
-            Feld(wert = titel, beiAenderung = { titel = it.take(80) }, platzhalter = "Was steht an?")
-            Feld(wert = datum, beiAenderung = { datum = it.take(10) }, platzhalter = "JJJJ-MM-TT")
-            Feld(wert = zeit, beiAenderung = { zeit = it.take(5) }, platzhalter = "HH:MM")
-        }
-    }
-}
-
-@Composable
-private fun Terminzeile(
-    termin: Wachentermin,
-    meineKennung: String,
-    gemeinschaft: Gemeinschaft,
-    griffe: WachenGriffe,
-) {
-    val meine = termin.zusagen.firstOrNull { it.kennung == meineKennung }?.antwort ?: "Offen"
-    val zusagen = termin.zusagen.count { it.antwort == "Zugesagt" }
-
-    Kasten(abstandInnen = Abstand.Klein) {
-        Text(termin.titel, style = Schrift.Normal, color = Farben.Text)
-        SehrLeise(
-            listOfNotNull(
-                zeitpunkt(termin.wann),
-                termin.vonName?.let { "geplant von $it" },
-                "$zusagen zugesagt",
-            ).joinToString(" · "),
-        )
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
-            verticalArrangement = Arrangement.spacedBy(Abstand.Klein),
-        ) {
-            termin.roomCode?.let { code ->
-                Knopf("Dazustoßen", { griffe.dazustossen(code) }, art = Knopfart.Haupt, kompakt = true)
-            }
-            Knopf(
-                if (meine == "Zugesagt") "Zugesagt ✓" else "Zusagen",
-                { griffe.terminAntworten(gemeinschaft.id, termin.nr, "Zugesagt") },
-                art = if (meine == "Zugesagt") Knopfart.Haupt else Knopfart.Normal,
-                kompakt = true,
-            )
-            Knopf(
-                if (meine == "Abgesagt") "Abgesagt" else "Absagen",
-                { griffe.terminAntworten(gemeinschaft.id, termin.nr, "Abgesagt") },
-                art = Knopfart.Leise,
-                kompakt = true,
-            )
-            if (gemeinschaft.darfFuehren || termin.von == meineKennung) {
-                Knopf(
-                    "Streichen",
-                    { griffe.terminAbsagen(gemeinschaft.id, termin.nr) },
-                    art = Knopfart.Gefahr,
-                    kompakt = true,
-                )
-            }
-        }
-    }
 }
 
 // ------------------------------------------------------------ Ohne Wache
@@ -1101,6 +1045,7 @@ private fun ColumnScope.WachenSuche(
     landkreise: List<Landkreis>,
     beiAntraege: () -> Unit,
     griffe: WachenGriffe,
+    level: Int = 1,
 ) {
     LaunchedEffect(Unit) {
         beiAntraege()
@@ -1108,39 +1053,43 @@ private fun ColumnScope.WachenSuche(
     }
     var code by remember { mutableStateOf("") }
     var gruendenOffen by remember { mutableStateOf(false) }
-    var bewerbungFuer by remember { mutableStateOf<Gemeinschaft?>(null) }
+    var bewerbungFuer by remember { mutableStateOf<String?>(null) }
     var kreiswahl by remember { mutableStateOf(false) }
     var suche by rememberSaveable { mutableStateOf(kreis.filter.suche) }
     val filter = kreis.filter
 
     Seitenkopf(titel = "Eine Wache finden", unterzeile = "Wachengemeinschaften")
+    // Ein Satz, nicht drei: Was vorab gebraucht wird, ist „eine feste Mannschaft,
+    // und man ist in höchstens einer". Der Rest erklärt sich, sobald man drin ist.
     SehrLeise("Eine feste Mannschaft mit eigenem Chat — jedes Konto gehört höchstens einer an.")
     Textweg("Rangliste der Wachen", griffe.rangliste)
 
     Meldungszeile(kreis.meldung, kreis.hinweis, griffe.meldungWeg)
 
-    // Offene Einladungen zuerst — die kürzeste Tür.
+    // Offene Einladungen zuerst — die kürzeste Tür, mit amberner Kante.
     val einladungen = antraege.filter { it.richtung == "Einladung" && it.stand == "Offen" }
     if (einladungen.isNotEmpty()) {
-        Ueberschrift("Du bist eingeladen")
-        einladungen.forEach { einladung ->
-            Kasten(marke = true, abstandInnen = Abstand.Klein) {
-                Text(einladung.gemeinschaftName, style = Schrift.Normal, color = Farben.Text)
-                einladung.vonName?.let { SehrLeise("von $it") }
-                Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
+        Buchkarte("Du bist eingeladen", zahl = einladungen.size.toString(), akzent = true, dicht = true, abstandInnen = 0.dp) {
+            einladungen.forEachIndexed { i, einladung ->
+                Antragszeile(
+                    gemeinschaftId = einladung.gemeinschaftId,
+                    name = einladung.gemeinschaftName,
+                    unter = einladung.vonName?.let { "von $it" },
+                    letzte = i == einladungen.lastIndex,
+                ) {
                     Knopf("Beitreten", {
                         griffe.einladungAnnehmen(einladung.nr)
-                    }, art = Knopfart.Haupt, kompakt = true)
+                    }, art = Knopfart.Haupt, aktiv = !kreis.laeuft, kompakt = true)
                     Knopf("Ablehnen", {
                         griffe.bewerbungZurueckziehen(einladung.nr)
-                    }, art = Knopfart.Leise, kompakt = true)
+                    }, art = Knopfart.Leise, aktiv = !kreis.laeuft, kompakt = true)
                 }
             }
         }
     }
 
-    Kasten(abstandInnen = Abstand.Klein) {
-        Ueberschrift("Mit Beitrittscode")
+    // Zwei Wege hinein — mit Code oder selbst gegründet.
+    Buchkarte("Mit Beitrittscode") {
         SehrLeise("Sechs Zeichen, wie ein Raumcode — vom Zugführer oder von der Leitung.")
         Row(
             horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
@@ -1150,30 +1099,42 @@ private fun ColumnScope.WachenSuche(
                 wert = code,
                 beiAenderung = { code = it.take(6).uppercase() },
                 platzhalter = "ABC123",
-                modifier = Modifier.weight(1f),
+                stil = Schrift.MonoNormal,
+                modifier = Modifier.width(132.dp),
             )
+            // Neben dem Codefeld nimmt der Knopf den Rest der Zeile (`mobil.css`, 2).
             Knopf(
                 "Beitreten",
                 { griffe.beitreten(code) },
                 art = Knopfart.Haupt,
-                aktiv = code.length == 6,
-                kompakt = true,
+                aktiv = !kreis.laeuft && code.length == 6,
+                modifier = Modifier.weight(1f),
             )
         }
     }
 
-    Kasten(abstandInnen = Abstand.Klein) {
-        Ueberschrift("Selbst gründen")
-        SehrLeise("Ab Level 3. Du wirst die Leitung und bestimmst, wer dazukommt und wie.")
+    // Wie weit es noch ist, steht an der Karte und nicht erst in der Fehlermeldung
+    // nach dem Absenden.
+    val darfGruenden = level >= GRUENDEN_AB_LEVEL
+    Buchkarte("Selbst gründen") {
+        SehrLeise("Du wirst die Leitung und bestimmst, wer dazukommt und wie.")
+        Text(
+            if (darfGruenden) {
+                "✓ Ab Level $GRUENDEN_AB_LEVEL — du bist Level $level"
+            } else {
+                "Ab Level $GRUENDEN_AB_LEVEL — dir fehlen noch ${GRUENDEN_AB_LEVEL - level}"
+            },
+            style = Schrift.Klein,
+            color = if (darfGruenden) Farben.GruenHell else Farben.TextLeise,
+        )
         Knopf("Gemeinschaft gründen", {
             griffe.landkreisvorschlag()
             gruendenOffen = true
-        }, kompakt = true)
+        }, aktiv = darfGruenden, breit = true)
     }
 
     // Die Filter stehen offen da: Die Vorauswahl „Nur, wo ich aufgenommen werde"
     // verändert die Liste — wer das nicht sieht, hält die kurze Liste für alles.
-    Ueberschrift("Öffentliche Gemeinschaften")
     Row(
         horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
         verticalAlignment = Alignment.Bottom,
@@ -1181,7 +1142,7 @@ private fun ColumnScope.WachenSuche(
         Feld(
             wert = suche,
             beiAenderung = { suche = it.take(40) },
-            platzhalter = "Name oder Stichwort",
+            platzhalter = "⌕  Name oder Stichwort",
             modifier = Modifier.weight(1f),
         )
         Knopf("Suchen", { griffe.suchen(filter.copy(suche = suche)) }, aktiv = !kreis.oeffentliche.laedt, kompakt = true)
@@ -1213,62 +1174,61 @@ private fun ColumnScope.WachenSuche(
         beiWechsel = { griffe.suchen(filter.copy(nurFreie = it, suche = suche)) },
     )
     if (filter.eingegrenzt) {
-        Textweg("Filter zurücksetzen", {
+        Knopf("Filter zurücksetzen", {
             suche = ""
             griffe.suchen(Wachenfilter())
-        })
+        }, art = Knopfart.Leise, aktiv = !kreis.laeuft, kompakt = true)
     }
 
     val liste = kreis.oeffentliche.inhalt ?: offene
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Ueberschrift("Öffentliche Gemeinschaften")
+        if (!kreis.oeffentliche.laedt) SehrLeise(liste.size.toString(), mono = true)
+    }
     if (liste.isEmpty() && !kreis.oeffentliche.laedt) {
-        Leerhinweis(
-            if (filter.eingegrenzt) {
-                "Zu dieser Auswahl passt gerade keine Wache. Nimm einen Filter heraus — oder gründe selbst eine."
-            } else {
-                "Gerade ist keine öffentlich gelistet. Der Beitrittscode führt trotzdem überall hinein."
-            },
-        )
+        if (filter.eingegrenzt) {
+            Leerhinweis(
+                "Zu dieser Auswahl passt gerade keine Wache. Nimm einen Filter heraus — oder gründe selbst eine.",
+            ) {
+                Knopf("Filter zurücksetzen", {
+                    suche = ""
+                    griffe.suchen(Wachenfilter())
+                }, aktiv = !kreis.laeuft)
+            }
+        } else {
+            Leerhinweis("Gerade ist keine öffentlich gelistet. Der Beitrittscode führt trotzdem überall hinein.")
+        }
     } else {
         liste.forEach { g ->
-            Kasten(abstandInnen = Abstand.Klein) {
-                Text(g.name, style = Schrift.Normal, color = Farben.Text)
-                SehrLeise(
-                    listOfNotNull(
-                        "${g.mitglieder} von ${g.maxMitglieder}",
-                        g.landkreis?.ifBlank { null },
-                        modustext(g.beitrittModus),
-                        "ab Level ${g.mindestLevel}".takeIf { g.mindestLevel > 1 },
-                    ).joinToString(" · "),
-                )
-                g.beschreibung?.takeIf { it.isNotBlank() }?.let {
-                    Text(it, style = Schrift.Klein, color = Farben.TextLeise)
-                }
-                when (g.beitrittModus) {
-                    "Offen" -> Knopf("Beitreten", { griffe.bewerben(g.id, null) }, kompakt = true)
-                    "Antrag" -> Knopf("Bewerben", { bewerbungFuer = g }, kompakt = true)
-                    // Bei `Einladung` gibt es bewusst keinen Knopf.
-                }
-            }
+            Wachenkarte(
+                g = g,
+                level = level,
+                laeuft = kreis.laeuft,
+                bewerbungOffen = bewerbungFuer == g.id,
+                beiBewerbungOeffnen = { bewerbungFuer = if (it) g.id else null },
+                griffe = griffe,
+            )
         }
     }
 
     // Eigene offene Bewerbungen — mit dem Rückzieher.
     val bewerbungen = antraege.filter { it.richtung == "Bewerbung" && it.stand == "Offen" }
     if (bewerbungen.isNotEmpty()) {
-        Ueberschrift("Deine offenen Bewerbungen")
-        bewerbungen.forEach { b ->
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(Abstand.Normal),
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(b.gemeinschaftName, style = Schrift.Normal, color = Farben.Text)
-                    SehrLeise("Wartet auf eine Antwort.")
+        Buchkarte("Deine offenen Bewerbungen", zahl = bewerbungen.size.toString(), dicht = true, abstandInnen = 0.dp) {
+            bewerbungen.forEachIndexed { i, b ->
+                Antragszeile(
+                    gemeinschaftId = b.gemeinschaftId,
+                    name = b.gemeinschaftName,
+                    unter = "Wartet auf eine Antwort.",
+                    letzte = i == bewerbungen.lastIndex,
+                ) {
+                    Knopf("Zurückziehen", {
+                        griffe.bewerbungZurueckziehen(b.nr)
+                    }, art = Knopfart.Leise, aktiv = !kreis.laeuft, kompakt = true)
                 }
-                Knopf("Zurückziehen", {
-                    griffe.bewerbungZurueckziehen(b.nr)
-                }, art = Knopfart.Leise, kompakt = true)
             }
         }
     }
@@ -1299,26 +1259,6 @@ private fun ColumnScope.WachenSuche(
             beiSchliessen = { gruendenOffen = false },
         )
     }
-
-    bewerbungFuer?.let { g ->
-        var nachricht by remember { mutableStateOf("") }
-        Blende(
-            titel = "Bewerben bei ${g.name}",
-            beiSchliessen = { bewerbungFuer = null },
-            fuss = {
-                Knopf("Bewerben", {
-                    griffe.bewerben(g.id, nachricht.trim().ifBlank { null })
-                    bewerbungFuer = null
-                }, art = Knopfart.Haupt, kompakt = true)
-            },
-        ) {
-            Feld(
-                wert = nachricht,
-                beiAenderung = { nachricht = it.take(300) },
-                platzhalter = "Kurz zu dir (freiwillig)",
-            )
-        }
-    }
 }
 
 /**
@@ -1347,21 +1287,61 @@ private fun GruendenBlende(
         titel = "Gemeinschaft gründen",
         beiSchliessen = beiSchliessen,
         fuss = {
+            Knopf("Abbrechen", beiSchliessen, art = Knopfart.Leise, kompakt = true)
             Knopf("Gemeinschaft gründen", {
                 beiGruenden(name.trim(), beschreibung.trim().ifBlank { null }, gewaehlt)
             }, art = Knopfart.Haupt, aktiv = !laeuft && name.isNotBlank(), kompakt = true)
         },
     ) {
+        // Die Vorschau steht oben und ändert sich beim Tippen mit — ein Name ist
+        // leichter gewählt, wenn man ihn dort sieht, wo ihn später alle sehen.
+        val vorschauName = name.trim().ifBlank { "Deine Wache" }
+        val ton = de.pagerspass.pagerspass.ui.schmuck.Wappen.ton(vorschauName)
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(Abstand.Normal),
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .flaeche(ecke = 12.dp)
+                .background(
+                    androidx.compose.ui.graphics.Brush.verticalGradient(
+                        0f to ton.copy(alpha = 0.18f),
+                        1f to androidx.compose.ui.graphics.Color.Transparent,
+                    ),
+                )
+                .padding(Abstand.Normal),
+        ) {
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier.size(44.dp).background(ton, RoundedCornerShape(11.dp)),
+            ) {
+                Text(
+                    de.pagerspass.pagerspass.ui.schmuck.Wappen.initialen(vorschauName, "W"),
+                    style = Schrift.Gross,
+                    color = de.pagerspass.pagerspass.ui.schmuck.Wappen.schrift(ton),
+                )
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(vorschauName, style = Schrift.Gross, color = Farben.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                SehrLeise(
+                    (landkreise.firstOrNull { it.id == gewaehlt }?.name ?: "Ohne festen Landkreis") + " · 1 Mitglied",
+                )
+                beschreibung.trim().ifBlank { null }?.let {
+                    Text(it, style = Schrift.Klein, color = Farben.TextLeise, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
+            }
+        }
         Feld(
             wert = name,
             beiAenderung = { name = it.take(40) },
-            etikett = "Name",
+            etikett = "Name · ${name.length} / 40",
             platzhalter = "z. B. Wache Nord",
         )
         Feld(
             wert = beschreibung,
             beiAenderung = { beschreibung = it.take(300) },
-            etikett = "Beschreibung (freiwillig)",
+            etikett = "Beschreibung · freiwillig · ${beschreibung.length} / 300",
             platzhalter = "Wann fahrt ihr, wen sucht ihr?",
             einzeilig = false,
         )
@@ -1372,6 +1352,27 @@ private fun GruendenBlende(
             beiDruck = { kreiswahl = true },
         )
         SehrLeise("Hier laufen später eure Clanrunden. Änderbar bleibt er jederzeit.")
+
+        // Was danach kommt, in drei Schritten — die Antwort auf „und wie kommen die
+        // anderen rein?" steht hier und nicht erst in einem leeren Wachenchat.
+        listOf(
+            "Du wirst die Leitung der neuen Wache.",
+            "Unter Einstellungen legst du fest, ob sie öffentlich ist und wen sie aufnimmt.",
+            "Einladen oder den Beitrittscode weitergeben — und die erste Clanrunde starten.",
+        ).forEachIndexed { i, satz ->
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier.size(22.dp).background(Farben.HauchAmber, androidx.compose.foundation.shape.CircleShape),
+                ) {
+                    Text("${i + 1}", style = Schrift.MonoKlein, color = Farben.Amber)
+                }
+                Text(satz, style = Schrift.Klein, color = Farben.TextLeise, modifier = Modifier.weight(1f))
+            }
+        }
     }
 
     if (kreiswahl) {
