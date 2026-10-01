@@ -18,6 +18,14 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import de.pagerspass.pagerspass.mobil.Bereich as Bereichsstand
 import de.pagerspass.pagerspass.mobil.Garagendaten
+import de.pagerspass.pagerspass.mobil.Geraeteeinstellungen
+import de.pagerspass.pagerspass.mobil.katalogstaatState
+import de.pagerspass.pagerspass.netz.Staaten
+import de.pagerspass.pagerspass.ui.bausteine.Segment
+import androidx.compose.foundation.background
+import androidx.compose.runtime.remember
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.platform.LocalContext
 import de.pagerspass.pagerspass.netz.Bestenlistenplatz
 import de.pagerspass.pagerspass.ui.bausteine.Abschnitt
 import androidx.compose.foundation.clickable
@@ -83,6 +91,10 @@ fun GarageSeite(
     LaunchedEffect(Unit) { beiLaden() }
     var tor by rememberSaveable { mutableStateOf("alle") }
     var suche by rememberSaveable { mutableStateOf("") }
+    val zusammenhang = LocalContext.current
+    // Kacheln oder Zeilen — die Wahl bleibt über Sitzungen hinweg stehen (im Web `localStorage`).
+    var ansicht by remember { mutableStateOf(Geraeteeinstellungen.garagenansicht(zusammenhang)) }
+    val staat by katalogstaatState()
 
     Seite(modifier = modifier, unterrand = unterrand) {
         Seitenkopf(
@@ -98,6 +110,8 @@ fun GarageSeite(
             beiErneut = beiLaden,
         ) { daten ->
             val plaene = katalog.associateBy { it.id }
+            // Der Anteil zählt nur den eingestellten Katalog (`alleVorlagen` im Web).
+            val katalogDesStaats = katalog.count { (it.staaten?.firstOrNull() ?: Staaten.DEUTSCHLAND) == staat }
             val bestand = daten.fahrzeuge
             val gutscheine = daten.stand.offeneWahlen
             val fortschritt = daten.stand.proOrganisation
@@ -118,9 +132,10 @@ fun GarageSeite(
                         Kennzahlkachel(
                             "Fahrzeuge",
                             zahl(bestand.size),
-                            if (katalog.isNotEmpty()) "${Math.round(bestand.size * 100.0 / katalog.size)} % des Katalogs" else "—",
+                            if (katalogDesStaats > 0) "${Math.round(bestand.size * 100.0 / katalogDesStaats)} % des Katalogs" else "—",
                             m,
                             farbe = Farben.BlauHell,
+                            zeichen = Tafelzeichen.FAHRZEUG,
                         )
                     },
                     { m ->
@@ -130,6 +145,7 @@ fun GarageSeite(
                             groesste?.let { "größte: ${ORG_NAME[it.first] ?: it.first}" } ?: "noch leer",
                             m,
                             farbe = Farben.ViolettHell,
+                            zeichen = Tafelzeichen.HALLE,
                         )
                     },
                     { m ->
@@ -142,6 +158,7 @@ fun GarageSeite(
                                 else -> "nächster in ${zahl(daten.stand.bisZurNaechstenWahl)} P"
                             },
                             m,
+                            zeichen = Tafelzeichen.GUTSCHEIN,
                         )
                     },
                     { m ->
@@ -151,6 +168,7 @@ fun GarageSeite(
                             "über alle Organisationen",
                             m,
                             farbe = Farben.GruenHell,
+                            zeichen = Tafelzeichen.STERN,
                         )
                     },
                 ),
@@ -186,9 +204,11 @@ fun GarageSeite(
             if (tore.isNotEmpty()) {
                 Pillenreihe {
                     Pille("Alle", an = tor == "alle", beiDruck = { tor = "alle" }, zahl = bestand.size)
-                    tore.forEach { (org, anzahl, punkte) ->
+                    tore.forEach { (org, anzahl, _) ->
+                        // Am Handy ohne Punkte (mobil.css): Die stehen wortgleich in der
+                        // Übersicht, als zweite Zahl am Filter brauchten fünf Tore drei Zeilen.
                         Pille(
-                            "${ORG_NAME[org] ?: org} · ${zahl(punkte)} P",
+                            ORG_NAME[org] ?: org,
                             an = tor == org,
                             beiDruck = { tor = org },
                             zahl = anzahl,
@@ -201,6 +221,17 @@ fun GarageSeite(
                 wert = suche,
                 beiAenderung = { suche = it.take(40) },
                 platzhalter = "⌕  Fahrzeug, Fähigkeit oder Träger suchen …",
+            )
+            // Am Handy unter dem Feld und über die ganze Breite (`.umschalter` bei 560 Punkten).
+            Segment(
+                seiten = listOf(ANSICHT_KACHELN, ANSICHT_LISTE),
+                gewaehlt = ansicht,
+                beiWahl = {
+                    ansicht = it
+                    Geraeteeinstellungen.garagenansichtSetzen(zusammenhang, it)
+                },
+                aufschrift = { if (it == ANSICHT_LISTE) "Liste" else "Kacheln" },
+                modifier = Modifier.fillMaxWidth(),
             )
 
             // Eine Suche geht durch alle Tore: Wer „Drehleiter" eintippt, will sie
@@ -247,23 +278,113 @@ fun GarageSeite(
                     }.thenBy { it.first },
                 )
                 .forEach { (schluessel, wagen) ->
+                    val liste = ansicht == ANSICHT_LISTE
                     Buchkarte(
                         schluessel,
                         zahl = wagen.size.toString(),
                         kante = organisationsfarbe(wagen.first().organisation),
-                        dicht = true,
-                        abstandInnen = 0.dp,
+                        dicht = liste,
+                        abstandInnen = if (liste) 0.dp else Abstand.Normal,
                     ) {
                         wagen.sortedBy { it.typ.lowercase() }.forEachIndexed { i, f ->
-                            Fahrzeugzeile(
-                                f,
-                                modifier = Modifier.zeilenstrich(i == wagen.lastIndex),
-                                randlos = true,
-                                traeger = plaene[f.id]?.hiOrg?.let { HIORG_NAME[it] }?.ifBlank { null },
-                            )
+                            val traeger = plaene[f.id]?.hiOrg?.takeIf { it != "Keine" }?.let { HIORG_NAME[it] }?.ifBlank { null }
+                            if (liste) {
+                                Fahrzeugzeile(
+                                    f,
+                                    modifier = Modifier.zeilenstrich(i == wagen.lastIndex),
+                                    randlos = true,
+                                    traeger = traeger,
+                                )
+                            } else {
+                                Fahrzeugkachel(f, traeger = traeger, faehigkeiten = plaene[f.id]?.faehigkeiten.orEmpty())
+                            }
                         }
                     }
                 }
+        }
+    }
+}
+
+/** Die beiden Ansichten der Garage — die Wörter, die auch in der Gerätedatei stehen. */
+private const val ANSICHT_KACHELN = "kacheln"
+private const val ANSICHT_LISTE = "liste"
+
+/**
+ * Ein Fahrzeug als Kachel (`FahrzeugKarte.vue`): der Streifen links in der Farbe
+ * der Organisation, Typ und Träger im Kopf, die Beschreibung auf zwei Zeilen,
+ * darunter Besatzung und die ersten drei Fähigkeiten als kleine Marken.
+ *
+ * <b>Eine Kachel je Zeile.</b> Das Raster des Webs (`minmax(min(300px, 100%), 1fr)`)
+ * ergibt am Handy genau eine Spalte — mehr als eine wäre „Hilfeleistungslöschgrupp…".
+ */
+@Composable
+private fun Fahrzeugkachel(
+    fahrzeug: de.pagerspass.pagerspass.mobil.Fahrzeugzeile,
+    traeger: String?,
+    faehigkeiten: List<String>,
+) {
+    val org = organisationsfarbe(fahrzeug.organisation)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .flaeche(farbe = Farben.FlaecheHoch, ecke = 14.dp, mitLichtkante = false)
+            .drawBehind {
+                // Die leuchtende Kante: eingerückt, rechts gerundet wie im Web.
+                val breite = 3.dp.toPx()
+                val rand = Abstand.Normal.toPx()
+                drawRoundRect(
+                    color = org,
+                    topLeft = androidx.compose.ui.geometry.Offset(0f, rand),
+                    size = androidx.compose.ui.geometry.Size(breite, (size.height - 2 * rand).coerceAtLeast(0f)),
+                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(breite, breite),
+                )
+            }
+            .padding(start = Abstand.Gross + Abstand.Winzig, end = Abstand.Normal, top = Abstand.Normal, bottom = Abstand.Normal),
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(Abstand.Haar), modifier = Modifier.weight(1f)) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    fahrzeug.typ,
+                    style = Schrift.MonoNormal.copy(fontWeight = FontWeight.Bold),
+                    color = Farben.Text,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                if (traeger != null) SehrLeise(traeger, mono = true)
+                if (fahrzeug.tagesangebot) Marke("Heute", farbe = Farben.Amber)
+            }
+            if (fahrzeug.beschreibung.isNotBlank()) {
+                Text(
+                    fahrzeug.beschreibung,
+                    style = Schrift.Klein,
+                    color = Farben.TextLeise,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            val marken = listOfNotNull(fahrzeug.besatzung.ifBlank { null }) + faehigkeiten.take(3)
+            if (marken.isNotEmpty()) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(Abstand.Winzig),
+                    modifier = Modifier.padding(top = Abstand.Haar),
+                ) {
+                    marken.forEach { wort ->
+                        Text(
+                            wort,
+                            style = Schrift.Winzig,
+                            color = Farben.TextLeise,
+                            maxLines = 1,
+                            modifier = Modifier
+                                .background(Color.White.copy(alpha = 0.07f), androidx.compose.foundation.shape.RoundedCornerShape(50))
+                                .padding(horizontal = Abstand.Klein, vertical = Abstand.Haar),
+                        )
+                    }
+                }
+            }
         }
     }
 }

@@ -76,7 +76,13 @@ class Spielwege(private val netz: Netz) {
 
     // ------------------------------------------------------------------ Garage
 
-    suspend fun garage(kennung: String): Garage = netz.hole("/api/konto/${teil(kennung)}/garage")
+    /**
+     * Die Garage eines Staats (v6): Deutschland, Österreich und die Schweiz führen
+     * je eigene Gutscheine (`garageLaden(kennung, staat)` im Web). Ein Server ohne
+     * Staaten überliest `?staat=` und antwortet wie bisher.
+     */
+    suspend fun garage(kennung: String, staat: String = Staaten.DEUTSCHLAND): Garage =
+        netz.hole("/api/konto/${teil(kennung)}/garage?staat=${teil(staat)}")
 
     /**
      * Ein Fahrzeug aussuchen — der Gutschein aus einem Aufstieg.
@@ -85,14 +91,22 @@ class Spielwege(private val netz: Netz) {
      * `offeneWahlen` gebunden; ein Kauf kostet Credits und geht immer. Zwei Wege
      * mit zwei Bedeutungen, deshalb zwei Aufrufe.
      */
-    suspend fun fahrzeugWaehlen(kennung: String, vorlage: String): Garage = netz.hole(
-        "/api/konto/${teil(kennung)}/garage",
+    suspend fun fahrzeugWaehlen(
+        kennung: String,
+        vorlage: String,
+        staat: String = Staaten.DEUTSCHLAND,
+    ): Garage = netz.hole(
+        "/api/konto/${teil(kennung)}/garage?staat=${teil(staat)}",
         "POST",
         buildJsonObject { put("templateId", vorlage) }.toString(),
     )
 
-    suspend fun fahrzeugKaufen(kennung: String, vorlage: String): Garage = netz.hole(
-        "/api/konto/${teil(kennung)}/garage/kauf",
+    suspend fun fahrzeugKaufen(
+        kennung: String,
+        vorlage: String,
+        staat: String = Staaten.DEUTSCHLAND,
+    ): Garage = netz.hole(
+        "/api/konto/${teil(kennung)}/garage/kauf?staat=${teil(staat)}",
         "POST",
         buildJsonObject { put("templateId", vorlage) }.toString(),
     )
@@ -230,7 +244,16 @@ class Spielwege(private val netz: Netz) {
     suspend fun bretteintrag(kennung: String, nr: Long): Bretteintrag =
         netz.hole("/api/brett/${teil(kennung)}/eintrag/$nr")
 
-    suspend fun brettSchreiben(kennung: String, text: String, sichtbarkeit: String?): Bretteintrag =
+    /**
+     * Einen Beitrag anschlagen — mit `roomCode` hängt eine eigene Schicht daran
+     * (`VerfassenFeld.vue`). Ein Server, der das Feld nicht kennt, überliest es.
+     */
+    suspend fun brettSchreiben(
+        kennung: String,
+        text: String,
+        sichtbarkeit: String?,
+        roomCode: String? = null,
+    ): Bretteintrag =
         netz.hole(
             "/api/brett/${teil(kennung)}",
             "POST",
@@ -240,6 +263,9 @@ class Spielwege(private val netz: Netz) {
                     put("text", kotlinx.serialization.json.JsonPrimitive(text))
                     sichtbarkeit?.let {
                         put("sichtbarkeit", kotlinx.serialization.json.JsonPrimitive(it))
+                    }
+                    roomCode?.takeIf { it.isNotBlank() }?.let {
+                        put("roomCode", kotlinx.serialization.json.JsonPrimitive(it))
                     }
                 },
             ),

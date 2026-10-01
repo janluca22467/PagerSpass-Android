@@ -276,6 +276,7 @@ private fun Uebersicht(
                     "${bonusstand.serie} ${if (bonusstand.serie == 1) "Tag" else "Tage"}",
                     if (bonusstand.verfuegbar) "Dein Dreh ist bereit" else "Für heute gedreht",
                     m,
+                    zeichen = Tafelzeichen.GLUECKSRAD,
                 )
             }
             add { m: Modifier ->
@@ -285,6 +286,7 @@ private fun Uebersicht(
                     wechsel,
                     m,
                     farbe = Farben.Blau,
+                    zeichen = Tafelzeichen.TASCHE,
                 )
             }
             add { m: Modifier ->
@@ -294,6 +296,7 @@ private fun Uebersicht(
                     if (gutscheine > 0) "im Autohaus einlösen" else "der nächste mit dem Aufstieg",
                     m,
                     farbe = Farben.Gruen,
+                    zeichen = Tafelzeichen.FAHRZEUG,
                 )
             }
             if (s.zulagen.deckel > 0) {
@@ -487,10 +490,10 @@ private fun Schaufenster(stand: Kontostand, server: String) {
     val weitere = katalog.BAUFORMEN.count { it.premium } + 8 + 6 + 6
     Kennzahltafel(
         listOf(
-            { m -> Kennzahlkachel("Melder", "${katalog.GESICHTER.count { it.premium }}", "Gesichter fürs Gerät", m) },
-            { m -> Kennzahlkachel("Alarmtöne", "${katalog.TOENE.count { it.premium }}", "voller, nicht lauter", m, farbe = Farben.Violett) },
-            { m -> Kennzahlkachel("Schmuck", "${rahmenZahl + musterZahl}", "$rahmenZahl Rahmen · $musterZahl Muster", m, farbe = Farben.Blau) },
-            { m -> Kennzahlkachel("Weiteres", "$weitere", "Geräte, Karten, Titel", m, farbe = Farben.Gruen) },
+            { m -> Kennzahlkachel("Melder", "${katalog.GESICHTER.count { it.premium }}", "Gesichter fürs Gerät", m, zeichen = Tafelzeichen.MELDER) },
+            { m -> Kennzahlkachel("Alarmtöne", "${katalog.TOENE.count { it.premium }}", "voller, nicht lauter", m, farbe = Farben.Violett, zeichen = Tafelzeichen.TON) },
+            { m -> Kennzahlkachel("Schmuck", "${rahmenZahl + musterZahl}", "$rahmenZahl Rahmen · $musterZahl Muster", m, farbe = Farben.Blau, zeichen = Tafelzeichen.RINGE) },
+            { m -> Kennzahlkachel("Weiteres", "$weitere", "Geräte, Karten, Titel", m, farbe = Farben.Gruen, zeichen = Tafelzeichen.KACHELN) },
         ),
     )
 

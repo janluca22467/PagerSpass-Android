@@ -121,6 +121,17 @@ fun StartSeite(
     kacheln: @Composable ColumnScope.() -> Unit = {},
     /** Die Knöpfe der Fußzeile. */
     fussknoepfe: @Composable () -> Unit = {},
+    /**
+     * Ein Grundlagenlehrgang ist bestanden — dann kennt man, was die
+     * Ausbildungsschicht erklärt, und der Hinweis darauf bleibt weg (`StartView.vue`).
+     */
+    ausbildungErsetzt: Boolean = false,
+    /** Die eigene Wache, wenn auf ihr gerade eine Clanrunde läuft — sonst `null`. */
+    clanrunde: de.pagerspass.pagerspass.netz.Gemeinschaft? = null,
+    /** In die laufende Clanrunde (der Code der Runde). */
+    beiClanrunde: (String) -> Unit = {},
+    /** Die Clanrunde abnehmen — nur, wer sie eröffnet hat, oder die Leitung. */
+    beiClanrundeSchliessen: (String) -> Unit = {},
 ) {
     LaunchedEffect(Unit) {
         beiKatalog()
@@ -158,7 +169,8 @@ fun StartSeite(
                     de.pagerspass.pagerspass.mobil.Geraeteeinstellungen.ausbildungHinweisWeg(zusammenhang, konto.kennung),
             )
         }
-        val ausbildungHinweis = !einweisung && konto != null && konto.erfahrung == 0 && !hinweisWeg
+        val ausbildungHinweis = !einweisung && konto != null && konto.erfahrung == 0 && !hinweisWeg &&
+            !ausbildungErsetzt
         if (einweisung || ausbildungHinweis) {
             Einweisung(
                 beiStart = beiAusbildung,
@@ -172,6 +184,34 @@ fun StartSeite(
                     hinweisWeg = true
                 },
             )
+        }
+
+        // Die laufende Clanrunde der eigenen Wache — vor den Einladungen, weil sie
+        // dasselbe ist: ein Weg in eine Runde, den jemand anders geöffnet hat, nur
+        // für die ganze Mannschaft statt für eine Person.
+        val clancode = clanrunde?.laufendeRundeCode?.takeIf { it.isNotBlank() }
+        if (clanrunde != null && clancode != null) {
+            Karte(
+                titel = "Clanrunde",
+                zeichen = Zeichen.Gemeinschaft,
+                haupt = true,
+                text = "Auf ${clanrunde.name} läuft eine Runde · " +
+                    listOfNotNull(clancode, clanrunde.landkreis?.ifBlank { null }).joinToString(" · "),
+                knoepfe = {
+                    Knopf("Dazustoßen", { beiClanrunde(clancode) }, art = Knopfart.Haupt, aktiv = !laeuft, kompakt = true)
+                    // Abnehmen darf nur, wer sie eröffnet hat (oder die Leitung) — für
+                    // alle anderen wäre es ein Wegklicken, das niemand sonst sieht.
+                    if (clanrunde.darfRundeSchliessen) {
+                        Knopf(
+                            "Nicht mehr anzeigen",
+                            { beiClanrundeSchliessen(clanrunde.id) },
+                            art = Knopfart.Leise,
+                            aktiv = !laeuft,
+                            kompakt = true,
+                        )
+                    }
+                },
+            ) {}
         }
 
         // Rundeneinladungen — dieselbe Bauform. Annehmen tritt sofort bei.

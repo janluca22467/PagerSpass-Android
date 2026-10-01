@@ -109,9 +109,9 @@ fun OeffentlicheRundenSeite(
         val frei = runden.filter { beitretbar(it) }.sumOf { it.freiePlaetze }
         Kennzahltafel(
             listOf(
-                { m -> Kennzahlkachel("Offen", if (geladen) "$offen" else "–", "öffentliche Runden", m) },
-                { m -> Kennzahlkachel("Im Dienst", if (geladen) "$imDienst" else "–", "laufen gerade", m) },
-                { m -> Kennzahlkachel("Frei", if (geladen) "$frei" else "–", "Plätze insgesamt", m, farbe = Farben.Gruen) },
+                { m -> Kennzahlkachel("Offen", if (geladen) "$offen" else "–", "öffentliche Runden", m, zeichen = Tafelzeichen.OFFEN) },
+                { m -> Kennzahlkachel("Im Dienst", if (geladen) "$imDienst" else "–", "laufen gerade", m, zeichen = Tafelzeichen.SONNE) },
+                { m -> Kennzahlkachel("Frei", if (geladen) "$frei" else "–", "Plätze insgesamt", m, farbe = Farben.Gruen, zeichen = Tafelzeichen.PERSON_PLUS) },
             ),
         )
 

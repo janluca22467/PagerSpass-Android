@@ -113,7 +113,7 @@ class Werkstatt(anwendung: Application) : AndroidViewModel(anwendung) {
             val tages = async { runCatching { wege.tagesschicht(k) }.getOrNull() }
             val abzeichen = async { runCatching { wege.abzeichen(k) }.getOrDefault(emptyList()) }
             val frei = async { runCatching { wege.freischaltungen(k) }.getOrDefault(emptyList()) }
-            val garage = async { runCatching { wege.garagenauszug(k) }.getOrNull() }
+            val garage = async { runCatching { wege.garagenauszug(k, katalogstaat()) }.getOrNull() }
 
             val nachCode = chronik.await().associateBy { it.roomCode }
             Dienstbuchdaten(
@@ -646,4 +646,13 @@ data class Werkstand(
     /** Ob das Konto eine Zusatzfunktion schon hat — `Sandkasten`, `EigeneAao`, … */
     fun frei(was: String): Boolean = freischaltungen.firstOrNull { it.was == was }?.offen ?: true
     fun abRang(was: String): String = freischaltungen.firstOrNull { it.was == was }?.abRang.orEmpty()
+}
+
+/**
+ * Der eingestellte Fahrzeugkatalog — erst die Gerätedatei lesen, sonst stünde
+ * beim ersten Laden nach dem Start immer Deutschland da.
+ */
+private fun AndroidViewModel.katalogstaat(): String {
+    Geraeteeinstellungen.laden(getApplication())
+    return Geraeteeinstellungen.katalogstaat.value
 }

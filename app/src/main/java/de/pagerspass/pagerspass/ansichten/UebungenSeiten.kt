@@ -200,7 +200,7 @@ fun UebungenSeite(
         }
         if (!katalogBereit) SehrLeise("Der Fahrzeugkatalog wird noch geladen.")
 
-        Buchkarte("Übernehmen") {
+        Buchkarte("Übernehmen", geraeumig = true) {
             Codezeile(aktiv = !stand.laeuft, beiUebernehmen = beiUebernehmen)
             SehrLeise(
                 "Der Code einer fremden Übung. Du bekommst eine eigene Kopie — ändert der andere " +
@@ -211,7 +211,7 @@ fun UebungenSeite(
         // Der Übungsverlauf steht hier und nicht im Dienstbuch: Eine Übung
         // bringt weder Erfahrung noch Credits und zählt in keiner Wertung.
         if (verlauf.isNotEmpty()) {
-            Buchkarte("Übungsverlauf", zahl = verlauf.size) {
+            Buchkarte("Übungsverlauf", zahl = verlauf.size.toString(), geraeumig = true) {
                 SehrLeise(
                     "Übungen bringen bewusst keine Erfahrung und keine Credits — sonst schriebe " +
                         "sich jeder seine Punkte selbst.",

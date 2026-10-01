@@ -86,16 +86,24 @@ fun ColumnScope.BrettTeil(
     beiReiter: (String) -> Unit,
     beiLaden: () -> Unit,
     beiMehr: () -> Unit,
-    beiSchreiben: (String, String?) -> Unit,
+    /** Text, Sichtbarkeit und — wenn eine angehängt ist — der Code der Schicht. */
+    beiSchreiben: (String, String?, String?) -> Unit,
     beiQuittieren: (Long) -> Unit,
     beiOeffnen: (Long) -> Unit,
     server: String = "",
     griffe: Brettgriffe = Brettgriffe(),
+    /** Die letzten eigenen Schichten zum Anhängen — leer, dann gibt es die Wahl nicht. */
+    schichten: List<de.pagerspass.pagerspass.netz.Schicht> = emptyList(),
 ) {
     LaunchedEffect(Unit) { beiLaden() }
     var sieb by remember { mutableStateOf("Alles") }
 
-    Verfassen(hatWache = hatWache, darfOeffentlich = darfOeffentlich, beiSchreiben = beiSchreiben)
+    Verfassen(
+        hatWache = hatWache,
+        darfOeffentlich = darfOeffentlich,
+        schichten = schichten,
+        beiSchreiben = beiSchreiben,
+    )
 
     // Zwei Schalter, zwei Fragen: „von wem" und „was". Zusammen ergeben sie einen
     // Satz — Freunde × Erfolge ist der Ausschnitt, den man am häufigsten sucht.
@@ -177,11 +185,17 @@ private const val BEITRAG_HOECHSTENS = 500
 private fun Verfassen(
     hatWache: Boolean,
     darfOeffentlich: Boolean,
-    beiSchreiben: (String, String?) -> Unit,
+    schichten: List<de.pagerspass.pagerspass.netz.Schicht>,
+    beiSchreiben: (String, String?, String?) -> Unit,
 ) {
     var text by remember { mutableStateOf("") }
     var offen by remember { mutableStateOf(false) }
     var sichtbarkeit by remember { mutableStateOf("Freunde") }
+    // Die angehängte Schicht — ihr Code, leer heißt „nicht anhängen".
+    var angehaengt by remember { mutableStateOf("") }
+    var schichtwahlOffen by remember { mutableStateOf(false) }
+    // Wie im Web die letzten zehn: Wer von einer Schicht erzählt, erzählt von einer frischen.
+    val zurWahl = schichten.filter { it.roomCode.isNotBlank() }.take(10)
     val uebrig = BEITRAG_HOECHSTENS - text.length
 
     Kasten(abstandInnen = Abstand.Klein, innenraum = Abstand.Normal) {
@@ -207,6 +221,14 @@ private fun Verfassen(
                 aufschrift = { if (it == "Oeffentlich") "Öffentlich" else it },
                 modifier = Modifier.fillMaxWidth(),
             )
+            if (zurWahl.isNotEmpty()) {
+                Wahlfeld(
+                    etikett = "Schicht",
+                    wert = zurWahl.firstOrNull { it.roomCode == angehaengt }?.let(::schichtaufschrift)
+                        ?: "nicht anhängen",
+                    beiDruck = { schichtwahlOffen = true },
+                )
+            }
             Row(
                 horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
                 verticalAlignment = Alignment.CenterVertically,
@@ -220,8 +242,9 @@ private fun Verfassen(
                 Knopf(
                     "Anschlagen",
                     {
-                        beiSchreiben(text.trim(), sichtbarkeit)
+                        beiSchreiben(text.trim(), sichtbarkeit, angehaengt.ifBlank { null })
                         text = ""
+                        angehaengt = ""
                         offen = false
                     },
                     art = Knopfart.Haupt,
@@ -232,7 +255,31 @@ private fun Verfassen(
             SehrLeise("Am Brett gilt die Hausordnung: keine Links, keine Werbung, keine fremden Daten.")
         }
     }
+
+    if (schichtwahlOffen) {
+        // Die Blende ist das `<select>` des Webs am Handy; „nicht anhängen" steht
+        // als erste Zeile darin, wie die leere Option dort.
+        val keine = de.pagerspass.pagerspass.netz.Schicht()
+        Wahlblende(
+            titel = "Schicht anhängen",
+            gruppen = listOf(null to listOf(keine) + zurWahl),
+            aufschrift = { if (it.roomCode.isBlank()) "nicht anhängen" else schichtaufschrift(it) },
+            beiWahl = {
+                angehaengt = it.roomCode
+                schichtwahlOffen = false
+            },
+            beiSchliessen = { schichtwahlOffen = false },
+            gewaehlt = zurWahl.firstOrNull { it.roomCode == angehaengt } ?: keine,
+        )
+    }
 }
+
+/** „Celle · 09.09." — Ort und Tag einer Schicht, wie in der Auswahl des Webs. */
+private fun schichtaufschrift(schicht: de.pagerspass.pagerspass.netz.Schicht): String =
+    listOfNotNull(
+        schicht.ort.ifBlank { schicht.roomCode },
+        schicht.beendetUm.takeIf { it.isNotBlank() }?.let { tag(it).take(6) },
+    ).joinToString(" · ")
 
 /**
  * Wer gerade fährt — über dem Brett, als Karte mit Zeilen (`ImDienstLeiste.vue`).

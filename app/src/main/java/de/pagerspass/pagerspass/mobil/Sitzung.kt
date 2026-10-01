@@ -13,11 +13,13 @@ import de.pagerspass.pagerspass.netz.Profilaenderung
 import de.pagerspass.pagerspass.netz.Rechtsstand
 import de.pagerspass.pagerspass.netz.Server
 import de.pagerspass.pagerspass.netz.Spielwege
+import de.pagerspass.pagerspass.netz.Staaten
 import de.pagerspass.pagerspass.netz.Wartungsstand
 import de.pagerspass.pagerspass.netz.Zentralserver
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -94,6 +96,15 @@ class Sitzung(anwendung: Application) : AndroidViewModel(anwendung) {
         // gehören dem Rahmen, nicht der Stelle, die zufällig gerade lud.
         netz.beiAbmeldung = { _stand.update { it.copy(konto = null) } }
         netz.beiWartung = { wartung -> _stand.update { it.copy(wartung = wartung) } }
+
+        // Die Gutscheine gelten je Staat — wer in den Einstellungen den Katalog
+        // wechselt, sieht sofort Garage und Autohaus des neuen Staats (`spiel.ts`).
+        Geraeteeinstellungen.laden(anwendung)
+        viewModelScope.launch {
+            Geraeteeinstellungen.katalogstaat.drop(1).collect {
+                if (_daten.value.garage.inhalt != null) garageLaden(neu = true)
+            }
+        }
 
         kontoSicherstellen()
     }
@@ -273,9 +284,14 @@ class Sitzung(anwendung: Application) : AndroidViewModel(anwendung) {
         holen = { _daten.value.garage },
         setzen = { _daten.update { d -> d.copy(garage = it) } },
         tun = {
-            val stand = wege.garage(kennung())
+            val staat = Geraeteeinstellungen.katalogstaat.value
+            val stand = wege.garage(kennung(), staat)
             val katalog = _daten.value.katalog.inhalt ?: runCatching { wege.katalog() }.getOrNull()
-            val baupläne = katalog?.fahrzeuge.orEmpty()
+            // Nur die Vorlagen des eingestellten Katalogs (`heimatVon` im Web): Gekaufte
+            // Fahrzeuge anderer Länder bleiben im Fuhrpark, stehen nur nicht auf der Liste.
+            val alle = katalog?.fahrzeuge.orEmpty()
+            val baupläne = alle.filter { (it.staaten?.firstOrNull() ?: Staaten.DEUTSCHLAND) == staat }
+            val fremde = alle.map { it.id }.toSet() - baupläne.map { it.id }.toSet()
             val nachId = baupläne.associateBy { it.id }
 
             fun zeile(id: String, preis: Int? = null) = nachId[id].let { plan ->
@@ -295,7 +311,7 @@ class Sitzung(anwendung: Application) : AndroidViewModel(anwendung) {
 
             Garagendaten(
                 stand = stand,
-                fahrzeuge = stand.fahrzeuge.map { zeile(it) }.sortedBy { it.typ },
+                fahrzeuge = stand.fahrzeuge.filterNot { it in fremde }.map { zeile(it) }.sortedBy { it.typ },
                 angebot = baupläne
                     .filterNot { it.id in eigene }
                     .mapNotNull { plan -> stand.preise[plan.id]?.let { zeile(plan.id, it) } }
@@ -376,10 +392,11 @@ class Sitzung(anwendung: Application) : AndroidViewModel(anwendung) {
     /** Ein Fahrzeug aussuchen (Gutschein) oder kaufen (Credits). */
     fun fahrzeugHolen(vorlage: String, kaufen: Boolean) = arbeiten {
         val kennung = kennung()
+        val staat = Geraeteeinstellungen.katalogstaat.value
         val garage = if (kaufen) {
-            wege.fahrzeugKaufen(kennung, vorlage)
+            wege.fahrzeugKaufen(kennung, vorlage, staat)
         } else {
-            wege.fahrzeugWaehlen(kennung, vorlage)
+            wege.fahrzeugWaehlen(kennung, vorlage, staat)
         }
         _stand.update { it.copy(konto = it.konto?.copy(credits = garage.credits)) }
         garageLaden(neu = true)
@@ -522,8 +539,8 @@ class Sitzung(anwendung: Application) : AndroidViewModel(anwendung) {
             }
     }
 
-    fun brettSchreiben(text: String, sichtbarkeit: String?) = viewModelScope.launch {
-        runCatching { wege.brettSchreiben(kennung(), text, sichtbarkeit) }
+    fun brettSchreiben(text: String, sichtbarkeit: String?, roomCode: String? = null) = viewModelScope.launch {
+        runCatching { wege.brettSchreiben(kennung(), text, sichtbarkeit, roomCode) }
             .onSuccess { brettLaden(neu = true) }
             .onFailure { f -> _stand.update { it.copy(fehler = f.message) } }
     }

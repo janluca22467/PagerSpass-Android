@@ -270,7 +270,7 @@ fun FremdprofilSeite(
             }
 
             p.vorstellung?.takeIf { it.isNotBlank() }?.let {
-                Buchkarte("Vorstellung") { Text(it, style = Schrift.Normal, color = Farben.Text) }
+                Buchkarte("Vorstellung", geraeumig = true) { Text(it, style = Schrift.Normal, color = Farben.Text) }
             }
 
             if (p.vitrine.isNotEmpty()) {
@@ -329,7 +329,7 @@ private fun Profiltafel(schichten: Int, einsaetze: Int?, dabeiSeit: String) {
     val jeSchicht = if (schichten > 0 && einsaetze != null) kommazahl(einsaetze.toDouble() / schichten) else null
     Kennzahltafel(
         listOf(
-            { m -> Kennzahlkachel("Schichten", zahl(schichten), "gefahren", m) },
+            { m -> Kennzahlkachel("Schichten", zahl(schichten), "gefahren", m, zeichen = Tafelzeichen.KALENDER) },
             { m ->
                 Kennzahlkachel(
                     "Einsätze",
@@ -337,6 +337,7 @@ private fun Profiltafel(schichten: Int, einsaetze: Int?, dabeiSeit: String) {
                     jeSchicht?.let { "$it je Schicht" } ?: "—",
                     m,
                     farbe = Farben.BlauHell,
+                    zeichen = Tafelzeichen.WARNUNG,
                 )
             },
             { m ->
@@ -346,6 +347,7 @@ private fun Profiltafel(schichten: Int, einsaetze: Int?, dabeiSeit: String) {
                     "seit ${tag(dabeiSeit)}",
                     m,
                     farbe = Farben.ViolettHell,
+                    zeichen = Tafelzeichen.UHR,
                 )
             },
         ),

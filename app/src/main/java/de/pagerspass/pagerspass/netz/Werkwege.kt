@@ -47,8 +47,9 @@ class Werkwege(private val netz: Netz) {
     suspend fun abzeichen(kennung: String): List<Abzeichen> =
         netz.hole("/api/konto/${stueck(kennung)}/abzeichen")
 
-    suspend fun garagenauszug(kennung: String): Garagenauszug =
-        netz.hole("/api/konto/${stueck(kennung)}/garage")
+    /** Gutscheine gelten je Staat (v6) — `staat` sagt, wessen. Ältere Server überlesen es. */
+    suspend fun garagenauszug(kennung: String, staat: String = Staaten.DEUTSCHLAND): Garagenauszug =
+        netz.hole("/api/konto/${stueck(kennung)}/garage?staat=${stueck(staat)}")
 
     suspend fun laufbahn(): List<Rang> = netz.hole("/api/laufbahn")
 

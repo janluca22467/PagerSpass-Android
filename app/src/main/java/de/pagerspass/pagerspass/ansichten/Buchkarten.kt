@@ -35,6 +35,7 @@ import de.pagerspass.pagerspass.ui.theme.Farben
 import de.pagerspass.pagerspass.ui.theme.Rundung
 import de.pagerspass.pagerspass.ui.theme.Schrift
 import de.pagerspass.pagerspass.ui.theme.Ziel
+import de.pagerspass.pagerspass.ui.theme.flaeche
 
 /**
  * Die Bausteine des Dienstbuchs — `.db-karte`, `.db-wink`, `.db-rang` aus
@@ -70,6 +71,10 @@ private val KOPFFLAECHE = Farben.FlaecheHoch.copy(alpha = 0.35f).compositeOver(F
  * @param dicht Ohne Innenraum — für Zeilen, die von Kante zu Kante laufen
  *   (`.db-karte__inhalt--dicht`).
  * @param kopfweg Rechts im Kopf: „Einladen", „Ändern", „alle zeigen".
+ * @param geraeumig Die ältere, luftigere Form aus dem Dienstbuch: Kopf ohne
+ *   eigene Fläche, Kopf und Inhalt mit dem großen Polster, die Lichtkante der
+ *   Flächen. Bis 5.2 war das eine zweite `Buchkarte` in `Werkbausteine.kt`, die
+ *   je nach Aufruf still statt dieser gewählt wurde; jetzt sagt es der Aufruf.
  */
 @Composable
 fun Buchkarte(
@@ -81,6 +86,7 @@ fun Buchkarte(
     dicht: Boolean = false,
     abstandInnen: androidx.compose.ui.unit.Dp = Abstand.Klein,
     kopfweg: @Composable (RowScope.() -> Unit)? = null,
+    geraeumig: Boolean = false,
     inhalt: @Composable ColumnScope.() -> Unit,
 ) {
     val form = RoundedCornerShape(KARTENECKE)
@@ -88,9 +94,16 @@ fun Buchkarte(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .clip(form)
-            .background(Farben.Flaeche, form)
-            .border(1.dp, Farben.Rand, form)
+            .then(
+                if (geraeumig) {
+                    Modifier.flaeche()
+                } else {
+                    Modifier
+                        .clip(form)
+                        .background(Farben.Flaeche, form)
+                        .border(1.dp, Farben.Rand, form)
+                },
+            )
             .then(
                 if (kantenfarbe != null) {
                     // Als Strich über dem Inhalt und nicht als breiterer Rand: Ein
@@ -111,7 +124,7 @@ fun Buchkarte(
             modifier = Modifier
                 .fillMaxWidth()
                 .defaultMinSize(minHeight = Ziel.Kompakt)
-                .background(KOPFFLAECHE)
+                .then(if (geraeumig) Modifier else Modifier.background(KOPFFLAECHE))
                 .drawWithContent {
                     drawContent()
                     val strich = 1.dp.toPx()
@@ -121,7 +134,13 @@ fun Buchkarte(
                         size = size.copy(height = strich),
                     )
                 }
-                .padding(horizontal = Abstand.Normal, vertical = Abstand.Winzig),
+                .then(
+                    if (geraeumig) {
+                        Modifier.padding(horizontal = Abstand.Gross, vertical = Abstand.Klein)
+                    } else {
+                        Modifier.padding(horizontal = Abstand.Normal, vertical = Abstand.Winzig)
+                    },
+                ),
         ) {
             Row(
                 horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
@@ -132,14 +151,14 @@ fun Buchkarte(
                     text = titel.uppercase(),
                     style = Schrift.Klein.copy(fontWeight = FontWeight.Bold, letterSpacing = 0.08.em),
                     color = Farben.TextLeise,
-                    maxLines = 1,
+                    maxLines = if (geraeumig) Int.MAX_VALUE else 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false),
                 )
                 if (zahl != null) {
                     Text(
                         text = zahl,
-                        style = Schrift.MonoKlein.copy(fontWeight = FontWeight.SemiBold),
+                        style = if (geraeumig) Schrift.MonoKlein else Schrift.MonoKlein.copy(fontWeight = FontWeight.SemiBold),
                         color = Farben.TextSehrLeise,
                         maxLines = 1,
                     )
@@ -151,7 +170,13 @@ fun Buchkarte(
             verticalArrangement = Arrangement.spacedBy(abstandInnen),
             modifier = Modifier
                 .fillMaxWidth()
-                .then(if (dicht) Modifier else Modifier.padding(Abstand.Klein)),
+                .then(
+                    when {
+                        dicht -> Modifier
+                        geraeumig -> Modifier.padding(Abstand.Gross)
+                        else -> Modifier.padding(Abstand.Klein)
+                    },
+                ),
             content = inhalt,
         )
     }
