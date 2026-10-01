@@ -103,6 +103,13 @@ class Raumwege(private val netz: Netz) {
 
     suspend fun aaoVorlageLoeschen(kennung: String, id: String) =
         netz.ohneAntwort("/api/aao/${teil(id)}?kennung=${teil(kennung)}", "DELETE")
+
+    /**
+     * Ob der Server die KI-Schalter (Funk, Anrufe, Lagen) anbietet — `kiFunk` in
+     * `/api/version`. Ein älterer Server kennt das Feld nicht; dann heißt es „nein".
+     */
+    suspend fun kiFunkVerfuegbar(): Boolean =
+        netz.hole<Serverangebot>("/api/version").kiFunk
 }
 
 private fun teil(wert: String): String = URLEncoder.encode(wert, "UTF-8")

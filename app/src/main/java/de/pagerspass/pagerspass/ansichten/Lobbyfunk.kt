@@ -292,9 +292,17 @@ fun ColumnScope.Funkgruppenmaske(raum: Raumzustand, istLeitstelle: Boolean, befe
  * Sonst risse der erste Haken die halbe Leitstelle ab (siehe `umbau` im Web).
  */
 @Composable
-fun ColumnScope.Wachenmaske(raum: Raumzustand, istLeitstelle: Boolean, neben: Raumneben, befehle: Raumbefehle) {
+fun ColumnScope.Wachenmaske(
+    raum: Raumzustand,
+    istLeitstelle: Boolean,
+    neben: Raumneben,
+    befehle: Raumbefehle,
+    aufgeklappt: Boolean = false,
+) {
     val s = raum.settings
-    var offen by remember { mutableStateOf(false) }
+    // Auf ihrer eigenen Seite im Rundendialog ist die Liste der Inhalt und kein
+    // Anhang, den man erst noch öffnen müsste.
+    var offen by remember { mutableStateOf(aufgeklappt) }
     val kreisId = s.landkreisId
 
     // Erst, wenn der Kasten aufgeht — und je Kreis nur einmal.
@@ -348,7 +356,9 @@ fun ColumnScope.Wachenmaske(raum: Raumzustand, istLeitstelle: Boolean, neben: Ra
         "Welche Wachen des Kreises bespielt werden und unter welcher Nummer sie funken. Ohne Änderung " +
             "stehen auf allen Fahrzeuge, und die Nummer ist ihr Platz in der Reihe.",
     )
-    Knopf(if (offen) "Wachen zuklappen" else "Wachen einstellen", { offen = !offen }, art = Knopfart.Leise, kompakt = true)
+    if (!aufgeklappt) {
+        Knopf(if (offen) "Wachen zuklappen" else "Wachen einstellen", { offen = !offen }, art = Knopfart.Leise, kompakt = true)
+    }
     if (!offen) return
 
     when {

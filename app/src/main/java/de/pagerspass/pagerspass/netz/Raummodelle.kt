@@ -229,3 +229,7 @@ data class AaoSpeicherergebnis(
     val anzahl: Int = 0,
     val grenze: Int = 0,
 )
+
+/** Der Teil von `/api/version`, den der Raum braucht — der Rest fällt still weg. */
+@Serializable
+data class Serverangebot(val kiFunk: Boolean = false)

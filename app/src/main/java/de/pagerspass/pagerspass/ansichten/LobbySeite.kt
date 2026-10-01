@@ -77,6 +77,11 @@ import de.pagerspass.pagerspass.ui.theme.flaeche
 import de.pagerspass.pagerspass.ui.theme.kopfverlauf
 import de.pagerspass.pagerspass.ui.theme.seitengrund
 import de.pagerspass.pagerspass.ui.zeichen.Zeichen
+import androidx.compose.runtime.LaunchedEffect
+import de.pagerspass.pagerspass.netz.Katalog
+import de.pagerspass.pagerspass.mobil.Einstellungsaenderung
+import de.pagerspass.pagerspass.ui.bausteine.Leise
+import de.pagerspass.pagerspass.ui.bausteine.Kasten
 
 /**
  * Die Lobby — übertragen aus `web/src/views/LobbyView.vue` in ihrer Handyform.
@@ -110,8 +115,15 @@ fun LobbySeite(
     beiVerlassen: () -> Unit = {},
     befehle: Raumbefehle = Raumbefehle.Leer,
     neben: Raumneben = Raumneben(),
+    katalog: Katalog? = null,
 ) {
     var reiter by remember { mutableStateOf(Lobbyteil.Rolle) }
+
+    // Die offene Seite des Rundendialogs — `null` heißt: zu. Eine Seite und kein
+    // Ja/Nein, weil der Dialog von verschiedenen Stellen aus aufgeht: vom Knopf unter
+    // dem Steckbrief auf die erste Seite, von einer Zeile des Steckbriefs auf die Seite
+    // dieser Einstellung, von der Botliste auf „Bots".
+    var einstellungen by remember { mutableStateOf<Rundenseite?>(null) }
 
     // Der Chatsatz lebt hier und nicht im Chat-Teil: Wer mitten im Tippen den
     // Reiter wechselt, soll seinen Satz wiederfinden.
@@ -127,6 +139,11 @@ fun LobbySeite(
 
     val ich = raum?.players?.firstOrNull { it.id == eigeneKennung }
     val aussparung = WindowInsets.statusBars.asPaddingValues()
+    val fuehrung = raum?.let { Lobbyfuehrung.von(it, ich) } ?: Lobbyfuehrung()
+
+    // Einmal beim Betreten: Bietet der Server die KI-Schalter an? Ohne Antwort
+    // bleiben sie verborgen, und alles andere geht wie vorher.
+    LaunchedEffect(Unit) { befehle.serverangebotLaden() }
 
     Column(
         modifier = modifier
@@ -155,13 +172,13 @@ fun LobbySeite(
                 ) {
                     when (reiter) {
                         Lobbyteil.Rolle -> {
-                            TeilRolle(raum, ich, garage, fahrzeuge, beiRolle, befehle)
+                            TeilRolle(raum, ich, garage, fahrzeuge, beiRolle, befehle, fuehrung)
                             Anfragenkasten(raum, befehle)
                             // Der späte Beitritt: Wer mitten im Dienst ohne Platz
                             // dasteht, steigt am schnellsten in ein Bot-Fahrzeug.
                             if (raum.laeuft && ich?.role == "Unbestimmt") BotUebernahme(raum, befehle)
                         }
-                        Lobbyteil.Runde -> TeilRunde(raum, ich, neben, befehle)
+                        Lobbyteil.Runde -> TeilRunde(raum, fuehrung, fahrzeuge, befehle) { einstellungen = it }
                         Lobbyteil.Mannschaft -> TeilMannschaft(raum, ich, fahrzeuge, neben, befehle)
                         Lobbyteil.Chat -> TeilChat(raum, chatsatz, { chatsatz = it }) {
                             beiChat(chatsatz)
@@ -178,7 +195,14 @@ fun LobbySeite(
         // das `margin: auto 0 0` plus `sticky bottom: 0` — hier steht er
         // schlicht außerhalb der Rollfläche.
         if (raum != null && !raum.laeuft) {
-            Startblock(raum = raum, ich = ich, laeuft = stand.laeuft, beiBereit = beiBereit, beiStart = beiStart)
+            Startblock(
+                raum = raum,
+                ich = ich,
+                fuehrung = fuehrung,
+                laeuft = stand.laeuft,
+                beiBereit = beiBereit,
+                beiStart = beiStart,
+            )
         }
 
         Teilleiste(
@@ -198,6 +222,68 @@ fun LobbySeite(
             ruft = if (ich?.role == "Unbestimmt") setOf(Lobbyteil.Rolle.name) else emptySet(),
             beiWahl = { id -> reiter = Lobbyteil.valueOf(id) },
         )
+    }
+
+    val offen = einstellungen
+    if (raum != null && offen != null) {
+        Rundendialog(
+            raum = raum,
+            seite = offen,
+            beiSeite = { einstellungen = it },
+            einstellbar = fuehrung.einstellbar,
+            fuehrtLobby = fuehrung.fuehrtLobby,
+            kiLeitstelleSelbst = fuehrung.kiLeitstelleSelbst,
+            istLeitstelle = ich?.istLeitstelle == true,
+            premiumAktiv = ich?.premium == true,
+            katalog = katalog,
+            neben = neben,
+            befehle = befehle,
+            beiSchliessen = { einstellungen = null },
+        )
+    }
+}
+
+/**
+ * Wer die Lobby führt — und was die KI-Leitstelle beim Dienstbeginn tun wird.
+ *
+ * <b>Die Lobby führt, wer am Tisch sitzt</b> — oder wer die KI-Leitstelle
+ * eingeschaltet hat und selbst fährt (`KiLeitstelle.FuehrtLobby` am Server). Ohne
+ * das hätte die Lobby nach seinem Wechsel ins Fahrzeug niemanden mehr, der den
+ * Dienst beginnen darf. Setzt sich ein Mensch an den Tisch, führt wieder er.
+ *
+ * <b>Der Zustand der KI in Stufen</b> statt eines Hakens — dieselbe Rechnung wie
+ * `KiLeitstelle.Wirksam`, nur so, dass die Karte sagen kann, *warum* sie nicht
+ * übernimmt.
+ */
+internal data class Lobbyfuehrung(
+    val fuehrtLobby: Boolean = false,
+    val kiLeitstelleSelbst: Boolean = false,
+    val einstellbar: Boolean = false,
+    val menschAmTisch: Boolean = false,
+    /** `aus`, `nurZufall`, `ohnePremium`, `pausiert` oder `bereit`. */
+    val kiZustand: String = "aus",
+) {
+    companion object {
+        fun von(raum: Raumzustand, ich: Spieler?): Lobbyfuehrung {
+            val s = raum.settings
+            val menschAmTisch = raum.players.any { !it.istBot && it.istLeitstelle }
+            val fuehrt = ich?.istLeitstelle == true ||
+                (s.kiLeitstelleAktiv && ich != null && raum.kiLeitstelleInhaberId == ich.id && !menschAmTisch)
+            val premiumImRaum = raum.players.any { !it.istBot && it.premium }
+            val ki = when {
+                !s.kiLeitstelleAktiv -> if (s.mode == "Zufall") "aus" else "nurZufall"
+                !premiumImRaum -> "ohnePremium"
+                menschAmTisch -> "pausiert"
+                else -> "bereit"
+            }
+            return Lobbyfuehrung(
+                fuehrtLobby = fuehrt,
+                kiLeitstelleSelbst = fuehrt && ich?.istLeitstelle != true,
+                einstellbar = fuehrt && s.mode != "Tagesschicht",
+                menschAmTisch = menschAmTisch,
+                kiZustand = ki,
+            )
+        }
     }
 }
 
@@ -335,6 +421,7 @@ private fun ColumnScope.TeilRolle(
     fahrzeuge: List<Fahrzeugvorlage>,
     beiRolle: (String, String?) -> Unit,
     befehle: Raumbefehle,
+    fuehrung: Lobbyfuehrung = Lobbyfuehrung(),
 ) {
     var wahlOffen by remember { mutableStateOf(false) }
     // Das Fahrzeug ist eine Laufzeit-Id, die Garage führt Baupläne — gesucht wird
@@ -408,6 +495,9 @@ private fun ColumnScope.TeilRolle(
                 },
         )
     }
+    if (fuehrung.kiZustand == "bereit" && ich?.istLeitstelle != true) {
+        SehrLeise("Die KI-Leitstelle hält den Tisch frei. Setzt du dich hin, disponierst du selbst, und sie pausiert.")
+    }
     if (amTisch.isNotEmpty()) {
         SehrLeise(
             "Leitstelle besetzt: ${amTisch.joinToString(", ") { it.name }}" +
@@ -415,6 +505,8 @@ private fun ColumnScope.TeilRolle(
             mono = true,
         )
     }
+
+    KiLeitstellenkarte(raum, ich, fuehrung, befehle)
 
     if (wahlOffen) {
         val meine = fahrzeuge.filter { it.id in garage }.sortedBy { it.typ }
@@ -439,31 +531,294 @@ private fun ColumnScope.TeilRolle(
     }
 }
 
-/** Teil 2 — worauf man sich einlässt, und die Regler der Leitstelle. */
+/**
+ * Teil 2 — der Steckbrief der Schicht und die Bot-Besatzungen.
+ *
+ * <b>Wo die Regler geblieben sind.</b> Bis hierher stand in diesem Reiter die
+ * längste Fläche der Lobby: rund dreißig Regler untereinander. Sie stehen jetzt im
+ * Rundendialog, geordnet nach Seiten — hier bleibt, was man *liest*: was für eine
+ * Schicht das ist. Jede Zeile des Steckbriefs öffnet den Dialog auf der Seite, auf
+ * der sie sich ändern lässt.
+ */
 @Composable
 private fun ColumnScope.TeilRunde(
     raum: Raumzustand,
-    ich: Spieler?,
-    neben: Raumneben,
+    fuehrung: Lobbyfuehrung,
+    fahrzeuge: List<Fahrzeugvorlage>,
     befehle: Raumbefehle,
+    beiEinstellungen: (Rundenseite) -> Unit,
 ) {
-    Ueberschrift("Die Runde")
+    val s = raum.settings
+    val menschen = raum.players.count { !it.istBot }
 
-    Zeile("Ausrückebereich", raum.settings.leitstelle ?: "—")
-    Zeile("Landkreis", raum.settings.landkreis ?: raum.settings.ort ?: "—")
-    Zeile("Höchstens", "${raum.maxSpieler} Spieler")
-    Zeile("Öffentlich", if (raum.settings.oeffentlich) "ja" else "nein")
-    Zeile("Gewertet", if (raum.settings.sandkasten) "nein" else "ja")
-    Zeile("Modus", RAUM_MODUS[raum.settings.mode] ?: raum.settings.mode)
+    Ueberschrift("Rundeneinstellungen")
 
-    if (raum.settings.sandkasten) {
+    // Wer disponiert, prägt die Schicht mehr als jede Regel darunter — und ist mit
+    // der KI-Leitstelle keine Selbstverständlichkeit mehr.
+    val amTisch = raum.players.filter { !it.istBot && it.istLeitstelle }
+    val disponent = when {
+        amTisch.isNotEmpty() -> amTisch.joinToString(", ") { it.name }
+        fuehrung.kiZustand == "bereit" -> "KI-Leitstelle"
+        else -> "niemand — der Tisch ist frei"
+    }
+    val (regelnAn, regelnVon) = regelstand(s)
+    val zeilen = buildList<Triple<String, String, Rundenseite?>> {
+        add(Triple("Disponiert", disponent, null))
+        add(Triple("Spielmodus", RAUM_MODUS[s.mode] ?: s.mode, Rundenseite.Grund))
+        add(Triple("Zeittempo", if (s.zeitmodus == "Simulation") "Simulation (schneller)" else "Echtzeit", Rundenseite.Grund))
+        if (s.mode == "Zufall") {
+            add(Triple("Einsatzdichte", EINSATZDICHTE_LABEL[s.einsatzdichte] ?: s.einsatzdichte, Rundenseite.Lage))
+        }
+        add(Triple("Störungen", STOERUNG_LABEL[s.stoerungshaeufigkeit] ?: s.stoerungshaeufigkeit, Rundenseite.Lage))
+        add(
+            Triple(
+                "Jahreszeit",
+                (JAHRESZEIT_LABEL[s.jahreszeit] ?: s.jahreszeit) + if (s.silvester) " · Silvester" else "",
+                Rundenseite.Lage,
+            ),
+        )
+        add(Triple("Einsatzregeln", "$regelnAn von $regelnVon an", Rundenseite.Regeln))
+        add(
+            Triple(
+                "Organisationen",
+                s.organisationen
+                    .joinToString(", ") { o -> RAUM_ORGANISATIONEN.firstOrNull { it.first == o }?.second ?: o }
+                    .ifBlank { "—" },
+                Rundenseite.Orgs,
+            ),
+        )
+        add(
+            Triple(
+                "Träger",
+                if (s.hiOrgs.isEmpty()) "alle erlaubt" else s.hiOrgs.joinToString(", ") { RAUM_TRAEGER[it] ?: it },
+                Rundenseite.Orgs,
+            ),
+        )
+        add(Triple("Plätze", "$menschen von ${raum.maxSpieler}" + if (s.oeffentlich) " · öffentlich" else "", Rundenseite.Grund))
+    }
+
+    Kasten(innenraum = Abstand.Normal, abstandInnen = Abstand.Haar) {
+        zeilen.forEach { (wort, wert, seite) ->
+            Steckbriefzeile(wort, wert, seite?.let { ziel -> { beiEinstellungen(ziel) } })
+        }
+
+        // Ein Knopf für alle, mit zwei Aufschriften: Die Leitstelle stellt ein, alle
+        // anderen lesen nach. Derselbe Dialog in beiden Fällen — gesperrt statt versteckt.
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(Abstand.Normal),
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth().padding(top = Abstand.Klein),
+        ) {
+            SehrLeise(
+                when {
+                    !fuehrung.fuehrtLobby -> "Diese Einstellungen setzt die Leitstelle."
+                    !fuehrung.einstellbar -> "Die Schicht des Tages ist für alle dieselbe."
+                    else -> "Tippe auf eine Zeile, um sie zu ändern."
+                },
+                modifier = Modifier.weight(1f),
+            )
+            Knopf(
+                if (fuehrung.einstellbar) "Runde einstellen" else "Alle Einstellungen",
+                { beiEinstellungen(Rundenseite.Grund) },
+                art = if (fuehrung.einstellbar) Knopfart.Haupt else Knopfart.Normal,
+                kompakt = true,
+            )
+        }
+    }
+
+    if (s.sandkasten) {
         SehrLeise(
             "Im Sandkasten gibt es keine Erfahrung, keine Rangliste und keine " +
                 "Saisonwertung — gefahren wird trotzdem echt.",
         )
     }
 
-    Rundenregler(raum, ich?.istLeitstelle == true, neben, befehle)
+    // Bots setzt nur, wer die Lobby führt. Wer es nicht tut, liest die Liste — und
+    // sieht über den Weg unten trotzdem, wie sie sich verhalten.
+    if (fuehrung.fuehrtLobby) {
+        Botverwaltung(raum, fahrzeuge, befehle) { beiEinstellungen(Rundenseite.Bots) }
+    } else {
+        Ueberschrift("Bot-Besatzungen")
+        val bots = raum.players.filter { it.istBot }
+        SehrLeise(
+            "Der Server besetzt diese Fahrzeuge selbst: quittieren, ausrücken, eintreffen, Lage " +
+                "melden, nachfordern. So läuft eine Runde auch zu zweit.",
+        )
+        if (bots.isEmpty()) SehrLeise("Noch keine Bot-Besatzungen eingeteilt.", mono = true)
+        bots.forEach { b ->
+            val f = raum.vehicles.firstOrNull { it.id == b.vehicleId }
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Marke("Bot", farbe = Farben.ViolettHell)
+                Text(
+                    f?.funkrufname ?: b.name,
+                    style = Schrift.MonoKlein,
+                    color = Farben.Text,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                f?.typ?.let { SehrLeise(it) }
+            }
+        }
+        Row {
+            Knopf(
+                "Verhalten der Bots · ${BOT_TEMPO_LABEL[s.botTempo] ?: s.botTempo}, Funk ${if (s.botFunkAktiv) "an" else "aus"}",
+                { beiEinstellungen(Rundenseite.Bots) },
+                art = Knopfart.Leise,
+                kompakt = true,
+            )
+        }
+    }
+}
+
+/**
+ * Eine Zeile des Steckbriefs — Wort links, Wert rechts. Mit Seite ist sie ein Weg:
+ * Ein Druck öffnet den Dialog dort, wo sie sich ändern lässt.
+ */
+@Composable
+private fun Steckbriefzeile(wort: String, wert: String, beiDruck: (() -> Unit)?) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(Abstand.Normal),
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .defaultMinSize(minHeight = 36.dp)
+            .then(
+                if (beiDruck != null) {
+                    Modifier.clickable(onClick = beiDruck, role = Role.Button, indication = null, interactionSource = null)
+                } else {
+                    Modifier
+                },
+            )
+            .drawBehind {
+                val strich = 1.dp.toPx()
+                drawLine(
+                    Farben.Rand,
+                    Offset(0f, size.height - strich / 2f),
+                    Offset(size.width, size.height - strich / 2f),
+                    strich,
+                )
+            }
+            .padding(vertical = Abstand.Winzig),
+    ) {
+        Text(text = wort, style = Schrift.Klein, color = Farben.TextLeise, modifier = Modifier.weight(1f))
+        Text(
+            text = wert,
+            style = Schrift.MonoKlein,
+            color = Farben.Text,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.End,
+            modifier = Modifier.weight(1.4f),
+        )
+        if (beiDruck != null) {
+            Icon(Zeichen.Weiter, contentDescription = null, tint = Farben.TextSehrLeise, modifier = Modifier.size(14.dp))
+        }
+    }
+}
+
+/**
+ * Die KI-Leitstelle (Premium) — eine Karte neben der Leitstellenkarte und kein Haken
+ * darunter: Sie beantwortet dieselbe Frage („wer disponiert?"), nur mit der anderen
+ * Antwort.
+ *
+ * <b>Warum sie ihren Zustand zeigt.</b> Ein Haken sagte nur „an". Ob sie wirklich
+ * übernehmen würde, stand nirgends: Wer eingeschaltet hatte und noch am Tisch saß,
+ * startete eine Schicht, in der er selbst disponierte. Jetzt steht an der Karte, was
+ * beim Dienstbeginn tatsächlich geschieht.
+ *
+ * Sichtbar für den, der die Lobby führt, und für alle, sobald sie an ist — in den
+ * beiden Modi, die man in der Lobby wählt. Die Sonderschichten bringen ihre
+ * Leitstelle selbst mit.
+ */
+@Composable
+private fun ColumnScope.KiLeitstellenkarte(
+    raum: Raumzustand,
+    ich: Spieler?,
+    fuehrung: Lobbyfuehrung,
+    befehle: Raumbefehle,
+) {
+    val s = raum.settings
+    if (s.mode != "Zufall" && s.mode != "Frei") return
+    if (!fuehrung.fuehrtLobby && !s.kiLeitstelleAktiv) return
+
+    val premiumAktiv = ich?.premium == true
+    val inhaber = raum.players.firstOrNull { it.id == raum.kiLeitstelleInhaberId }
+    val amTisch = raum.players.filter { !it.istBot && it.istLeitstelle }
+    val marke = when (fuehrung.kiZustand) {
+        "nurZufall" -> "nur Zufall"
+        "ohnePremium" -> "ohne Premium"
+        "pausiert" -> "pausiert"
+        "bereit" -> "übernimmt"
+        else -> null
+    }
+    val lagesatz = when (fuehrung.kiZustand) {
+        "nurZufall" -> "Nur bei Zufallseinsätzen: In der freien Vergabe denkt sich ein Mensch am Tisch die Lagen aus."
+        "aus" -> if (premiumAktiv) {
+            "Aus — am Tisch disponiert ein Mensch."
+        } else {
+            "Aus. Einschalten kann ein Premium-Mitglied; mit Mitspieler am Tisch geht es wie immer auch ohne."
+        }
+        "ohnePremium" -> "Eingeschaltet, aber ohne Premium-Konto in der Runde bleibt der Tisch leer. Es genügt eines."
+        "pausiert" -> if (ich?.istLeitstelle == true && raum.kiLeitstelleInhaberId == ich.id) {
+            "Du sitzt noch am Tisch — solange disponierst du selbst. Wähle ein Fahrzeug, dann übernimmt " +
+                "die KI und du führst die Lobby weiter."
+        } else {
+            "${amTisch.joinToString(", ") { it.name }} disponiert selbst. Wird der Tisch frei, springt die KI ein."
+        }
+        else -> if (inhaber != null && inhaber.id != ich?.id) {
+            "Mit dem Dienstbeginn disponiert die KI. Die Lobby führt ${inhaber.name}."
+        } else {
+            "Mit dem Dienstbeginn disponiert die KI. Du führst die Lobby aus dem Fahrzeug."
+        }
+    }
+
+    Kasten(marke = fuehrung.kiZustand == "bereit", abstandInnen = Abstand.Klein) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(
+                "KI-Leitstelle",
+                style = Schrift.Gross,
+                color = if (fuehrung.kiZustand == "nurZufall") Farben.TextSehrLeise else Farben.Text,
+                modifier = Modifier.weight(1f),
+            )
+            Marke("★ Premium", farbe = Farben.AmberHell)
+            if (marke != null) Marke(marke, farbe = if (fuehrung.kiZustand == "bereit") Farben.Amber else Farben.TextLeise)
+        }
+        SehrLeise(
+            "Hält den Tisch frei für alle, die fahren wollen: nimmt Notrufe an, fragt sie ab, alarmiert " +
+                "nach dem Alarmvorschlag, erteilt das Wort, weist Zielkliniken zu und schließt " +
+                "liegengebliebene Lagen. Am Funk ist sie ansprechbar — Nachforderungen, Klinik, wer noch " +
+                "kommt, Einsatzdaten; mit KI-Funk versteht sie jeden Satz. Setzt sich ein Mensch an den " +
+                "Tisch, pausiert sie.",
+        )
+        Text(lagesatz, style = Schrift.Klein, color = Farben.Text)
+
+        if (fuehrung.fuehrtLobby && fuehrung.einstellbar) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Knopf(
+                    if (s.kiLeitstelleAktiv) "Abschalten" else "Einschalten",
+                    { befehle.einstellungen(Einstellungsaenderung(kiLeitstelleAktiv = !s.kiLeitstelleAktiv)) },
+                    art = if (s.kiLeitstelleAktiv) Knopfart.Normal else Knopfart.Haupt,
+                    aktiv = s.kiLeitstelleAktiv || (premiumAktiv && s.mode == "Zufall"),
+                    kompakt = true,
+                )
+                if (s.kiLeitstelleAktiv && fuehrung.kiLeitstelleSelbst) {
+                    SehrLeise("Abgeschaltet führt die Lobby, wer sich an den Tisch setzt.", modifier = Modifier.weight(1f))
+                }
+            }
+        }
+    }
 }
 
 /** Teil 3 — wer mitfährt. */
@@ -499,11 +854,8 @@ private fun ColumnScope.TeilMannschaft(
         }
     }
 
-    // Bots setzt nur die Leitstelle. Wer keine ist, sieht nur die Zahl: Ein Knopf,
-    // der bei jedem Druck „nicht erlaubt" antwortet, ist schlechter als keiner.
-    if (istLeitstelle) {
-        Botverwaltung(raum, fahrzeuge, befehle)
-    } else if (raum.players.any { it.istBot }) {
+    // Die Bots selbst stehen unter „Runde" — hier nur die Zahl, als Ausstattung.
+    if (raum.players.any { it.istBot }) {
         val bots = raum.players.count { it.istBot }
         SehrLeise("dazu $bots Bot-Besatzung${if (bots == 1) "" else "en"}")
     }
@@ -621,10 +973,8 @@ private fun ColumnScope.TeilMehr(
         )
     }
 
+    // Die Rundenvorlage steht seit 5.0.0.26 im Rundendialog („Als Vorlage merken").
     val raum = stand.raum
-    if (raum != null && ich?.istLeitstelle == true && raum.inLobby) {
-        Rundenvorlage(raum, neben, befehle)
-    }
 
     // Die eine Streamer-Stelle der Lobby: Übertragung der Runde und eigene
     // Live-Meldung in einem Dialog (`LiveKnopf.vue`). Hier und nicht am
@@ -708,35 +1058,87 @@ private fun Spielerzeile(spieler: Spieler, funkrufname: String?, beiKick: (() ->
 }
 
 /**
- * Der Startblock — bereit melden und den Dienst beginnen.
+ * Der Startblock — der Dienstbeginn, klebend über der Reiterleiste.
  *
- * <b>Was fehlt, steht als Satz daneben.</b> Drei Bedingungen prüft der Hub: eine
- * Leitstelle, niemand ohne Platz, alle bereit. Die App rechnet sie nach, um zu
- * sagen, welche gerade offen ist — durchsetzen tut es weiter der Server.
+ * <b>Was fehlt, steht als Liste daneben.</b> Ein einzelner Satz nannte immer nur die
+ * *erste* Hürde: Wer sie behoben hatte, bekam den nächsten Satz, und so weiter —
+ * drei Anläufe, um zu erfahren, was von Anfang an feststand. Jetzt stehen alle
+ * Bedingungen gleichzeitig da, jede mit ihrem Haken; der Satz darunter sagt, was als
+ * Nächstes dran ist. Durchsetzen tut es weiter der Server.
+ *
+ * <b>Wer die Lobby führt, beginnt; alle anderen melden sich bereit.</b> Die
+ * Leitstelle meldet sich nicht bereit — sie ist es, sobald sie am Tisch sitzt. Wer
+ * mit der KI-Leitstelle selbst fährt, meldet sich mit dem Start bereit
+ * (`GameEngine.Handle(StartRound)`); ein Fahrzeug braucht er trotzdem.
  */
 @Composable
 private fun Startblock(
     raum: Raumzustand,
     ich: Spieler?,
+    fuehrung: Lobbyfuehrung,
     laeuft: Boolean,
     beiBereit: (Boolean) -> Unit,
     beiStart: () -> Unit,
 ) {
-    // Dieselbe Reihenfolge wie `startHinweis` im Web. Die Leitstelle meldet sich
-    // nicht bereit — sie ist es, sobald sie am Tisch sitzt.
     val mannschaft = raum.players.filter { !it.istLeitstelle }
+    val bots = raum.players.count { it.istBot }
+    val menschen = raum.players.size - bots
+    val ohneWahl = mannschaft.count { it.vehicleId == null }
+    val nichtBereit = mannschaft.count { !it.bereit && !(fuehrung.kiLeitstelleSelbst && it.id == ich?.id) }
+    val kiFehlt = fuehrung.kiLeitstelleSelbst && fuehrung.kiZustand != "bereit"
+
+    // Der Tisch als eigener Schritt — nur mit KI-Leitstelle. Ohne sie ist die Frage
+    // beantwortet, bevor jemand den Startknopf überhaupt sieht.
+    val schritte = buildList {
+        if (raum.settings.kiLeitstelleAktiv) {
+            add(
+                Triple(
+                    "Leitstelle",
+                    when {
+                        fuehrung.menschAmTisch -> "Mensch am Tisch"
+                        fuehrung.kiZustand == "bereit" -> "KI"
+                        else -> "frei"
+                    },
+                    fuehrung.menschAmTisch || fuehrung.kiZustand == "bereit",
+                ),
+            )
+        }
+        // Die Bedingung zählt Plätze, nicht Menschen — eine Bot-Besatzung ist einer davon.
+        add(
+            Triple(
+                "Plätze besetzt",
+                if (bots > 0) "$menschen + $bots Bot${if (bots == 1) "" else "s"}" else "$menschen",
+                raum.players.size >= 2,
+            ),
+        )
+        add(Triple("Fahrzeuge im Dienst", "${raum.vehicles.size}", raum.vehicles.isNotEmpty()))
+        add(
+            Triple(
+                "Besatzungen bereit",
+                when {
+                    ohneWahl > 0 -> "$ohneWahl ${if (ohneWahl == 1) "wählt" else "wählen"} noch"
+                    nichtBereit > 0 -> "$nichtBereit noch nicht bereit"
+                    else -> "vollzählig"
+                },
+                ohneWahl == 0 && nichtBereit == 0,
+            ),
+        )
+    }
+
+    // Dieselbe Reihenfolge wie `startHinweis` im Web.
     val hindernis = when {
-        !raum.hatLeitstelle -> "Es fehlt eine Leitstelle."
+        !raum.hatLeitstelle && !fuehrung.kiLeitstelleSelbst -> "Es fehlt eine Leitstelle."
         raum.players.size < 2 -> "Es fehlt noch mindestens ein Mitspieler."
         raum.vehicles.isEmpty() -> "Mindestens ein Spieler muss ein Fahrzeug besetzen."
-        mannschaft.any { it.vehicleId == null } ->
-            "Es warten noch Mannschaftsmitglieder auf ihre Fahrzeugwahl."
-        mannschaft.any { !it.bereit } -> "Noch nicht alle Mannschaftsmitglieder sind bereit."
+        kiFehlt -> "Die KI-Leitstelle übernimmt nicht — ohne Premium-Konto in der Runde bleibt der Tisch leer."
+        ohneWahl > 0 -> "Es warten noch Mannschaftsmitglieder auf ihre Fahrzeugwahl."
+        nichtBereit > 0 -> "Noch nicht alle Mannschaftsmitglieder sind bereit."
         // Im Streamer-Modus startet die Runde erst, wenn alle geantwortet haben.
         raum.settings.streamermodus && raum.players.any { !it.istBot && !it.streamerfreigabe } ->
             "Noch nicht alle haben der Übertragung zugestimmt — wer, steht unter Mehr → Streamen."
         else -> null
     }
+    val startklar = hindernis == null
 
     Column(
         verticalArrangement = Arrangement.spacedBy(Abstand.Klein),
@@ -749,29 +1151,79 @@ private fun Startblock(
             }
             .padding(horizontal = Abstand.Gross, vertical = Abstand.Normal),
     ) {
-        if (hindernis != null) SehrLeise(hindernis)
-
         Row(
             horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
+            verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.fillMaxWidth(),
         ) {
-            Knopf(
-                aufschrift = if (ich?.bereit == true) "Doch nicht" else "Bereit",
-                beiDruck = { beiBereit(ich?.bereit != true) },
-                art = if (ich?.bereit == true) Knopfart.Leise else Knopfart.Normal,
-                aktiv = ich != null,
-                modifier = Modifier.weight(1f),
+            Text("Dienstbeginn", style = Schrift.Gross, color = Farben.Text, modifier = Modifier.weight(1f))
+            Marke(
+                if (startklar) "startklar" else "noch nicht startklar",
+                farbe = if (startklar) Farben.GruenHell else Farben.AmberHell,
             )
+        }
 
-            if (ich?.istLeitstelle == true) {
-                Knopf(
-                    aufschrift = "Dienst beginnen",
-                    beiDruck = beiStart,
-                    art = Knopfart.Haupt,
-                    aktiv = hindernis == null && !laeuft,
-                    modifier = Modifier.weight(1.4f),
-                )
+        // Die Prüfliste — zwei Spalten je Zeile, damit sie am Daumen kurz bleibt.
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(Abstand.Normal),
+            verticalArrangement = Arrangement.spacedBy(Abstand.Haar),
+            maxItemsInEachRow = 2,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            schritte.forEach { (wort, wert, erfuellt) ->
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(Abstand.Winzig),
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text(
+                        if (erfuellt) "✓" else "·",
+                        style = Schrift.MonoKlein,
+                        color = if (erfuellt) Farben.GruenHell else Farben.TextSehrLeise,
+                    )
+                    Text(
+                        wort,
+                        style = Schrift.Winzig,
+                        color = if (erfuellt) Farben.Text else Farben.TextLeise,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    Text(
+                        wert,
+                        style = Schrift.MonoKlein.copy(fontSize = Schrift.WINZIG),
+                        color = Farben.TextSehrLeise,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
+        }
+
+        if (fuehrung.fuehrtLobby) {
+            Knopf(
+                aufschrift = "Dienst beginnen",
+                beiDruck = beiStart,
+                art = Knopfart.Haupt,
+                aktiv = startklar && !laeuft,
+                breit = true,
+            )
+            if (hindernis != null) {
+                SehrLeise(hindernis, modifier = Modifier.fillMaxWidth())
+            }
+        } else {
+            Knopf(
+                aufschrift = if (ich?.bereit == true) "Bereit" else "Bereit melden",
+                beiDruck = { beiBereit(ich?.bereit != true) },
+                art = if (ich?.bereit == true) Knopfart.Haupt else Knopfart.Normal,
+                aktiv = ich != null,
+                breit = true,
+            )
+            val amTisch = raum.players.filter { it.istLeitstelle }
+            Leise(
+                (if (amTisch.size == 1) amTisch.first().name else "Die Leitstelle") + " startet die Runde.",
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
     }
 }

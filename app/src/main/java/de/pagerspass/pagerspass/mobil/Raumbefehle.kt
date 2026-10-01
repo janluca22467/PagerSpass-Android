@@ -373,6 +373,17 @@ class Raumbefehle internal constructor(
         opt(a.streameraufzeichnung),
         opt(a.kiFunkAktiv),
         opt(a.stichwortsetId),
+        // Die drei KI-Schalter aus 5.0.0.26 hängen nur dann an, wenn einer davon
+        // gesetzt ist: SignalR verwirft einen Aufruf mit einer Stelle *zu viel* im
+        // Ganzen, und ein älterer Server kennt sie nicht. So bleibt jede andere
+        // Einstellung auch dort einstellbar.
+        *(
+            if (a.kiAnrufeAktiv != null || a.kiLeitstelleAktiv != null || a.kiLagenAktiv != null) {
+                arrayOf(opt(a.kiAnrufeAktiv), opt(a.kiLeitstelleAktiv), opt(a.kiLagenAktiv))
+            } else {
+                emptyArray<JsonElement>()
+            }
+        ),
     )
 
     /** Ein Fahrzeug vor Dienstbeginn auf eine andere Wache stellen. */
@@ -754,6 +765,12 @@ class Raumbefehle internal constructor(
         (runCatching { leitung.frage("StreamerfreigabeNachtragen") }.getOrNull() as? JsonPrimitive)
             ?.content == "true"
 
+    /** Fragt einmal nach, ob der Server die KI-Schalter anbietet — still, ohne Meldung. */
+    fun serverangebotLaden() = bereich.launch {
+        val da = runCatching { wege?.kiFunkVerfuegbar() }.getOrNull() ?: return@launch
+        _neben.update { it.copy(kiFunkVerfuegbar = da) }
+    }
+
     fun stichwortsetsLaden() = rest {
         val liste = wege?.stichwortsets() ?: return@rest
         _neben.update { it.copy(stichwortsets = liste) }
@@ -919,6 +936,11 @@ data class Raumneben(
     /** Echte Straßen des Kreises — die Vorschläge im Adressfeld. */
     val strassen: List<String> = emptyList(),
     val strassenFuer: String? = null,
+    /**
+     * Ob der Server die KI-Schalter überhaupt anbietet (`kiFunk` in `/api/version`).
+     * Ohne Antwort `false` — dann stehen KI-Funk, KI-Anrufe und KI-Lagen gar nicht da.
+     */
+    val kiFunkVerfuegbar: Boolean = false,
 )
 
 /**
@@ -994,4 +1016,10 @@ data class Einstellungsaenderung(
     val streamerplattform: String? = null,
     val streamerkanal: String? = null,
     val streameraufzeichnung: Boolean? = null,
+    /** Notrufer sprechen frei (KI, Premium) — gibt es erst ab 5.0.0.26 am Server. */
+    val kiAnrufeAktiv: Boolean? = null,
+    /** Die KI-Leitstelle besetzt den leeren Tisch (Premium). */
+    val kiLeitstelleAktiv: Boolean? = null,
+    /** Im Zufallsmodus erfindet eine KI die Lagen (Premium). */
+    val kiLagenAktiv: Boolean? = null,
 )

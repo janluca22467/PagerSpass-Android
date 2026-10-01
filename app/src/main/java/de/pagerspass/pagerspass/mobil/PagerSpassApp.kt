@@ -451,6 +451,7 @@ private fun Rundenrahmen(
             beiVerlassen = { runde.verlassen() },
             befehle = runde.befehle,
             neben = neben,
+            katalog = seiten.katalog.inhalt,
         )
     }
 

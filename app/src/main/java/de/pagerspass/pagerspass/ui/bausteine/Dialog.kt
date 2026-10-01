@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
@@ -238,6 +239,103 @@ private fun Dialogfuss(alsSpalte: Boolean, inhalt: @Composable () -> Unit) {
             modifier = rahmen,
         ) {
             inhalt()
+        }
+    }
+}
+
+/**
+ * Ein Dialog mit Seiten — Kopf, eine Wegeleiste, die nicht mitrollt, und genau
+ * eine Seite darunter. Übertragen aus `.dialog--arbeit` mit `.rd__wege` im Web
+ * (`RundenDialog.vue`).
+ *
+ * <b>Er hat eine feste Höhe und nicht die seines Inhalts.</b> Mit der Höhe des
+ * Inhalts spränge er bei jedem Seitenwechsel: Eine Seite ist eine Zeile mit einem
+ * Knopf, die nächste vier Bildschirme lang. Ein Kasten, dessen Kanten beim
+ * Umschalten wandern, verliert den Blick — die Wegeleiste spränge mit.
+ *
+ * @param etikett Die kleine Zeile über dem Titel — wovon der Dialog handelt.
+ * @param leiste Die Wege zu den Seiten. Sie steht zwischen Kopf und Inhalt und
+ *   rollt nicht mit; am Handy ist sie eine Zeile, die seitwärts rollt.
+ * @param rollstand Der Rollstand der Seite — von außen, damit ein Seitenwechsel
+ *   oben anfangen kann.
+ */
+@Composable
+fun Seitenblende(
+    titel: String,
+    beiSchliessen: () -> Unit,
+    leiste: @Composable () -> Unit,
+    modifier: Modifier = Modifier,
+    etikett: String? = null,
+    rollstand: androidx.compose.foundation.ScrollState = rememberScrollState(),
+    fuss: @Composable (() -> Unit)? = null,
+    inhalt: @Composable ColumnScope.() -> Unit,
+) {
+    val aussparung = WindowInsets.safeDrawing.asPaddingValues()
+    val schirmhoehe = LocalConfiguration.current.screenHeightDp.dp
+
+    Dialog(
+        onDismissRequest = beiSchliessen,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Box(
+            contentAlignment = Alignment.BottomCenter,
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Farben.Ueberlagerung)
+                .clickable(onClick = beiSchliessen, indication = null, interactionSource = null)
+                .padding(
+                    start = Abstand.Gross,
+                    end = Abstand.Gross,
+                    top = maxOf(Abstand.Gross, aussparung.calculateTopPadding()),
+                    bottom = maxOf(Abstand.Gross, aussparung.calculateBottomPadding()),
+                ),
+        ) {
+            Column(
+                modifier = modifier
+                    .widthIn(max = Dialogbreite.Breit.breite)
+                    .fillMaxWidth()
+                    // Fest: dieselbe Höhe wie der Deckel jeder Blende.
+                    .height(minOf(schirmhoehe * 0.88f, 760.dp))
+                    .shadow(Erhebung.Alarm, Rundung.Normal)
+                    .background(Farben.Flaeche, Rundung.Normal)
+                    .border(1.dp, Farben.RandHell, Rundung.Normal)
+                    .clip(Rundung.Normal)
+                    .lichtkante()
+                    .clickable(enabled = false, onClick = {}, indication = null, interactionSource = null),
+            ) {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(Abstand.Haar),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Brush.verticalGradient(listOf(Farben.FlaecheHoch, Farben.Flaeche)))
+                        .padding(start = Abstand.Gross, end = Abstand.Gross, top = Abstand.Gross, bottom = Abstand.Klein),
+                ) {
+                    if (etikett != null) {
+                        Text(
+                            text = etikett.uppercase(),
+                            style = Schrift.Etikett,
+                            color = Farben.TextSehrLeise,
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        )
+                    }
+                    Text(text = titel, style = Schrift.Titel, color = Farben.Text)
+                }
+
+                Box(Modifier.fillMaxWidth().kante(unten = true)) { leiste() }
+
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(Abstand.Normal),
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .verticalScroll(rollstand)
+                        .padding(Abstand.Gross),
+                    content = inhalt,
+                )
+
+                if (fuss != null) Dialogfuss(false, fuss)
+            }
         }
     }
 }
