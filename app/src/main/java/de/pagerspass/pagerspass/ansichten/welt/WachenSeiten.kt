@@ -83,8 +83,9 @@ fun WachenSeite(welt: Welt, zustand: Weltzustand, werkbank: Werkbank, karte: Wel
     }
     Warnsatz(fehler)
     if (wachen.isEmpty()) {
-        Leisesatz("Noch keine Wache. Unter „Bauen“ setzt du die erste auf die Karte.")
-        Knopf("Wache bauen", { werkbank.seite = Werkzeug.Bauen }, art = Knopfart.Haupt, kompakt = true)
+        // Kein eigener Knopf hierher: Der Reiter „Bauen“ atmet, solange keine
+        // Wache steht — ein zweiter Weg zum selben Ziel wäre einer zu viel.
+        Leisesatz("Noch keine Wache. „Bauen“ in der Leiste setzt die erste.")
         return
     }
     val fahrt = zustand.fahrt
@@ -133,7 +134,7 @@ fun WachenSeite(welt: Welt, zustand: Weltzustand, werkbank: Werkbank, karte: Wel
             }
             if (offen) {
                 Umbruchreihe {
-                    Knopf("Aufschlagen", {
+                    Knopf("Wache aufschlagen", {
                         menue = null
                         werkbank.gewaehlteWache = w.id
                         werkbank.seite = Werkzeug.Wachenseite
