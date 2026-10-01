@@ -53,6 +53,18 @@ object Weltzeichen {
     val Mehr = strich("mehr", "M5 12h.01", "M12 12h.01", "M19 12h.01", staerke = 2.6f)
     val Zurueck = strich("zurueck", "M19 12H5", "m11 6-6 6 6 6")
     val Wache = strich("wache", "m3 11 9-7 9 7", "M5 10v10h14V10", "M12 13.5a2.5 2.5 0 1 1-.01 0Z")
+
+    /** Die Raute der Welt-Credits — `Waehrung.vue`. */
+    val Waehrung = strich("waehrung", "M12 3.5 20.5 12 12 20.5 3.5 12Z")
+
+    /** Der Winkel rechts an einer Menüzeile: „hier geht es weiter“. */
+    val Weiter = strich("weiter", "m9 6 6 6-6 6")
+    val Kreuz = strich("kreuz", "m6 6 12 12", "M18 6 6 18")
+
+    // Die drei Kartenknöpfe aus `Weltkarte.vue`: einpassen, Ansicht, Ebenen.
+    val Einpassen = strich("einpassen", "M9 4H4v5", "M15 4h5v5", "M15 20h5v-5", "M9 20H4v-5")
+    val Ansicht = strich("ansicht", "M9 4 3 6.5v13L9 17l6 3 6-2.5v-13L15 7Z", "M9 4v13", "M15 7v13")
+    val Ebenen = strich("ebenen", "m12 3 9 5-9 5-9-5Z", "m3 12 9 5 9-5", "m3 16 9 5 9-5")
 }
 
 private fun strich(name: String, vararg pfade: String, staerke: Float = 1.7f): ImageVector =

@@ -1,7 +1,17 @@
 package de.pagerspass.pagerspass.ansichten.welt
 
 import android.content.Context
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.Icon
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.sp
+import de.pagerspass.pagerspass.ui.theme.Rundung
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -45,9 +55,9 @@ private val LEKTIONEN = listOf(
     ) { z, _ -> !z.stand?.wachen.isNullOrEmpty() },
     Lektion(
         "Stell ein Fahrzeug hinein",
-        "Eine leere Wache rückt nicht aus. Unter „Bauen“ → „Fahrzeug kaufen“ kaufst du das erste — ein " +
+        "Eine leere Wache rückt nicht aus. Unter „Fahrzeuge“ → „Fahrzeug kaufen“ kaufst du das erste — ein " +
             "Löschfahrzeug ist der Anfang, alles Weitere schaltet sich mit deiner Stufe frei.",
-        Werkzeug.Bauen,
+        Werkzeug.Fahrzeuge,
     ) { z, _ -> z.fahrzeuge.isNotEmpty() },
     Lektion(
         "Alarmiere deine erste Lage",
@@ -105,34 +115,103 @@ fun WeltEinfuehrung(zustand: Weltzustand, werkbank: Werkbank, zeigen: Boolean): 
     val lektion = LEKTIONEN.getOrNull(geschafft)
     if (!zeigen) return lektion?.ziel
 
+    // Die Karte aus `WeltEinfuehrung.vue`: oben der Zähler, die Punkte (Anzeige,
+    // kein Weg) und das Kreuz; darunter Titel und Text; unten zwei Wege hinaus —
+    // „Nicht mehr zeigen“ als Wort, damit niemand fünfmal überspringen muss.
+    val fertig = lektion == null
     Column(
-        verticalArrangement = Arrangement.spacedBy(Abstand.Klein),
         modifier = Modifier
-            .padding(horizontal = Abstand.Klein)
+            .padding(horizontal = Abstand.Gross)
             .fillMaxWidth()
-            .flaeche(farbe = Farben.FlaecheHoch.copy(alpha = 0.96f), randfarbe = Farben.AmberTief, ecke = 12.dp)
-            .padding(Abstand.Normal),
+            .flaeche(
+                farbe = Farben.FlaecheHoch.copy(alpha = 0.96f),
+                randfarbe = if (fertig) Farben.GruenHell else Farben.AmberTief,
+                ecke = 18.dp,
+            )
+            .padding(start = Abstand.Gross, end = Abstand.Gross, top = Abstand.Normal, bottom = Abstand.Gross),
     ) {
-        if (lektion == null) {
-            Text("Einführung geschafft", style = Schrift.Klein.copy(fontWeight = FontWeight.Bold), color = Farben.Amber)
-            Leisesatz("Du kennst jetzt die Handgriffe. Der Rest ist Disponieren — viel Erfolg in der Welt.")
-            Knopf("Schließen", { beendet = true; sichern() }, kompakt = true)
-        } else {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    "Schritt ${geschafft + 1} von ${LEKTIONEN.size} · ${lektion.titel}",
-                    style = Schrift.Klein.copy(fontWeight = FontWeight.Bold),
-                    color = Farben.Amber,
-                    modifier = Modifier.weight(1f),
-                )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
+            modifier = Modifier.padding(bottom = Abstand.Klein),
+        ) {
+            Text(
+                if (fertig) "EINFÜHRUNG" else "SCHRITT ${geschafft + 1} VON ${LEKTIONEN.size}",
+                style = Schrift.Winzig.copy(fontFamily = Schrift.Mono, letterSpacing = 0.8.sp),
+                color = if (fertig) Farben.GruenHell else Farben.Amber,
+                modifier = Modifier
+                    .background(if (fertig) Farben.Gruen.copy(alpha = 0.12f) else Farben.HauchAmber, Rundung.Rund)
+                    .border(1.dp, if (fertig) Farben.Gruen else Farben.AmberTief, Rundung.Rund)
+                    .padding(horizontal = Abstand.Klein, vertical = Abstand.Haar),
+            )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(Abstand.Winzig),
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.weight(1f),
+            ) {
+                LEKTIONEN.indices.forEach { i ->
+                    val an = !fertig && i == geschafft
+                    Box(
+                        Modifier
+                            .size(width = if (an) 18.dp else 6.dp, height = 6.dp)
+                            .background(
+                                when {
+                                    an -> Farben.Amber
+                                    fertig -> Farben.Gruen
+                                    i < geschafft -> Farben.AmberTief
+                                    else -> Farben.RandHell
+                                },
+                                Rundung.Rund,
+                            ),
+                    )
+                }
             }
-            Leisesatz(lektion.text, winzig = true)
-            Umbruchreihe {
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .size(44.dp)
+                    .clickable { beendet = true; sichern() }
+                    .semantics { contentDescription = "Einführung beenden" },
+            ) {
+                Icon(Weltzeichen.Kreuz, contentDescription = null, tint = Farben.TextSehrLeise, modifier = Modifier.size(14.dp))
+            }
+        }
+        Text(
+            if (fertig) "Geschafft — der Rest ist Disponieren" else lektion!!.titel,
+            style = Schrift.Gross.copy(fontWeight = FontWeight.Bold),
+            color = Farben.Text,
+            modifier = Modifier.padding(bottom = Abstand.Winzig),
+        )
+        Text(
+            if (fertig) {
+                "Lagen entstehen jetzt von allein rund um deine Wachen. Was du verdienst, steht oben im " +
+                    "Kopf; mit der Stufe kommen neue Bauarten, Organisationen und Fahrzeuge dazu."
+            } else {
+                lektion!!.text
+            },
+            style = Schrift.Klein,
+            color = Farben.TextLeise,
+        )
+        Row(
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth().padding(top = Abstand.Normal),
+        ) {
+            if (fertig) {
+                Knopf("Alles klar", { beendet = true; sichern() }, art = Knopfart.Haupt, kompakt = true)
+            } else {
                 Knopf("Diesen Schritt überspringen", {
                     geschafft++
                     sichern()
                 }, kompakt = true, art = Knopfart.Leise)
-                Knopf("Einführung beenden", { beendet = true; sichern() }, kompakt = true, art = Knopfart.Leise)
+                Text(
+                    "Nicht mehr zeigen",
+                    style = Schrift.Klein,
+                    color = Farben.TextSehrLeise,
+                    modifier = Modifier
+                        .clickable { beendet = true; sichern() }
+                        .padding(vertical = Abstand.Normal, horizontal = Abstand.Winzig),
+                )
             }
         }
     }

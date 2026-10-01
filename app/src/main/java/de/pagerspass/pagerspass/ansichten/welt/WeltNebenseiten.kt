@@ -76,14 +76,26 @@ fun Regler(wert: Int, bereich: IntRange, schritt: Int, beiAenderung: (Int) -> Un
 /**
  * Der Chat der Welt — das Gegenstück zu `ChatBlende.vue`, samt Funkgerät.
  *
- * <b>Direkt ist eine Antwort, kein eigener Bereich.</b> Wer auf eine Zeile
- * tippt, schreibt dem Absender direkt; „An alle“ nimmt es zurück. Das
- * Funkgerät heißt „hören“ — sprechen geht auch, wenn es aus ist.
+ * <b>Direkt ist eine Antwort, kein eigener Bereich.</b> „Antworten“ an einer
+ * Zeile schreibt dem Absender direkt; „an alle“ nimmt es zurück. Der Name
+ * nennt den Absender im Entwurf (`@name`). Wen man nicht mehr lesen will,
+ * schaltet man stumm — nur auf diesem Gerät; eigene Zeilen lassen sich in den
+ * ersten Minuten für alle zurücknehmen (seit PagerSpass 6, sonst fehlt der
+ * Knopf). Das Funkgerät heißt „hören“ — sprechen geht auch, wenn es aus ist.
  */
 @Composable
 fun ChatSeite(welt: Welt, zustand: Weltzustand) {
     var entwurf by remember { mutableStateOf("") }
     var an by remember { mutableStateOf<Pair<String, String>?>(null) }
+
+    // Die Uhr für „Zurücknehmen“: Der Knopf verschwindet, sobald die Frist um ist.
+    var jetzt by remember { mutableStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(15_000)
+            jetzt = System.currentTimeMillis()
+        }
+    }
 
     DisposableEffect(Unit) {
         welt.chatGeoeffnet(true)
@@ -93,28 +105,77 @@ fun ChatSeite(welt: Welt, zustand: Weltzustand) {
         }
     }
 
-    Schalterzeile(
-        titel = "Funkgerät",
-        an = zustand.funkgeraet,
-        beiWechsel = { welt.funkgeraetSetzen(it) },
-        unterzeile = if (zustand.funkgeraet) "Du hörst den Sprechfunk der Welt." else "Aus — du hörst nichts, sprechen geht trotzdem.",
-    )
-    zustand.spricht?.let { Text("Spricht: ${it.name ?: "jemand"}", style = Schrift.MonoKlein, color = Farben.Amber) }
-    Sprechtaste(
-        sendet = zustand.sendet,
-        wirdVerstanden = false,
-        belegtVon = zustand.spricht?.takeIf { !zustand.sendet }?.let { it.name ?: "jemand" },
-        gesperrtBis = null,
-        beiDruck = { welt.sprechenStarten() },
-        beiLoslassen = { welt.sprechenBeenden() },
-    )
+    // Der Kopf trägt beides: den Funkschalter und die Anzeige, wer spricht —
+    // „X spricht“ woanders als der Schalter fragte, warum man nichts hört.
+    Column(
+        verticalArrangement = Arrangement.spacedBy(Abstand.Klein),
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Farben.Flaeche, Rundung.Normal)
+            .padding(Abstand.Normal),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
+            Knopf(
+                if (zustand.funkgeraet) "Funk an" else "Funk aus",
+                { welt.funkgeraetSetzen(!zustand.funkgeraet) },
+                art = if (zustand.funkgeraet) Knopfart.Haupt else Knopfart.Normal,
+                kompakt = true,
+            )
+            when {
+                zustand.spricht != null && zustand.funkgeraet ->
+                    Text("${zustand.spricht.name ?: "Jemand"} spricht", style = Schrift.MonoKlein, color = Farben.Amber)
+                !zustand.funkgeraet -> Text("Du hörst nicht mit.", style = Schrift.Klein, color = Farben.TextLeise)
+            }
+        }
+        Sprechtaste(
+            sendet = zustand.sendet,
+            wirdVerstanden = false,
+            belegtVon = zustand.spricht?.takeIf { !zustand.sendet }?.let { it.name ?: "jemand" },
+            gesperrtBis = null,
+            beiDruck = { welt.sprechenStarten() },
+            beiLoslassen = { welt.sprechenBeenden() },
+        )
+    }
     if (!zustand.verbunden) Leisesatz("Keine Verbindung zum Kanal — es wird weiter versucht.", winzig = true)
 
-    if (zustand.chat.isEmpty()) Leisesatz("Noch keine Nachrichten. Schreib die erste.")
-    zustand.chat.takeLast(120).forEach { z ->
+    // Stummgeschaltet wird nur auf diesem Gerät — und es steht dran, damit es
+    // nicht vergessen wird.
+    val zeilen = zustand.chat.filter { it.vonId !in zustand.stumm }
+    if (zustand.stumm.isNotEmpty()) {
+        val verborgen = zustand.chat.size - zeilen.size
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
+            Text(
+                (if (zustand.stumm.size == 1) "Eine Person" else "${zustand.stumm.size} Personen") +
+                    " stummgeschaltet" + if (verborgen > 0) " · $verborgen Zeilen verborgen" else "",
+                style = Schrift.Klein,
+                color = Farben.TextLeise,
+                modifier = Modifier.weight(1f),
+            )
+            Knopf("wieder hören", { zustand.stumm.forEach { welt.stummSetzen(it, false) } }, kompakt = true, art = Knopfart.Leise)
+        }
+    }
+
+    if (zustand.aeltereVorhanden) {
+        Knopf(
+            if (zustand.aeltereLaedt) "Lädt …" else "Ältere Nachrichten laden",
+            { welt.chatAeltereLaden() },
+            kompakt = true,
+            art = Knopfart.Leise,
+            aktiv = !zustand.aeltereLaedt,
+        )
+    }
+    if (zeilen.isEmpty()) Leisesatz("Noch nichts gesagt. Schreib die erste Zeile.")
+    zeilen.takeLast(200).forEach { z ->
         Chatzeile(
             z,
-            beiAntworten = { if (!z.eigen) an = z.vonId to (z.von ?: "Ohne Namen") },
+            zuruecknehmbar = welt.zuruecknehmbar(z, jetzt),
+            beiAntworten = { an = z.vonId to (z.von ?: "Ohne Namen") },
+            beiStumm = {
+                welt.stummSetzen(z.vonId, true)
+                // War er gerade der Empfänger, geht die nächste Zeile wieder an alle.
+                if (an?.first == z.vonId) an = null
+            },
+            beiZuruecknehmen = { welt.chatZuruecknehmen(z.id) },
             beiAnpingen = z.vonBenutzername?.takeIf { !z.eigen }?.let { name ->
                 {
                     // Ein Ping gilt einem Menschen: „@name“ vorn im Entwurf.
@@ -124,31 +185,68 @@ fun ChatSeite(welt: Welt, zustand: Weltzustand) {
             },
         )
     }
-    Leisesatz("Zeile antippen: direkt antworten · @ tippen: im offenen Kanal erwähnen.", winzig = true)
 
     Warnsatz(zustand.chatfehler)
+    // Der Empfänger steht über dem Feld: Er gilt für die nächsten Nachrichten.
     an?.let { (_, name) ->
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
-            Text("Direkt an $name", style = Schrift.Klein, color = Farben.BlauHell, modifier = Modifier.weight(1f))
-            Knopf("An alle", { an = null }, kompakt = true, art = Knopfart.Leise)
+            Text("An", style = Schrift.Klein, color = Farben.TextLeise)
+            Text(name, style = Schrift.Klein.copy(fontWeight = FontWeight.Bold), color = Farben.Text, modifier = Modifier.weight(1f))
+            Knopf("an alle", { an = null }, kompakt = true, art = Knopfart.Leise)
         }
     }
     Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein), verticalAlignment = Alignment.Bottom) {
         Feld(
             wert = entwurf,
             beiAenderung = { entwurf = it.take(zustand.chatMax) },
-            platzhalter = if (an == null) "An alle in der Welt …" else "Direktnachricht …",
+            platzhalter = an?.let { "Nachricht an ${it.second}" } ?: "An alle in der Welt — @ nennt jemanden …",
             modifier = Modifier.weight(1f),
         )
         Knopf("Senden", {
             val text = entwurf.trim()
             if (text.isNotEmpty() && welt.chatSenden(an?.first, text)) entwurf = ""
-        }, kompakt = true, aktiv = entwurf.isNotBlank())
+        }, kompakt = true, art = Knopfart.Haupt, aktiv = entwurf.isNotBlank())
+    }
+    if (entwurf.length > zustand.chatMax - 50) {
+        Text(
+            "${zustand.chatMax - entwurf.length}",
+            style = Schrift.MonoKlein,
+            color = if (entwurf.length >= zustand.chatMax) Farben.SignalHell else Farben.TextLeise,
+        )
     }
 }
 
+/** Die Erwähnungen „@name“ einer Zeile — amber hervorgehoben wie im Web. */
+private val ERWAEHNUNG = Regex("(^|\\s)(@[\\p{L}\\p{N}_.-]+)")
+
+private fun mitErwaehnungen(text: String): androidx.compose.ui.text.AnnotatedString =
+    androidx.compose.ui.text.buildAnnotatedString {
+        var ab = 0
+        ERWAEHNUNG.findAll(text).forEach { t ->
+            val g = t.groups[2] ?: return@forEach
+            if (g.range.first > ab) append(text.substring(ab, g.range.first))
+            pushStyle(androidx.compose.ui.text.SpanStyle(color = Farben.Amber, fontWeight = FontWeight.Bold))
+            append(g.value)
+            pop()
+            ab = g.range.last + 1
+        }
+        if (ab < text.length) append(text.substring(ab))
+    }
+
+/**
+ * Eine Zeile des Weltchats — `weltchat__zeile`: Kopf mit Name (er nennt den
+ * Absender im Entwurf), Marke der Direktnachricht, Uhrzeit und den Griffen der
+ * Zeile; darunter der Text.
+ */
 @Composable
-private fun Chatzeile(z: WeltChatzeile, beiAntworten: () -> Unit, beiAnpingen: (() -> Unit)?) {
+private fun Chatzeile(
+    z: WeltChatzeile,
+    zuruecknehmbar: Boolean,
+    beiAntworten: () -> Unit,
+    beiStumm: () -> Unit,
+    beiZuruecknehmen: () -> Unit,
+    beiAnpingen: (() -> Unit)?,
+) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -160,33 +258,40 @@ private fun Chatzeile(z: WeltChatzeile, beiAntworten: () -> Unit, beiAnpingen: (
                 },
                 Rundung.Klein,
             )
-            .clickable(enabled = !z.eigen, onClick = beiAntworten)
             .padding(horizontal = Abstand.Normal, vertical = Abstand.Klein),
     ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
-            androidx.compose.foundation.layout.Box(Modifier.weight(1f)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
             Text(
-                (if (z.eigen) "Du" else z.von ?: "Ohne Namen") +
-                    if (z.kanal == "Direkt") " → ${if (z.eigen) z.an ?: "direkt" else "dich"}" else "",
-                style = Schrift.Winzig.copy(fontWeight = FontWeight.Bold),
-                color = if (z.eigen) Farben.Amber else Farben.TextLeise,
-                // Der Name führt ins Profil; die Zeile selbst antwortet, das @ pingt.
-                modifier = Modifier.zumProfil(z.vonBenutzername.takeIf { !z.eigen }),
+                if (z.eigen) "Du" else z.von ?: "Ohne Namen",
+                style = Schrift.Klein.copy(fontWeight = FontWeight.Bold),
+                color = if (z.eigen) Farben.Amber else Farben.Text,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .weight(1f, fill = false)
+                    .let { m -> if (beiAnpingen != null) m.clickable(onClick = beiAnpingen) else m },
             )
-            }
-            if (beiAnpingen != null) {
+            // Die Direktnachricht steht in derselben Liste und muss trotzdem
+            // auf einen Blick von einer offenen Zeile zu unterscheiden sein.
+            if (z.kanal == "Direkt") {
                 Text(
-                    "@",
-                    style = Schrift.Klein.copy(fontWeight = FontWeight.Bold),
+                    if (z.eigen) "an ${z.an ?: "Ohne Namen"}" else "nur an dich",
+                    style = Schrift.Winzig.copy(fontFamily = Schrift.Mono),
                     color = Farben.BlauHell,
-                    modifier = Modifier.clickable(onClick = beiAnpingen).padding(horizontal = Abstand.Klein),
+                    maxLines = 1,
                 )
             }
-            Text(uhrzeit(z.um), style = Schrift.Winzig.copy(fontFamily = Schrift.Mono), color = Farben.TextSehrLeise)
+            Text(uhrzeit(z.um), style = Schrift.Winzig.copy(fontFamily = Schrift.Mono), color = Farben.TextLeise)
         }
-        Text(z.text, style = Schrift.Klein, color = Farben.Text)
+        Text(mitErwaehnungen(z.text), style = Schrift.Klein, color = Farben.Text)
+        if (!z.eigen) {
+            Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
+                Knopf("Antworten", beiAntworten, kompakt = true, art = Knopfart.Leise)
+                Knopf("Stumm", beiStumm, kompakt = true, art = Knopfart.Leise)
+            }
+        } else if (zuruecknehmbar) {
+            Knopf("Zurücknehmen", beiZuruecknehmen, kompakt = true, art = Knopfart.Leise)
+        }
     }
 }
 

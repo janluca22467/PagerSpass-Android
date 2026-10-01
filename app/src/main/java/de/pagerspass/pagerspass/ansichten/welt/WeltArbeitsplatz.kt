@@ -215,9 +215,14 @@ class Werkbank {
  * Der Arbeitsplatz — das Gegenstück zu `WeltView.vue` in der Handyform.
  *
  * <b>Oben der Stand, unten die Reiter, dazwischen die Karte</b> — und darüber,
- * wenn eine offen ist, genau eine Seite. Am Handy gibt es keine schwebenden
- * Blenden nebeneinander; die Seite nimmt die untere Hälfte, damit die Karte
- * darüber sichtbar bleibt und ein Tipp auf „hinschauen“ etwas zeigt.
+ * wenn eine offen ist, genau eine Seite: vom Kopf bis zur Reiterleiste, deckend
+ * (`Weltseite.vue`). Eine Seite über 60 % der Höhe verdeckte die Karte fast ganz
+ * und zeigte trotzdem nur zwei Drittel ihres eigenen Inhalts — das Schlechteste
+ * aus beidem; das Web hat es deshalb aufgegeben, und die App mit ihm.
+ *
+ * <b>Man kommt auf der Karte an</b>, auch ohne Wache: Der Reiter „Bauen“ atmet
+ * dann, und die Einführung zeigt auf ihn. Eine Seite, die beim Ankommen über
+ * der ganzen Karte liegt, nimmt einem genau das weg, was die Welt ist.
  */
 @Composable
 fun WeltArbeitsplatz(welt: Welt, zustand: Weltzustand, beiVerlassen: () -> Unit) {
@@ -241,15 +246,10 @@ fun WeltArbeitsplatz(welt: Welt, zustand: Weltzustand, beiVerlassen: () -> Unit)
     val bereich = rememberCoroutineScope()
     val oben = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val unten = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-    val hoehe = LocalConfiguration.current.screenHeightDp.dp
+    val kopfhoehe = oben + Weltmass.Kopfhoehe
 
-    // Beim ersten Mal ohne Wache: gleich die Bauseite — sonst steht man vor
-    // einer leeren Karte und weiß nicht, wo es losgeht.
-    LaunchedEffect(Unit) {
-        if (stand?.wachen.isNullOrEmpty()) werkbank.seite = Werkzeug.Bauen
-    }
-
-    // Zurück schließt erst die Seite, dann den Wahlmodus, dann die Welt.
+    // Zurück schließt erst den Steckbrief, dann die Seite (hinter „Mehr“ eine
+    // Ebene zurück), dann den Wahlmodus, dann den Fahrweg, dann die Welt.
     BackHandler {
         when {
             werkbank.fremdwache != null -> werkbank.fremdwache = null
@@ -283,11 +283,13 @@ fun WeltArbeitsplatz(welt: Welt, zustand: Weltzustand, beiVerlassen: () -> Unit)
             zeichnungGeschlossen = werkbank.modus == Kartenmodus.Gelaende && !werkbank.eckenStrecke,
             gewaehlteLage = zustand.auswahlLage,
             gewaehltesFahrzeug = werkbank.gewaehltesFahrzeug,
-            polster = PaddingValues(top = oben + 64.dp),
+            polster = PaddingValues(top = kopfhoehe),
             beiLage = { id ->
                 welt.lageWaehlen(id)
                 werkbank.seite = Werkzeug.Lagen
             },
+            // Ein eigenes Fahrzeug antippen zeigt seinen Fahrweg — und nur das,
+            // wie im Web. Was es tut, steht unter „Fahrzeuge“.
             beiFahrzeug = { werkbank.gewaehltesFahrzeug = it },
             beiWache = { id ->
                 werkbank.gewaehlteWache = id
@@ -301,18 +303,26 @@ fun WeltArbeitsplatz(welt: Welt, zustand: Weltzustand, beiVerlassen: () -> Unit)
             },
             beiOrt = { ort ->
                 when (werkbank.modus) {
+                    // Ein Tipp, ein Punkt, zurück ins Formular (`bauortGesetzt`).
                     Kartenmodus.Ort -> {
                         werkbank.bauort = ort
                         werkbank.modus = Kartenmodus.Normal
                         werkbank.zurueckZurSeite()
                     }
+                    // Eine Fläche hat drei bis zwölf Ecken: Man bleibt auf der
+                    // Karte, bis „Fertig“ auf der Zeichenleiste.
                     Kartenmodus.Gelaende -> if (werkbank.ecken.size < 12) werkbank.ecken = werkbank.ecken + ort
+                    // Eine Station, dann zurück in die Fahrzeugseite, wo die Liste
+                    // wächst (`pfadpunktGesetzt`) — weiter geht es mit demselben Knopf.
                     Kartenmodus.Pfad -> bereich.launch {
-                        if (werkbank.pfad.size >= 12) return@launch
-                        val name = welt.kennung?.let { k ->
-                            runCatching { welt.wege.ortsname(k, ort.lat, ort.lon).name }.getOrNull()
-                        } ?: "%.4f / %.4f".format(ort.lat, ort.lon)
-                        werkbank.pfad = werkbank.pfad + WeltStreifenstation(name, ort.lat, ort.lon)
+                        if (werkbank.pfad.size < 12) {
+                            val name = welt.kennung?.let { k ->
+                                runCatching { welt.wege.ortsname(k, ort.lat, ort.lon).name }.getOrNull()
+                            } ?: "%.4f / %.4f".format(ort.lat, ort.lon)
+                            werkbank.pfad = werkbank.pfad + WeltStreifenstation(name, ort.lat, ort.lon)
+                        }
+                        werkbank.modus = Kartenmodus.Normal
+                        werkbank.zurueckZurSeite()
                     }
                     Kartenmodus.Normal -> Unit
                 }
@@ -326,92 +336,95 @@ fun WeltArbeitsplatz(welt: Welt, zustand: Weltzustand, beiVerlassen: () -> Unit)
             },
         )
 
+        // Der erste Abruf läuft noch: ein Hinweis mittig über der leeren Karte,
+        // statt dass „nichts los“ und „noch nicht geladen“ gleich aussehen.
+        if (zustand.betrieb == null && zustand.betriebLaeuft && zustand.fehler == null) {
+            Text(
+                "Die Welt wird geladen …",
+                style = Schrift.MonoKlein,
+                color = Farben.TextLeise,
+                modifier = Modifier.align(Alignment.Center),
+            )
+        }
+
+        val seite = werkbank.seite
+        if (seite != null) {
+            Weltseite(
+                titel = seite.name_,
+                zeichen = seite.zeichen,
+                zahl = when (seite) {
+                    Werkzeug.Lagen -> zustand.offeneLagen.size
+                    Werkzeug.Fahrzeuge -> zustand.freieFahrzeuge.size
+                    else -> null
+                },
+                oben = kopfhoehe,
+                // Der Weg zurück führt eine Ebene hoch, nicht bis nach Hause:
+                // Wer über „Mehr“ in die Kasse ging, kommt dorthin zurück.
+                beiSchliessen = {
+                    werkbank.seite = if (seite in Werkzeug.HINTER_MEHR) Werkzeug.Mehr else null
+                },
+            ) {
+                when (seite) {
+                    Werkzeug.Lagen -> LagenSeite(welt, zustand, werkbank, karte)
+                    Werkzeug.Fahrzeuge -> FahrzeugeSeite(welt, zustand, werkbank, karte)
+                    Werkzeug.Fahrzeugkauf -> FahrzeugkaufSeite(welt, zustand, werkbank)
+                    Werkzeug.Wachen -> WachenSeite(welt, zustand, werkbank, karte)
+                    Werkzeug.Wachenseite -> WachenDetailSeite(welt, zustand, werkbank)
+                    Werkzeug.Bauen -> BauSeite(welt, zustand, werkbank)
+                    Werkzeug.Grosslage -> GrosslageSeite(welt, zustand, karte)
+                    Werkzeug.Chat -> ChatSeite(welt, zustand)
+                    Werkzeug.Kasse -> KasseSeite(welt, zustand)
+                    Werkzeug.Rangliste -> RanglisteSeite(welt, zustand)
+                    Werkzeug.Laufbahn -> LaufbahnSeite(welt, zustand)
+                    Werkzeug.Leihe -> LeiheSeite(welt, zustand)
+                    Werkzeug.Einstellungen -> EinstellungSeite(welt, zustand, ebenen)
+                    Werkzeug.Mehr -> MehrSeite(zustand, werkbank, beiVerlassen)
+                }
+            }
+        }
+
         Weltkopf(
             zustand = zustand,
             beiLaufbahn = { werkbank.umschalten(Werkzeug.Laufbahn) },
-            beiVerlassen = beiVerlassen,
             modifier = Modifier.align(Alignment.TopCenter).padding(top = oben),
         )
 
-        Column(
-            verticalArrangement = Arrangement.spacedBy(Abstand.Klein),
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .imePadding(),
-        ) {
-            // Der Betrieb ist gerissen: Es steht dran, statt still eingefrorene
-            // Daten zu zeigen.
-            zustand.fehler?.let { f ->
-                Text(
-                    text = "$f — es wird weiter versucht.",
-                    style = Schrift.MonoKlein,
-                    color = Farben.Text,
-                    modifier = Modifier
-                        .padding(horizontal = Abstand.Normal)
-                        .background(Farben.SignalTief, Rundung.Klein)
-                        .padding(horizontal = Abstand.Normal, vertical = Abstand.Klein),
-                )
-            }
-            if (zustand.betrieb == null && zustand.betriebLaeuft && zustand.fehler == null) {
-                Text(
-                    "Die Welt wird geladen …",
-                    style = Schrift.MonoKlein,
-                    color = Farben.TextLeise,
-                    modifier = Modifier.padding(horizontal = Abstand.Normal),
-                )
-            }
-
-            val seite = werkbank.seite
-            // Die Einführung tritt zur Seite, solange eine Seite offen ist oder
-            // die Karte etwas wählt — zwei Erklärungen übereinander sind keine.
-            val zeigt = WeltEinfuehrung(
-                zustand = zustand,
-                werkbank = werkbank,
-                zeigen = seite == null && werkbank.modus == Kartenmodus.Normal && werkbank.gewaehltesFahrzeug == null,
-            )
-            if (seite == null) {
-                Modushinweis(welt, zustand, werkbank)
-                Fahrzeugchip(zustand, werkbank)
-            } else {
-                Weltseite(
-                    titel = seite.name_,
-                    zahl = when (seite) {
-                        Werkzeug.Lagen -> zustand.offeneLagen.size
-                        Werkzeug.Fahrzeuge -> zustand.freieFahrzeuge.size
-                        else -> null
-                    },
-                    hoehe = hoehe * 0.6f,
-                    beiSchliessen = {
-                        werkbank.seite = if (seite in Werkzeug.HINTER_MEHR) Werkzeug.Mehr else null
-                    },
-                ) {
-                    when (seite) {
-                        Werkzeug.Lagen -> LagenSeite(welt, zustand, werkbank, karte)
-                        Werkzeug.Fahrzeuge -> FahrzeugeSeite(welt, zustand, werkbank, karte)
-                        Werkzeug.Fahrzeugkauf -> FahrzeugkaufSeite(welt, zustand, werkbank)
-                        Werkzeug.Wachen -> WachenSeite(welt, zustand, werkbank, karte)
-                        Werkzeug.Wachenseite -> WachenDetailSeite(welt, zustand, werkbank)
-                        Werkzeug.Bauen -> BauSeite(welt, zustand, werkbank)
-                        Werkzeug.Grosslage -> GrosslageSeite(welt, zustand, karte)
-                        Werkzeug.Chat -> ChatSeite(welt, zustand)
-                        Werkzeug.Kasse -> KasseSeite(welt, zustand)
-                        Werkzeug.Rangliste -> RanglisteSeite(welt, zustand)
-                        Werkzeug.Laufbahn -> LaufbahnSeite(welt, zustand)
-                        Werkzeug.Leihe -> LeiheSeite(welt, zustand)
-                        Werkzeug.Einstellungen -> EinstellungSeite(welt, zustand, ebenen)
-                        Werkzeug.Mehr -> MehrSeite(zustand, werkbank, beiVerlassen)
-                    }
-                }
-            }
-
-            Welttableiste(
-                zustand = zustand,
-                werkbank = werkbank,
-                unten = unten,
-                zeigt = zeigt?.let { if (it in Werkzeug.HINTER_MEHR) Werkzeug.Mehr else it },
+        // Der Takt ist gerissen — es steht dran, statt still eingefrorene Daten
+        // zu zeigen. Unter dem Kopf, damit Guthaben und Stufe lesbar bleiben.
+        zustand.fehler?.let { f ->
+            Text(
+                text = "$f — es wird weiter versucht.",
+                style = Schrift.MonoKlein,
+                color = Farben.Text,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = kopfhoehe + Abstand.Klein, start = Abstand.Normal, end = Abstand.Normal)
+                    .background(Farben.SignalTief, Rundung.Klein)
+                    .border(1.dp, Farben.Signal, Rundung.Klein)
+                    .padding(horizontal = Abstand.Normal, vertical = Abstand.Klein),
             )
         }
+
+        // Unten: der Hinweis des Wahlmodus samt Zeichenleiste, die Einführung,
+        // darunter die Reiter. Beim Standortwählen tritt die Einführung zur
+        // Seite — zwei Erklärungen auf demselben Streifen sind keine.
+        val standortWaehlen = seite == null && werkbank.modus != Kartenmodus.Normal
+        Column(
+            verticalArrangement = Arrangement.spacedBy(Abstand.Klein),
+            modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
+        ) {
+            if (seite == null) Kartenhinweis(werkbank)
+            val zeigt = WeltEinfuehrung(zustand = zustand, werkbank = werkbank, zeigen = !standortWaehlen)
+            Welttableiste(zustand = zustand, werkbank = werkbank, unten = unten, zeigt = zeigt)
+        }
+
+        // Post und Pings aus dem Chat, solange er zu ist — `ChatHinweis.vue`.
+        ChatHinweis(
+            welt = welt,
+            zustand = zustand,
+            beiOeffnen = { werkbank.seite = Werkzeug.Chat },
+            modifier = Modifier.align(Alignment.TopCenter).padding(top = kopfhoehe + Abstand.Klein),
+        )
 
         werkbank.fremdfahrzeug?.let { id ->
             val f = zustand.betrieb?.fremde?.firstOrNull { it.id == id }
@@ -455,379 +468,6 @@ fun WeltArbeitsplatz(welt: Welt, zustand: Weltzustand, beiVerlassen: () -> Unit)
             }
         }
     }
-}
-
-/** Der Stand oben — Leitstelle, Guthaben, Stufe, Erfahrungskante (`Weltkopf.vue`). */
-@Composable
-private fun Weltkopf(
-    zustand: Weltzustand,
-    beiLaufbahn: () -> Unit,
-    beiVerlassen: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val quelleAb = zustand.betrieb?.erfahrungStufeAb ?: zustand.stand?.erfahrungStufeAb ?: 0
-    val quelleBis = if (zustand.betrieb != null) zustand.betrieb.erfahrungStufeBis else zustand.stand?.erfahrungStufeBis
-    val erfahrung = zustand.betrieb?.erfahrung ?: zustand.stand?.erfahrung ?: 0
-    val hoechste = quelleBis == null || quelleBis <= quelleAb
-    val anteil = if (hoechste) 1f else ((erfahrung - quelleAb).toFloat() / (quelleBis!! - quelleAb)).coerceIn(0f, 1f)
-    val restschuld = zustand.betrieb?.restschuld ?: 0
-
-    // Die Gutschrift leuchtet vier Sekunden auf; mehrere in Folge zählen zusammen.
-    var gezeigt by remember { mutableStateOf<Long?>(null) }
-    var zuletzt by remember { mutableStateOf(0L) }
-    LaunchedEffect(zustand.gutschrift) {
-        val g = zustand.gutschrift ?: return@LaunchedEffect
-        if (g.um == zuletzt) return@LaunchedEffect
-        zuletzt = g.um
-        gezeigt = (gezeigt ?: 0) + g.betrag
-        delay(4_000)
-        gezeigt = null
-    }
-
-    Column(
-        modifier = modifier
-            .padding(horizontal = Abstand.Klein, vertical = Abstand.Klein)
-            .fillMaxWidth()
-            .flaeche(farbe = Farben.FlaecheHoch.copy(alpha = 0.94f), ecke = 12.dp),
-    ) {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(start = Abstand.Klein, end = Abstand.Klein, top = Abstand.Klein),
-        ) {
-            Box(
-                contentAlignment = Alignment.Center,
-                modifier = Modifier
-                    .size(40.dp)
-                    .clickable(onClick = beiVerlassen)
-                    .semantics { contentDescription = "World verlassen" },
-            ) {
-                Icon(Weltzeichen.Zurueck, contentDescription = null, tint = Farben.TextLeise, modifier = Modifier.size(22.dp))
-            }
-            Column(Modifier.weight(1f)) {
-                Text(
-                    zustand.stand?.name.orEmpty(),
-                    style = Schrift.Klein.copy(fontWeight = FontWeight.Bold),
-                    color = Farben.Text,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                zustand.stand?.kreis?.let {
-                    Text(it, style = Schrift.Winzig, color = Farben.TextSehrLeise, maxLines = 1)
-                }
-            }
-            Column(horizontalAlignment = Alignment.End) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("$WAEHRUNG ${zahl(zustand.guthaben)}", style = Schrift.MonoNormal.copy(fontWeight = FontWeight.Bold), color = Farben.Amber)
-                    gezeigt?.let {
-                        Text("+${zahl(it)}", style = Schrift.MonoKlein, color = Farben.GruenHell)
-                    }
-                }
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    modifier = Modifier.clickable(onClick = beiLaufbahn),
-                ) {
-                    if (restschuld > 0) Text("−${zahl(restschuld)}", style = Schrift.Winzig.copy(fontFamily = Schrift.Mono), color = Farben.SignalHell)
-                    Text("Stufe ${zustand.stufe}", style = Schrift.Winzig, color = Farben.TextSehrLeise)
-                }
-            }
-        }
-        Box(
-            modifier = Modifier
-                .padding(top = Abstand.Klein)
-                .fillMaxWidth()
-                .height(4.dp)
-                .background(Farben.BgTief),
-        ) {
-            Box(
-                Modifier
-                    .fillMaxWidth(anteil)
-                    .height(4.dp)
-                    .background(if (hoechste) Farben.AmberHell else Farben.Amber),
-            )
-        }
-    }
-}
-
-/** Der Rahmen einer Seite — Titel, Zahl, Schließen, darunter der Inhalt, der rollt. */
-@Composable
-private fun Weltseite(
-    titel: String,
-    zahl: Int?,
-    hoehe: androidx.compose.ui.unit.Dp,
-    beiSchliessen: () -> Unit,
-    inhalt: @Composable () -> Unit,
-) {
-    Column(
-        modifier = Modifier
-            .padding(horizontal = Abstand.Klein)
-            .fillMaxWidth()
-            .height(hoehe)
-            .flaeche(farbe = Farben.Bg.copy(alpha = 0.98f), randfarbe = Farben.RandHell, ecke = 16.dp),
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(Abstand.Klein),
-            modifier = Modifier.padding(start = Abstand.Gross, end = Abstand.Klein, top = Abstand.Klein),
-        ) {
-            Text(titel, style = Schrift.Gross.copy(fontWeight = FontWeight.Bold), color = Farben.Text, modifier = Modifier.weight(1f))
-            if (zahl != null && zahl > 0) Markenzahl(zahl)
-            Box(
-                contentAlignment = Alignment.Center,
-                modifier = Modifier
-                    .size(44.dp)
-                    .clickable(onClick = beiSchliessen)
-                    .semantics { contentDescription = "$titel schließen" },
-            ) {
-                Text("✕", style = Schrift.Normal, color = Farben.TextLeise)
-            }
-        }
-        Column(
-            verticalArrangement = Arrangement.spacedBy(Abstand.Normal),
-            modifier = Modifier
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(start = Abstand.Gross, end = Abstand.Gross, bottom = Abstand.Gross),
-        ) { inhalt() }
-    }
-}
-
-/**
- * Die Reiter der Welt — `Welttableiste.vue`: Lagen, Fahrzeuge, Wachen, Bauen,
- * Mehr. Die Marke an „Lagen“ wird gefüllt, sobald etwas nur bei mir liegt.
- */
-@Composable
-private fun Welttableiste(
-    zustand: Weltzustand,
-    werkbank: Werkbank,
-    unten: androidx.compose.ui.unit.Dp,
-    zeigt: Werkzeug? = null,
-) {
-    val nochNichts = zustand.stand?.wachen.isNullOrEmpty()
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(2.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(
-                Brush.verticalGradient(listOf(Color(0xFA263344), Color(0xFA101823))),
-                Rundung.LeisteOben,
-            )
-            .padding(horizontal = 4.dp)
-            .padding(bottom = unten),
-    ) {
-        Werkzeug.REITER.forEach { w ->
-            val hier = when (w) {
-                Werkzeug.Bauen -> werkbank.seite == Werkzeug.Bauen || werkbank.seite == Werkzeug.Fahrzeugkauf ||
-                    (werkbank.seite == null && werkbank.modus != Kartenmodus.Normal)
-                Werkzeug.Mehr -> werkbank.seite == Werkzeug.Mehr || werkbank.seite in Werkzeug.HINTER_MEHR
-                Werkzeug.Wachen -> werkbank.seite == Werkzeug.Wachen || werkbank.seite == Werkzeug.Wachenseite
-                else -> werkbank.seite == w
-            }
-            val marke = when (w) {
-                Werkzeug.Lagen -> zustand.offeneLagen.size
-                Werkzeug.Fahrzeuge -> zustand.freieFahrzeuge.size
-                Werkzeug.Mehr -> zustand.ungelesen
-                else -> 0
-            }
-            Reiterknopf(
-                werkzeug = w,
-                hier = hier,
-                marke = marke,
-                ruft = (w == Werkzeug.Bauen && nochNichts && !hier) ||
-                    (w == Werkzeug.Lagen && zustand.meineOffenen > 0) || (w == zeigt && !hier),
-                punkt = w == Werkzeug.Mehr && (zustand.grossAktiv || zustand.angepingt != null) && marke == 0,
-                markeRot = w == Werkzeug.Lagen && zustand.meineOffenen > 0,
-                beiDruck = {
-                    if (w == Werkzeug.Bauen) werkbank.modus = Kartenmodus.Normal
-                    werkbank.umschalten(w)
-                },
-            )
-        }
-    }
-}
-
-@Composable
-private fun RowScope.Reiterknopf(
-    werkzeug: Werkzeug,
-    hier: Boolean,
-    marke: Int,
-    ruft: Boolean,
-    punkt: Boolean,
-    markeRot: Boolean,
-    beiDruck: () -> Unit,
-) {
-    val farbe = when {
-        hier -> Farben.Amber
-        ruft -> Farben.AmberHell
-        else -> Farben.TextLeise
-    }
-    Box(
-        contentAlignment = Alignment.TopCenter,
-        modifier = Modifier
-            .weight(1f)
-            .padding(vertical = 6.dp)
-            .defaultMinSize(minHeight = 56.dp)
-            .background(if (hier) Farben.HauchAmber else Color.Transparent, Rundung.Normal)
-            .border(1.dp, if (hier) Farben.AmberTief else Color.Transparent, Rundung.Normal)
-            .clickable(onClick = beiDruck, role = Role.Tab)
-            .semantics { contentDescription = if (marke > 0) "${werkzeug.name_} — $marke" else werkzeug.name_ },
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(3.dp),
-            modifier = Modifier.padding(top = Abstand.Klein),
-        ) {
-            Icon(werkzeug.zeichen, contentDescription = null, tint = farbe, modifier = Modifier.size(22.dp))
-            Text(werkzeug.kurz, style = Schrift.Weg, color = farbe, maxLines = 1)
-        }
-        if (marke > 0) {
-            Box(Modifier.align(Alignment.TopCenter).padding(start = 30.dp, top = 2.dp)) {
-                Text(
-                    text = if (marke > 99) "99+" else "$marke",
-                    style = Schrift.Winzig.copy(fontFamily = Schrift.Mono, fontWeight = FontWeight.Bold),
-                    color = if (markeRot) Farben.AufFarbe else Farben.Text,
-                    modifier = Modifier
-                        .background(if (markeRot) Farben.Signal else Farben.FlaecheAktiv, Rundung.Rund)
-                        .padding(horizontal = 5.dp),
-                )
-            }
-        } else if (punkt) {
-            Box(
-                Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(start = 28.dp, top = 6.dp)
-                    .size(8.dp)
-                    .background(Farben.Signal, CircleShape),
-            )
-        }
-    }
-}
-
-/**
- * Der Hinweis über den Reitern, solange die Karte etwas wählt — was ein Tipp
- * gerade tut, und der Weg zurück zur Seite.
- */
-@Composable
-private fun Modushinweis(welt: Welt, zustand: Weltzustand, werkbank: Werkbank) {
-    val text = when (werkbank.modus) {
-        Kartenmodus.Normal -> return
-        Kartenmodus.Ort -> when (werkbank.ortZweck) {
-            "zweig" -> "Tipp auf die Karte: Hier entsteht die nächste Leitstelle."
-            "poi" -> "Tipp auf die Karte: Hier liegt dein Punkt."
-            else -> "Tipp auf die Karte: Hier entsteht die Wache. Der gestrichelte Kreis ist dein Baugebiet."
-        }
-        Kartenmodus.Gelaende -> {
-            val noetig = if (werkbank.eckenStrecke) 2 else 3
-            val n = werkbank.ecken.size
-            val mass = if (werkbank.eckenStrecke) laengenwort(zuglaengeMeter(werkbank.ecken.map { it.lat to it.lon }))
-            else flaechenwort(vieleckQuadratmeter(werkbank.ecken.map { it.lat to it.lon }))
-            if (n < noetig) "$n von mindestens $noetig Punkten — tipp weiter auf die Karte."
-            else "$n Punkte · $mass"
-        }
-        Kartenmodus.Pfad -> {
-            val n = werkbank.pfad.size
-            if (n == 0) "Tipp auf die Karte: Jeder Tipp ist eine Station der Streife."
-            else "$n ${if (n == 1) "Station" else "Stationen"} — zuletzt ${werkbank.pfad.last().name}"
-        }
-    }
-    Column(
-        verticalArrangement = Arrangement.spacedBy(Abstand.Klein),
-        modifier = Modifier
-            .padding(horizontal = Abstand.Klein)
-            .fillMaxWidth()
-            .flaeche(farbe = Farben.FlaecheHoch.copy(alpha = 0.96f), randfarbe = Farben.AmberTief, ecke = 12.dp)
-            .padding(Abstand.Normal),
-    ) {
-        Text(text, style = Schrift.Klein, color = Farben.Text)
-        Umbruchreihe {
-            if (werkbank.modus == Kartenmodus.Gelaende && werkbank.ecken.isNotEmpty()) {
-                Knopf("Letzten Punkt weg", { werkbank.ecken = werkbank.ecken.dropLast(1) }, kompakt = true, art = Knopfart.Leise)
-            }
-            if (werkbank.modus == Kartenmodus.Pfad && werkbank.pfad.isNotEmpty()) {
-                Knopf("Letzte Station weg", { werkbank.pfad = werkbank.pfad.dropLast(1) }, kompakt = true, art = Knopfart.Leise)
-            }
-            Knopf(
-                if (werkbank.modus == Kartenmodus.Ort) "Abbrechen" else "Fertig",
-                {
-                    werkbank.modus = Kartenmodus.Normal
-                    werkbank.zurueckZurSeite()
-                },
-                kompakt = true,
-                art = if (werkbank.modus == Kartenmodus.Ort) Knopfart.Leise else Knopfart.Haupt,
-            )
-        }
-    }
-}
-
-/** Ein angetipptes eigenes Fahrzeug — der Weg steht auf der Karte, das Nähere hier. */
-@Composable
-private fun Fahrzeugchip(zustand: Weltzustand, werkbank: Werkbank) {
-    val f = zustand.fahrzeuge.firstOrNull { it.id == werkbank.gewaehltesFahrzeug } ?: return
-    val lage = zustand.betrieb?.lagen?.firstOrNull { it.id == f.lageId }
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(Abstand.Normal),
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier
-            .padding(horizontal = Abstand.Klein)
-            .fillMaxWidth()
-            .flaeche(farbe = Farben.FlaecheHoch.copy(alpha = 0.96f), ecke = 12.dp)
-            .padding(Abstand.Normal),
-    ) {
-        Fmsplakette(f.status)
-        Column(Modifier.weight(1f)) {
-            Text(f.funkrufname, style = Schrift.MonoKlein, color = Farben.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(
-                listOfNotNull(f.typ, taetigkeit(zustand, f), lage?.stichwort).joinToString(" · "),
-                style = Schrift.Winzig,
-                color = Farben.TextSehrLeise,
-                maxLines = 2,
-            )
-        }
-        Knopf("Öffnen", {
-            werkbank.offenesFahrzeug = f.id
-            werkbank.seite = Werkzeug.Fahrzeuge
-        }, kompakt = true)
-    }
-}
-
-/** „Mehr“ — die Werkzeuge ohne eigenen Reiter (`MehrBlende.vue`). */
-@Composable
-private fun MehrSeite(zustand: Weltzustand, werkbank: Werkbank, beiVerlassen: () -> Unit) {
-    val erklaerung = mapOf(
-        Werkzeug.Grosslage to "Die eine Lage der Woche — Zeit, Ort und Bereitstellung.",
-        Werkzeug.Chat to "Mit allen in der Welt schreiben — und das Funkgerät.",
-        Werkzeug.Kasse to "Woher das Geld kommt, wohin es geht — und der Kredit.",
-        Werkzeug.Rangliste to "Wer diese Woche am meisten verdient hat.",
-        Werkzeug.Laufbahn to "Alle Stufen — was wann freischaltet.",
-        Werkzeug.Leihe to "Fahrzeuge mieten — oder eigene gegen Credits einstellen.",
-        Werkzeug.Einstellungen to "Gangart und Karte — wie viel gleichzeitig los ist.",
-    )
-    Werkzeug.HINTER_MEHR.forEach { w ->
-        val zusatz = when {
-            w == Werkzeug.Grosslage && zustand.grossAktiv -> "läuft"
-            w == Werkzeug.Chat && zustand.ungelesen > 0 -> "${zustand.ungelesen} neu"
-            w == Werkzeug.Chat && zustand.angepingt != null -> "erwähnt"
-            else -> null
-        }
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(Abstand.Normal),
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .fillMaxWidth()
-                .flaeche(ecke = 12.dp)
-                .clickable { werkbank.seite = w }
-                .padding(Abstand.Normal),
-        ) {
-            Icon(w.zeichen, contentDescription = null, tint = Farben.TextLeise, modifier = Modifier.size(22.dp))
-            Column(Modifier.weight(1f)) {
-                Text(w.name_, style = Schrift.Klein.copy(fontWeight = FontWeight.Bold), color = Farben.Text)
-                Text(erklaerung[w].orEmpty(), style = Schrift.Winzig, color = Farben.TextSehrLeise)
-            }
-            zusatz?.let { Weltmarke(it, Farben.SignalHell) }
-        }
-    }
-    Knopf("World verlassen", beiVerlassen, art = Knopfart.Leise, breit = true)
 }
 
 /** Was ein Fahrzeug gerade tut — `taetigkeit` in `FahrzeugBlende.vue`. */

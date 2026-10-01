@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.Text
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -59,11 +61,14 @@ fun FahrzeugeSeite(welt: Welt, zustand: Weltzustand, werkbank: Werkbank, karte: 
     @Suppress("UNUSED_EXPRESSION") takt
 
     Bereichsreiter(welt, zustand)
-    Knopf("Fahrzeug kaufen", { werkbank.seite = Werkzeug.Fahrzeugkauf }, kompakt = true, zeichenVorn = null)
+    Knopf("Fahrzeug kaufen", { werkbank.seite = Werkzeug.Fahrzeugkauf }, kompakt = true, zeichenVorn = {
+        Icon(Weltzeichen.Kauf, contentDescription = null, tint = Farben.Text, modifier = Modifier.size(18.dp))
+    })
 
     val bestand = zustand.fahrzeuge.filter(zustand::fahrzeugImBereich)
-    if (bestand.size >= 8) {
-        Feld(wert = suche, beiAenderung = { suche = it }, platzhalter = "Rufname, Typ, Fähigkeit, Wache …")
+    // Das Suchfeld erst, wenn es etwas zu durchsuchen gibt — wie im Web ab sechs.
+    if (bestand.size > 5) {
+        Feld(wert = suche, beiAenderung = { suche = it }, platzhalter = "Rufname, Typ, Fähigkeit …")
     }
     fun passt(f: WeltFahrzeug): Boolean {
         val t = suche.trim().lowercase()
@@ -76,8 +81,8 @@ fun FahrzeugeSeite(welt: Welt, zustand: Weltzustand, werkbank: Werkbank, karte: 
     val liste = bestand.filter(::passt).sortedWith(compareBy({ LAGENRANG[it.lage] ?: 9 }, { it.funkrufname }))
 
     when {
-        bestand.isEmpty() -> Leisesatz("Noch kein Fahrzeug. Kauf eines für eine deiner Wachen — oben der Knopf.")
-        liste.isEmpty() -> Leisesatz("Kein Fahrzeug passt zur Suche.")
+        bestand.isEmpty() -> Leisesatz("Noch kein Fahrzeug. Erst eine Wache bauen, dann Fahrzeuge kaufen.")
+        liste.isEmpty() -> Leisesatz("Kein Fahrzeug passt zu „${suche.trim()}“.")
     }
 
     liste.forEach { f ->
@@ -484,10 +489,22 @@ fun FahrzeugkaufSeite(welt: Welt, zustand: Weltzustand, werkbank: Werkbank) {
     )
     val w = aktuelleWache ?: return
     val freiePlaetze = w.stellplaetze - w.belegt
-    Leisesatz(if (freiePlaetze > 0) "$freiePlaetze ${if (freiePlaetze == 1) "Platz" else "Plätze"} frei." else "Diese Wache ist voll.")
+    // Jede Wache kauft aus dem Katalog ihres Staats — der Staat kommt vom
+    // Server und folgt dem Standort. Ohne die Prüfung stünden österreichische
+    // Fahrzeuge in Kassel, und der Kauf scheiterte erst am Server.
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
+        Landesflagge(w.staat, 18.dp)
+        Text(
+            if (freiePlaetze > 0) "Katalog ${staatName(w.staat)} · noch $freiePlaetze ${if (freiePlaetze == 1) "Platz" else "Plätze"} frei."
+            else "Katalog ${staatName(w.staat)} · Diese Wache ist voll.",
+            style = Schrift.Klein,
+            color = Farben.TextLeise,
+        )
+    }
 
     val vorlagen = jeTypEine(zustand.vorlagen.values).filter { v ->
-        passtZurWache(w.art, v) && when (v.organisation) {
+        (v.staaten.firstOrNull() ?: "Deutschland") == w.staat &&
+            passtZurWache(w.art, v) && when (v.organisation) {
             "Feuerwehr" -> true
             "Rettungsdienst" -> "Rettungsdienst" in frei
             "Polizei" -> "Polizei" in frei

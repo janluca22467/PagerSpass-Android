@@ -39,6 +39,8 @@ import androidx.compose.ui.graphics.drawscope.rotate
 import de.pagerspass.pagerspass.mobil.packFahrzeug
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
@@ -590,17 +592,23 @@ fun Weltkarte(
             horizontalAlignment = Alignment.End,
             modifier = Modifier.align(Alignment.TopEnd).padding(polster).padding(Abstand.Normal),
         ) {
-            Kartenknopf("+") { kartenstand.zoom = (kartenstand.zoom + 1).coerceAtMost(18.0) }
-            Kartenknopf("−") { kartenstand.zoom = (kartenstand.zoom - 1).coerceAtLeast(3.0) }
+            // Drei Knöpfe wie im Web: einpassen, Ansicht, Ebenen. Gezoomt wird
+            // mit zwei Fingern — Plus und Minus wären zwei Knöpfe mehr über
+            // einer Karte, die am Handy ohnehin knapp ist.
             if (zustand.stand != null) {
-                Kartenknopf("⌖") {
+                Kartenknopf(Weltzeichen.Einpassen, "Auf den eigenen Bereich einpassen") {
                     val s = zustand.stand
                     val punkte = s.wachen.map { it.lat to it.lon } + (s.lat to s.lon)
                     kartenstand.zuschneiden(punkte, 13.0)
                 }
             }
-            Kartenknopf("◐") { stilwahl = !stilwahl; ebenenwahl = false }
-            if (zustand.stand != null) Kartenknopf("≣") { ebenenwahl = !ebenenwahl; stilwahl = false }
+            Kartenknopf(Weltzeichen.Ansicht, "Kartenansicht wählen", an = stilwahl) { stilwahl = !stilwahl; ebenenwahl = false }
+            if (zustand.stand != null) {
+                Kartenknopf(Weltzeichen.Ebenen, "Ebenen ein- und ausblenden", an = ebenenwahl) {
+                    ebenenwahl = !ebenenwahl
+                    stilwahl = false
+                }
+            }
             if (stilwahl) {
                 Column(
                     verticalArrangement = Arrangement.spacedBy(2.dp),
@@ -809,12 +817,31 @@ internal fun farbeAus(roh: String): Color? = runCatching {
     Color(0xFF000000 or hex.toLong(16))
 }.getOrNull()
 
+/** Ein Kartenknopf — Glas wie Kopf und Leiste, offen in Cyan (`aufsatzknopf--an`). */
 @Composable
-private fun Kartenknopf(zeichen: String, beiDruck: () -> Unit) {
+private fun Kartenknopf(
+    zeichen: androidx.compose.ui.graphics.vector.ImageVector,
+    beschreibung: String,
+    an: Boolean = false,
+    beiDruck: () -> Unit,
+) {
     Box(
         contentAlignment = Alignment.Center,
-        modifier = Modifier.size(44.dp).flaeche(ecke = 9.dp).clickable(onClick = beiDruck),
+        modifier = Modifier
+            .size(44.dp)
+            .flaeche(
+                farbe = if (an) Weltfarben.Hauch else Weltfarben.Glas,
+                randfarbe = if (an) Weltfarben.AkzentTief else Weltfarben.Kante,
+                ecke = 10.dp,
+            )
+            .clickable(onClick = beiDruck)
+            .semantics { contentDescription = beschreibung },
     ) {
-        Text(text = zeichen, style = Schrift.Normal, color = Farben.Text)
+        androidx.compose.material3.Icon(
+            zeichen,
+            contentDescription = null,
+            tint = if (an) Weltfarben.Akzent else Farben.Text,
+            modifier = Modifier.size(20.dp),
+        )
     }
 }

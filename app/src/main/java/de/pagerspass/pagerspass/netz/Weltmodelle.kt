@@ -57,6 +57,12 @@ data class WeltWache(
     val bereich: String = "",
     val buehnen: Int = 0,
     val buehnenBelegt: Int = 0,
+    /**
+     * In welchem Staat sie steht (seit PagerSpass 6) — er entscheidet, aus
+     * welchem Katalog an ihr gekauft wird. Ein älterer Server schickt nichts:
+     * dann Deutschland, wie bisher überall.
+     */
+    val staat: String = "Deutschland",
 )
 
 /** Eine Station eines Streifenpfads — ein Ort mit Namen. */
@@ -280,6 +286,12 @@ data class WeltChatstand(
     val ungelesen: Int = 0,
     val maxLaenge: Int = 300,
     val funkgeraetVorgabe: Boolean = false,
+    /**
+     * Wie lange eine eigene Zeile zurückgenommen werden kann (seit PagerSpass 6).
+     * Ein älterer Server kennt das Zurücknehmen nicht und schickt nichts — dann
+     * 0, und der Knopf erscheint nie.
+     */
+    val zuruecknahmeSekunden: Int = 0,
 )
 
 /** Ein fremdes Fahrzeug auf der gemeinsamen Karte — schlanker als das eigene. */
@@ -492,6 +504,8 @@ data class Weltstand(
     val fahrzeugpreise: Map<String, Int> = emptyMap(),
     val bereiche: List<WeltBereich> = emptyList(),
     val zweigstelle: WeltZweigstellenstand? = null,
+    /** Der Staat der Leitstelle — die Flagge oben links im Kopf. */
+    val staat: String = "Deutschland",
 )
 
 /** Der laufende Betrieb: was gerade auf der Karte los ist. */
@@ -706,6 +720,8 @@ data class WeltVorlage(
     val besatzung: String = "",
     val faehigkeiten: List<String> = emptyList(),
     val kategorie: String = "",
+    /** Die Staaten, in denen es die Fassung gibt — der erste ist ihre Heimat. */
+    val staaten: List<String> = emptyList(),
 )
 
 @Serializable
