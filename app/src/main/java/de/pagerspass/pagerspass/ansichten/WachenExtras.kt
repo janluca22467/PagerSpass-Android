@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -28,6 +29,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -91,10 +94,11 @@ import java.util.Locale
 // ------------------------------------------------------------------- Emblem
 
 /**
- * Das Emblem der Wache — Initialen im Tonkreis, mit dem gekauften Rahmen.
+ * Das Emblem der Wache — das gewählte Zeichen (Helm, Florianskreuz, …) oder die
+ * Initialen im Tonkreis, mit dem gekauften Rahmen.
  *
- * Das gewählte Emblem-Zeichen des Webs (Helm, Florianskreuz, …) zeichnet die App
- * noch nicht; an seiner Stelle stehen die Initialen, wie im Web ohne Zeichen.
+ * Das Zeichen füllt wie im Web 60 % des Schilds und trägt die Schriftfarbe des
+ * Tons — dieselbe Tinte, die sonst die Initialen hätten.
  */
 @Composable
 fun Wachenemblem(gemeinschaft: Gemeinschaft, groesse: Dp = 52.dp) {
@@ -112,11 +116,19 @@ fun Wachenemblem(gemeinschaft: Gemeinschaft, groesse: Dp = 52.dp) {
             .background(ton, CircleShape)
             .border(1.5.dp, ton.copy(alpha = 0.8f), CircleShape),
     ) {
-        Text(
-            text = Wappen.initialen(gemeinschaft.name, "W"),
-            style = if (groesse >= 48.dp) Schrift.Gross else Schrift.Klein,
-            color = Wappen.schrift(ton),
-        )
+        if (de.pagerspass.pagerspass.ui.schmuck.Wachenzeichen.hat(gemeinschaft.emblemzeichen)) {
+            de.pagerspass.pagerspass.ui.schmuck.WachenzeichenBild(
+                name = gemeinschaft.emblemzeichen,
+                farbe = Wappen.schrift(ton),
+                modifier = Modifier.fillMaxSize(0.6f),
+            )
+        } else {
+            Text(
+                text = Wappen.initialen(gemeinschaft.name, "W"),
+                style = if (groesse >= 48.dp) Schrift.Gross else Schrift.Klein,
+                color = Wappen.schrift(ton),
+            )
+        }
     }
 }
 
@@ -479,6 +491,9 @@ fun HilfsfristVerlauf(eigene: List<Schicht>, mitglieder: List<GemeinschaftsHilfs
     val hoechst = maxOf(60.0, Math.ceil(alle.maxOf { it.second } / 60.0) * 60.0)
     val von = alle.minOf { it.first }
     val bis = alle.maxOf { it.first }
+    // Der angetippte Punkt — die Zeile unter der Kurve nennt Name, Zeit und
+    // Wert wie das Schildchen im Web.
+    var aktiv by remember(eigene, mitglieder) { mutableStateOf<Pair<Serie, Pair<Long, Double>>?>(null) }
 
     Abschnitt("Ø Hilfsfrist · letzte Schichten") {
         if (serien.size > 1) {
@@ -506,7 +521,27 @@ fun HilfsfristVerlauf(eigene: List<Schicht>, mitglieder: List<GemeinschaftsHilfs
                         SehrLeise(hilfsfrist((hoechst * anteil).toInt()) ?: "", mono = true)
                     }
                 }
-                Canvas(modifier = Modifier.weight(1f).height(150.dp)) {
+                Canvas(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(150.dp)
+                        .pointerInput(serien, hoechst) {
+                            detectTapGestures { ort ->
+                                val rand = 8.dp.toPx()
+                                val breite = size.width.toFloat()
+                                val h = size.height - 2 * rand
+                                fun x(t: Long) = if (bis == von) breite / 2 else (t - von).toFloat() / (bis - von) * breite
+                                fun y(sek: Double) = rand + h - (sek / hoechst).toFloat() * h
+                                // Der nächste Punkt im Umkreis eines Fingers.
+                                aktiv = serien
+                                    .flatMap { serie -> serie.punkte.map { serie to it } }
+                                    .map { it to (Offset(x(it.second.first), y(it.second.second)) - ort).getDistance() }
+                                    .filter { it.second <= 24.dp.toPx() }
+                                    .minByOrNull { it.second }
+                                    ?.first
+                            }
+                        },
+                ) {
                     val rand = 8.dp.toPx()
                     val h = size.height - 2 * rand
                     fun x(t: Long) = if (bis == von) size.width / 2 else (t - von).toFloat() / (bis - von) * size.width
@@ -535,14 +570,32 @@ fun HilfsfristVerlauf(eigene: List<Schicht>, mitglieder: List<GemeinschaftsHilfs
                             )
                         }
                     }
+                    aktiv?.let { (s, p) ->
+                        val mitte = Offset(x(p.first), y(p.second))
+                        drawCircle(s.farbe.copy(alpha = 0.25f), 9.dp.toPx(), mitte)
+                        drawCircle(s.farbe, 5.dp.toPx(), mitte)
+                    }
                 }
             }
             Row(modifier = Modifier.fillMaxWidth()) {
                 SehrLeise(kurzdatum(von), mono = true, modifier = Modifier.weight(1f))
                 SehrLeise(kurzdatum(bis), mono = true)
             }
-            eigeneSerie.punkte.lastOrNull()?.let { (_, sek) ->
-                SehrLeise("Zuletzt bei dir: ${dauer(sek)}")
+            val gewaehlt = aktiv
+            if (gewaehlt != null) {
+                val (s, p) = gewaehlt
+                Text(
+                    "${s.name} · ${
+                        DateTimeFormatter.ofPattern("dd.MM., HH:mm")
+                            .format(Instant.ofEpochMilli(p.first).atZone(ZoneId.systemDefault()))
+                    } · ${dauer(p.second)}",
+                    style = Schrift.MonoKlein,
+                    color = s.farbe,
+                )
+            } else {
+                eigeneSerie.punkte.lastOrNull()?.let { (_, sek) ->
+                    SehrLeise("Zuletzt bei dir: ${dauer(sek)} · Punkt antippen zeigt den Wert.")
+                }
             }
         }
     }
@@ -682,8 +735,16 @@ fun EinstellungenBlende(
             // Dieselbe Adresse, die im Web hinter dem QR-Code steht.
             val link = "$server/gemeinschaften?code=$code"
             Ueberschrift("Beitrittscode")
-            Text(code, style = Schrift.Titel.copy(fontFamily = Schrift.Mono), color = Farben.Amber)
-            SehrLeise("Wer diesen Code hat, tritt ohne Rückfrage bei.")
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(Abstand.Normal),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                de.pagerspass.pagerspass.ui.bausteine.QrCode(link)
+                Column(verticalArrangement = Arrangement.spacedBy(Abstand.Haar)) {
+                    Text(code, style = Schrift.Titel.copy(fontFamily = Schrift.Mono), color = Farben.Amber)
+                    SehrLeise("Wer diesen Code hat, tritt ohne Rückfrage bei. Abfotografieren genügt.")
+                }
+            }
             FlowRow(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
                 Knopf(if (kopiert) "Link kopiert" else "Link kopieren", {
                     ablage.setText(androidx.compose.ui.text.AnnotatedString(link))
@@ -901,6 +962,15 @@ private fun Stueckwahl(stueck: Wachenstueck, an: Boolean, aktiv: Boolean, beiDru
             .clickable(enabled = aktiv, role = Role.Button, onClick = beiDruck)
             .padding(Abstand.Klein),
     ) {
+        // Ein Emblem-Zeichen zeigt sich selbst — der Name allein sagt bei
+        // „Ehrenzeichen" nicht, wie es aussieht.
+        if (stueck.art == "Emblemzeichen" && de.pagerspass.pagerspass.ui.schmuck.Wachenzeichen.hat(stueck.stueckId)) {
+            de.pagerspass.pagerspass.ui.schmuck.WachenzeichenBild(
+                name = stueck.stueckId,
+                farbe = if (stueck.frei) Farben.Amber else Farben.TextSehrLeise,
+                modifier = Modifier.size(28.dp),
+            )
+        }
         Text(
             stueck.name,
             style = Schrift.Klein,

@@ -1,6 +1,5 @@
 package de.pagerspass.pagerspass.ansichten
 
-import android.content.Intent
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -13,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -34,6 +34,11 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -366,7 +371,7 @@ private fun Hilfsfristverlauf(
     mitglieder: List<Mitgliedshilfsfrist>,
     beiSchicht: (String) -> Unit,
 ) {
-    data class Punkt(val zeit: Long, val sekunden: Double, val code: String?)
+    data class Punkt(val zeit: Long, val sekunden: Double, val code: String?, val ort: String? = null)
     data class Serie(val name: String, val farbe: Color, val punkte: List<Punkt>)
 
     val eigene = Serie(
@@ -375,7 +380,7 @@ private fun Hilfsfristverlauf(
         verlauf.mapNotNull { r ->
             val s = r.hilfsfristSekunden ?: return@mapNotNull null
             val t = zeitwert(r.beendetUm) ?: return@mapNotNull null
-            Punkt(t, s, r.code)
+            Punkt(t, s, r.code, r.ort.ifBlank { null })
         }.sortedBy { it.zeit },
     )
     val freundfarben = listOf(Farben.Gruen, Farben.Blau, Farben.HiorgBrh)
@@ -402,6 +407,9 @@ private fun Hilfsfristverlauf(
         val hoechst = (Math.ceil(alle.maxOf { it.sekunden } / 60.0) * 60.0).coerceAtLeast(60.0)
         val tMin = alle.minOf { it.zeit }
         val tMax = alle.maxOf { it.zeit }
+        // Der angetippte Punkt samt Serie — die Zeile unter der Kurve nennt ihn,
+        // wie das Schildchen im Web (`HilfsfristVerlauf.vue`).
+        var aktiv by remember(verlauf, mitglieder) { mutableStateOf<Pair<Serie, Punkt>?>(null) }
 
         Kasten(abstandInnen = Abstand.Klein) {
             Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
@@ -414,7 +422,40 @@ private fun Hilfsfristverlauf(
                         Text(dauer(it).orEmpty(), style = Schrift.Winzig, color = Farben.TextSehrLeise)
                     }
                 }
-                Canvas(modifier = Modifier.weight(1f).height(150.dp)) {
+                Canvas(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(150.dp)
+                        // Ein Finger trifft keinen Punkt von sieben Pixeln: Es
+                        // gilt der nächste Punkt im Umkreis von 24 dp, wie die
+                        // unsichtbaren Trefferkreise im Web.
+                        .pointerInput(serien, hoechst) {
+                            detectTapGestures { ort ->
+                                val rand = 8.dp.toPx()
+                                val breite = size.width.toFloat()
+                                val hoehe = size.height.toFloat()
+                                fun x(t: Long) = if (tMax == tMin) breite / 2 else
+                                    rand + (t - tMin).toFloat() / (tMax - tMin) * (breite - 2 * rand)
+                                fun y(s: Double) = rand + (1f - (s / hoechst).toFloat()) * (hoehe - 2 * rand)
+                                val naechster = serien
+                                    .flatMap { serie -> serie.punkte.map { serie to it } }
+                                    .minByOrNull { (_, p) -> (Offset(x(p.zeit), y(p.sekunden)) - ort).getDistance() }
+                                    ?.takeIf { (_, p) ->
+                                        (Offset(x(p.zeit), y(p.sekunden)) - ort).getDistance() <= 24.dp.toPx()
+                                    }
+                                // Ein zweites Tippen auf die eigene, schon
+                                // gewählte Schicht öffnet sie — der Klick im Web.
+                                val vorher = aktiv
+                                if (naechster != null && vorher != null && naechster.second == vorher.second &&
+                                    naechster.second.code != null
+                                ) {
+                                    beiSchicht(naechster.second.code!!)
+                                } else {
+                                    aktiv = naechster
+                                }
+                            }
+                        },
+                ) {
                     val rand = 8.dp.toPx()
                     fun x(t: Long) = if (tMax == tMin) size.width / 2 else
                         rand + (t - tMin).toFloat() / (tMax - tMin) * (size.width - 2 * rand)
@@ -442,7 +483,29 @@ private fun Hilfsfristverlauf(
                             drawCircle(serie.farbe, 3.5.dp.toPx(), Offset(x(p.zeit), y(p.sekunden)))
                         }
                     }
+                    aktiv?.let { (serie, p) ->
+                        val mitte = Offset(x(p.zeit), y(p.sekunden))
+                        drawCircle(serie.farbe.copy(alpha = 0.25f), 9.dp.toPx(), mitte)
+                        drawCircle(serie.farbe, 5.dp.toPx(), mitte)
+                    }
                 }
+            }
+            val gewaehlt = aktiv
+            if (gewaehlt != null) {
+                val (serie, p) = gewaehlt
+                Text(
+                    buildAnnotatedString {
+                        withStyle(SpanStyle(color = serie.farbe, fontWeight = FontWeight.Bold)) { append(serie.name) }
+                        p.ort?.let { append(" · $it") }
+                        append(" · ${verlaufsdatum(p.zeit)} · ")
+                        withStyle(SpanStyle(color = Farben.Text)) { append(dauer(p.sekunden).orEmpty()) }
+                    },
+                    style = Schrift.MonoKlein,
+                    color = Farben.TextLeise,
+                )
+                p.code?.let { code -> Textweg("Diese Schicht ansehen ›", { beiSchicht(code) }) }
+            } else {
+                SehrLeise("Punkt antippen zeigt den Wert.", mono = true)
             }
             if (serien.size > 1) {
                 Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Normal)) {
@@ -460,8 +523,10 @@ private fun Hilfsfristverlauf(
             // Punkte in einer Kurve sind am Handy kein Ziel für einen Finger.
             // Die eigenen Schichten stehen deshalb darunter als Zeile zum
             // Antippen — derselbe Weg, den im Web der Klick auf den Punkt nimmt.
-            eigene.punkte.lastOrNull()?.code?.let { code ->
-                Textweg("Letzte Schicht in der Kurve ansehen ›", { beiSchicht(code) })
+            if (gewaehlt == null) {
+                eigene.punkte.lastOrNull()?.code?.let { code ->
+                    Textweg("Letzte Schicht in der Kurve ansehen ›", { beiSchicht(code) })
+                }
             }
         }
     }
@@ -542,16 +607,31 @@ private fun Schichten(
             }, art = Knopfart.Leise, kompakt = true)
         }
     }
-    Knopf(
-        "⤓ Auszug teilen",
-        {
-            val csv = schichtenauszug(gefiltert, ::organisation)
-            val senden = Intent(Intent.ACTION_SEND).apply {
-                type = "text/csv"
-                putExtra(Intent.EXTRA_SUBJECT, "PagerSpass-Schichten")
-                putExtra(Intent.EXTRA_TEXT, csv)
+    // Der Auszug wird eine Datei, deren Ort man selbst wählt — wie der
+    // Datenauszug im Konto. Ein Teilen-Blatt mit dem CSV als Text landete in
+    // Mail-Apps als Fließtext und stieße bei langen Büchern an die
+    // Größengrenze eines Intents. Semikolon und BOM wie im Web
+    // (`SchichtenView.vue`): Excel in deutscher Umgebung liest sonst eine
+    // einzige Spalte und die Umlaute falsch.
+    var auszug by remember { mutableStateOf<String?>(null) }
+    val ablegen = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.CreateDocument("text/csv"),
+    ) { ziel ->
+        val text = auszug
+        if (ziel != null && text != null) {
+            runCatching {
+                zusammenhang.contentResolver.openOutputStream(ziel)?.use {
+                    it.write(("\uFEFF" + text).toByteArray(Charsets.UTF_8))
+                }
             }
-            runCatching { zusammenhang.startActivity(Intent.createChooser(senden, "Auszug teilen")) }
+        }
+        auszug = null
+    }
+    Knopf(
+        "⤓ Als CSV speichern",
+        {
+            auszug = schichtenauszug(gefiltert, ::organisation)
+            runCatching { ablegen.launch("pagerspass-schichten-${java.time.LocalDate.now()}.csv") }
         },
         aktiv = gefiltert.isNotEmpty(),
         kompakt = true,
@@ -706,7 +786,13 @@ private fun Buchungen(posten: List<Erfahrungsposten>?, punkte: Int?) {
 // -------------------------------------------------------------- Laufbahn
 
 /** Was eine Stufe bringt — als Zeilen an der Stufenkarte. */
-private data class Gabe(val funktion: Boolean, val text: String)
+private data class Gabe(
+    val funktion: Boolean,
+    val text: String,
+    /** Nur bei Melder-Gesichtern: die zwei Vorschautöne. */
+    val gehaeuse: Color? = null,
+    val lcd: Color? = null,
+)
 
 private fun gaben(r: Rang, daten: Dienstbuchdaten): List<Gabe> = buildList {
     when {
@@ -715,16 +801,16 @@ private fun gaben(r: Rang, daten: Dienstbuchdaten): List<Gabe> = buildList {
         r.fahrzeuge > 1 -> add(Gabe(false, "+${r.fahrzeuge} Fahrzeuggutscheine"))
     }
     daten.freischaltungen.filter { it.abLevel == r.level }.forEach { add(Gabe(true, it.bezeichnung)) }
+    zierstueckeDerStufe(r.level).forEach { add(Gabe(false, it.text, it.gehaeuse, it.lcd)) }
 }
 
 /**
  * Die Laufbahn — wo man steht, was die nächste Stufe bringt, alle Stufen als
  * Band, dann Tagesliste, Saisonwertung, Bestenliste und die Mitspieler.
  *
- * <b>Was hier fehlt</b> gegenüber dem Web: die Zierstücke je Stufe (Melder-
- * Gesichter, Rahmen, Kopfmuster, Töne). Die stehen im Web in Katalogen des
- * Clients, nicht am Server; die App zeigt Gutscheine und Funktionen, und die
- * Zierstücke findet man beim Profil, wo sie getragen werden.
+ * Die Stufenkarten tragen neben Gutscheinen und Funktionen auch die Zierstücke
+ * (Gehäuse, Melder-Gesichter, Rahmen, Kopfmuster, Wappen, Töne, Schichtkarten)
+ * — aus denselben Katalogen wie im Web, siehe `Laufbahngaben.kt`.
  */
 @Composable
 private fun Laufbahn(konto: Konto?, daten: Dienstbuchdaten) {
@@ -882,13 +968,28 @@ private fun Stufenkarte(r: Rang, konto: Konto, gaben: List<Gabe>, anteil: Float?
         SehrLeise("ab ${zahl(r.ab)} P.", mono = true)
         val sichtbar = if (gaben.size <= 3) gaben else gaben.take(2)
         sichtbar.forEach {
-            Text(
-                it.text,
-                style = Schrift.Winzig,
-                color = if (it.funktion) Farben.AmberHell else Farben.TextLeise,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(Abstand.Haar),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                // Ein Melder-Gesicht zeigt seine zwei Töne — Gehäuse und
+                // Display —, wie die kleine Probe auf der Karte im Web.
+                if (it.gehaeuse != null && it.lcd != null) {
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier.size(width = 14.dp, height = 10.dp).background(it.gehaeuse, Rundung.Winzig),
+                    ) {
+                        Box(Modifier.size(width = 9.dp, height = 5.dp).background(it.lcd, RoundedCornerShape(1.dp)))
+                    }
+                }
+                Text(
+                    it.text,
+                    style = Schrift.Winzig,
+                    color = if (it.funktion) Farben.AmberHell else Farben.TextLeise,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
         if (gaben.size > 3) SehrLeise("+${gaben.size - 2} weitere")
         if (anteil != null) {
@@ -1245,9 +1346,9 @@ private fun wochentag(beginn: String): String {
  *
  * Übertragen aus dem, was `DebriefingView.vue` mit einer `ArchivRunde` zeigt:
  * Kennzahlen, die eigenen Buchungen, die Befunde der Auswertung, jeder Einsatz
- * mit seiner Zeitachse, die Mitspieler und das Funkprotokoll. Die Karte der
- * Fahrwege fehlt — sie braucht die Bewegungsabschnitte und eine Wiedergabe,
- * die es am Handy noch nicht gibt.
+ * mit seiner Zeitachse und seinem Ablauf, das Anrufjournal, die Mitspieler und
+ * das Funkprotokoll — und die Wiedergabe der Fahrwege auf der Lagekarte
+ * (`Schichtwiedergabe.kt`).
  */
 @Composable
 fun SchichtSeite(
@@ -1282,6 +1383,8 @@ fun SchichtSeite(
                     Buchungen(posten, posten.sumOf { it.punkte })
                 }
             }
+
+            Schichtwiedergabe(runde)
 
             val befunde = runde.auswertung.befunde
             if (befunde.isNotEmpty()) {
@@ -1341,10 +1444,24 @@ fun SchichtSeite(
                                     },
                                 )
                             }
+                            // Der Ablauf des Einsatzes, Zeile für Zeile — die Chronik im Web.
+                            e.chronologie.forEach { c ->
+                                Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
+                                    SehrLeise(uhrzeit(c.zeit).orEmpty(), mono = true)
+                                    Text(
+                                        c.text,
+                                        style = Schrift.Klein,
+                                        color = Farben.TextLeise,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                }
+                            }
                         }
                     }
                 }
             }
+
+            Anrufjournal(runde)
 
             val bilanz = runde.auswertung.spieler
             if (bilanz.isNotEmpty()) {
@@ -1467,3 +1584,8 @@ private fun spanne(von: String?, bis: String?): String? {
     val minuten = java.time.Duration.between(a, b).toMinutes()
     return if (minuten >= 60) "${minuten / 60} h ${minuten % 60} min" else "$minuten min"
 }
+
+/** „24.09., 18:40" — Tag und Uhrzeit eines Punkts im Hilfsfristverlauf. */
+private fun verlaufsdatum(ms: Long): String =
+    DateTimeFormatter.ofPattern("dd.MM., HH:mm", Locale.GERMAN)
+        .format(java.time.Instant.ofEpochMilli(ms).atZone(ZoneId.systemDefault()))

@@ -100,12 +100,31 @@ class Freundeskreis(anwendung: Application) : AndroidViewModel(anwendung) {
      *
      * Der Server hat dafür kein Gedächtnis und soll auch keins bekommen — „ich
      * mag diesen Menschen nicht" muss nirgends neben seinem Namen stehen. Im Web
-     * merkt sich das der Browser; hier das Gerät, solange die App läuft, und mit
-     * „Wieder zeigen" ist es jederzeit zurückzuholen.
+     * merkt sich das der Browser; hier die Ablage des Geräts — über einen
+     * Neustart hinweg —, und mit „Wieder zeigen" ist es jederzeit zurückzuholen.
      */
-    fun weglegen(kennung: String) = _stand.update { it.copy(weggelegt = it.weggelegt + kennung) }
+    fun weglegen(kennung: String) {
+        _stand.update { it.copy(weggelegt = it.weggelegt + kennung) }
+        weggelegteMerken()
+    }
 
-    fun zurueckholen() = _stand.update { it.copy(weggelegt = emptySet()) }
+    fun zurueckholen() {
+        _stand.update { it.copy(weggelegt = emptySet()) }
+        weggelegteMerken()
+    }
+
+    private fun weggelegteMerken() {
+        val jetzt = _stand.value.weggelegt
+        viewModelScope.launch { runCatching { ablage.weggelegteVorschlaegeMerken(jetzt) } }
+    }
+
+    init {
+        // Was vor dem letzten Beenden weggelegt war, bleibt weggelegt.
+        viewModelScope.launch {
+            val gemerkt = runCatching { ablage.weggelegteVorschlaege() }.getOrDefault(emptySet())
+            if (gemerkt.isNotEmpty()) _stand.update { it.copy(weggelegt = it.weggelegt + gemerkt) }
+        }
+    }
 
     /**
      * Eine Anfrage stellen — und den Menschen gleich aus Treffer und Vorschlägen
@@ -313,7 +332,8 @@ class Freundeskreis(anwendung: Application) : AndroidViewModel(anwendung) {
     fun meldungWegnehmen() = _stand.update { it.copy(meldung = null, hinweis = null) }
 
     /** Beim Abmelden: nichts vom alten Konto behalten. */
-    fun vergessen() = _stand.update { Kreisstand(laufbahn = it.laufbahn) }
+    // Die weggelegten Vorschläge gehören dem Gerät, nicht dem Konto — wie im Web.
+    fun vergessen() = _stand.update { Kreisstand(laufbahn = it.laufbahn, weggelegt = it.weggelegt) }
 
     // --------------------------------------------------------------- Mäntel
 

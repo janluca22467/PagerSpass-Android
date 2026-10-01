@@ -234,6 +234,11 @@ data class Archiveinsatz(
     val abgeschlossenUm: String? = null,
     val dispositionszeitSekunden: Double? = null,
     val hilfsfristSekunden: Double? = null,
+    /** Wo die Lage lag — für die Wiedergabe auf der Karte. */
+    val lat: Double? = null,
+    val lon: Double? = null,
+    /** Was an diesem Einsatz geschah, Zeile für Zeile (`Archivmodelle.kt`). */
+    val chronologie: List<Chronikeintrag> = emptyList(),
 )
 
 @Serializable
@@ -274,8 +279,12 @@ data class Archivspieler(
 data class Archivfahrzeug(
     val id: String = "",
     val funkrufname: String = "",
+    val kurzname: String = "",
     val typ: String = "",
     val organisation: String = "",
+    /** Die Wache — dort steht das Fahrzeug in der Wiedergabe vor jeder Anfahrt. */
+    val wacheLat: Double? = null,
+    val wacheLon: Double? = null,
 )
 
 @Serializable
@@ -298,6 +307,10 @@ data class Archivrunde(
     val incidents: List<Archiveinsatz> = emptyList(),
     val funkprotokoll: List<Funkzeile> = emptyList(),
     val auswertung: Rundenauswertung = Rundenauswertung(),
+    /** Jedes Telefongespräch der Schicht — im Archiv vollständig. */
+    val anrufjournal: List<AnrufjournalEintrag> = emptyList(),
+    /** Die Anfahrten für die Wiedergabe (`Archivmodelle.kt`). */
+    val bewegungsabschnitte: List<Bewegungsabschnitt> = emptyList(),
 )
 
 // ---------------------------------------------------------------- Lehrgang
