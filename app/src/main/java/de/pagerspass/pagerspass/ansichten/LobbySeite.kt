@@ -965,12 +965,29 @@ private fun ColumnScope.TeilMehr(
         }
     }
 
+    // Code und Link: Wer kein Konto hat, bekommt einen Link zum Weitergeben — wer
+    // danebensteht, den Code zum Vorlesen.
+    var kopiert by remember { mutableStateOf<String?>(null) }
     Row(horizontalArrangement = Arrangement.spacedBy(Abstand.Klein)) {
         Knopf(
-            aufschrift = "Code kopieren",
-            beiDruck = { zwischenablage.setText(AnnotatedString(stand.code)) },
+            aufschrift = if (kopiert == "code") "Code kopiert" else "Code kopieren",
+            beiDruck = {
+                zwischenablage.setText(AnnotatedString(stand.code))
+                kopiert = "code"
+            },
             kompakt = true,
         )
+        if (adresse != null && stand.code.isNotBlank()) {
+            Knopf(
+                aufschrift = if (kopiert == "link") "Link kopiert" else "Beitrittslink kopieren",
+                beiDruck = {
+                    zwischenablage.setText(AnnotatedString("$adresse/?raum=${stand.code}"))
+                    kopiert = "link"
+                },
+                art = Knopfart.Leise,
+                kompakt = true,
+            )
+        }
     }
 
     // Die Rundenvorlage steht seit 5.0.0.26 im Rundendialog („Als Vorlage merken").
