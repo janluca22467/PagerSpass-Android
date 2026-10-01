@@ -93,6 +93,10 @@ data class Fahrzeugvorlage(
     val kennzahl: String = "",
     /** Was das Fahrzeug kann — die AAO fordert danach, der Abrollbehälter zeigt es. */
     val faehigkeiten: List<String> = emptyList(),
+    /** In welchen Staaten es das Fahrzeug gibt — fehlt es (älterer Server), nur Deutschland. */
+    val staaten: List<String>? = null,
+    /** Jenseits der Grenze das Wort im Rufnamen („Tank", „Pumpe") — `null` heißt: der Typ. */
+    val rufwort: String? = null,
 )
 
 // ------------------------------------------------------------------------ Shop

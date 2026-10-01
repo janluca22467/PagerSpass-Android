@@ -44,7 +44,19 @@ fun NavGraphBuilder.werkstattwege(
 ) {
     composable(UNTERSEITE_LEHRGANG) {
         val werk by werkstatt.stand.collectAsStateWithLifecycle()
+        val sitzungsstand by sitzung.stand.collectAsStateWithLifecycle()
+        val einweisungOffen = sitzungsstand.konto?.einweisungOffen == true
+        // Der Server streicht die Einweisungspflicht, sobald ein Grundlagenlehrgang
+        // bestanden ist. Die Sitzung hält das Konto von vorher; ohne Nachfragen
+        // blieben Leiste und Startseite bis zum nächsten Start verschlossen.
+        val ersetzt = werk.lehrgaenge.inhalt.orEmpty().any { it.ersetztEinweisung && it.bestanden }
+        LaunchedEffect(einweisungOffen, ersetzt) {
+            if (einweisungOffen && ersetzt) sitzung.kontoAuffrischen()
+        }
         LehrgangSeite(
+            einweisungOffen = einweisungOffen,
+            beiUebungGeschafft = { l, m -> werkstatt.uebungGeschafft(l, m) },
+            beiTheorie = { l, m, antworten, beiUrteil -> werkstatt.theorieAbgeben(l, m, antworten, beiUrteil) },
             unterrand = platz,
             stand = werk,
             beiLaden = { werkstatt.lehrgaengeLaden(neu = it) },
@@ -77,6 +89,7 @@ fun NavGraphBuilder.werkstattwege(
             beiFahren = { werkstatt.uebungRunde(it, beitreten) },
             beiLeiten = { werkstatt.uebungRunde(it, zuschauen) },
             beiZurueck = { steuerung.popBackStack() },
+            landkreise = daten.katalog.inhalt?.landkreise.orEmpty(),
         )
     }
 

@@ -318,7 +318,7 @@ data class Archivrunde(
 @Serializable
 data class Lehrgangsmodul(
     val id: String = "",
-    /** `Lesestoff`, `Lektion` oder `Pruefung`. */
+    /** `Lesestoff`, `Lektion`, `Uebung`, `Theorie` (Wissensprüfung) oder `Pruefung`. */
     val art: String = "Lesestoff",
     val titel: String = "",
     val text: String = "",
@@ -327,6 +327,12 @@ data class Lehrgangsmodul(
     val bestanden: Boolean = false,
     val schichtCode: String? = null,
     val erledigtUm: String? = null,
+    /** Nur bei einer Wissensprüfung gefüllt (`Lehrgangmodelle.kt`). */
+    val fragen: List<Theoriefrage> = emptyList(),
+    /** Nur bei einer Wissensprüfung: wie viele Fehler sie verzeiht. */
+    val erlaubteFehler: Int = 0,
+    /** Nur bei einer Übung gefüllt — mit Lösung, denn eine Übung prüft nichts. */
+    val karten: List<Lernkarte> = emptyList(),
 )
 
 @Serializable
@@ -340,6 +346,12 @@ data class Lehrgang(
     val zeugnisSchicht: String? = null,
     val gesperrt: Boolean = false,
     val voraussetzungen: List<String> = emptyList(),
+    /** Lehrgänge, von denen einer genügt — leer, sobald einer davon steht. */
+    val voraussetzungenOder: List<String> = emptyList(),
+    /** Für wen der Lehrgang der Einstieg ist: `Leitstelle`, `Fahrzeug` oder `null`. */
+    val empfohlen: String? = null,
+    /** Ob er, bestanden, die Pflicht-Ausbildungsschicht neuer Konten erledigt. */
+    val ersetztEinweisung: Boolean = false,
 )
 
 // ----------------------------------------------------------------- Übungen
