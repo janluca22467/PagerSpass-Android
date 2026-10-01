@@ -406,7 +406,7 @@ private fun Fusszeile(
             seiten = Server.AUSWAHL,
             gewaehlt = Server.AUSWAHL.firstOrNull { it == server } ?: Server.AUSWAHL.first(),
             beiWahl = beiServerWechsel,
-            aufschrift = { adresse -> adresse.substringAfter("://").substringBefore(":") },
+            aufschrift = { adresse -> Server.name(adresse) },
             modifier = Modifier.fillMaxWidth(),
         )
         Text(

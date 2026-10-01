@@ -56,7 +56,7 @@ sealed interface Tiefziel {
 }
 
 /** Die Wirte, deren Links die App annimmt — dieselben wie im Manifest. */
-private val WIRTE = setOf("pagerspass.de", "www.pagerspass.de", "beta.pagerspass.de")
+private val WIRTE = setOf("pagerspass.de", "www.pagerspass.de", "beta.pagerspass.de", "v6.pagerspass.de")
 
 /**
  * Was eine Adresse meint — `null`, wenn sie nicht von uns ist oder die App mit

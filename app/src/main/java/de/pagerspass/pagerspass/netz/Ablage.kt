@@ -199,6 +199,12 @@ object Server {
     const val BETA = "https://beta.pagerspass.de"
 
     /**
+     * Der Zweigstand V6 (`deploy.sh --ziel v6`) — erreicht den Release nie, eigene
+     * Daten wie die Beta.
+     */
+    const val V6 = "https://v6.pagerspass.de"
+
+    /**
      * Die API auf der Entwicklungsmaschine.
      *
      * `localhost` und nicht `10.0.2.2`: Auf dieser Maschine bleibt der SYN vom
@@ -213,6 +219,25 @@ object Server {
     val VORGABE: String
         get() = if (de.pagerspass.pagerspass.BuildConfig.DEBUG) ENTWICKLUNG else BETRIEB
 
-    /** Die Auswahl, die die Anmeldeseite anbietet. */
-    val AUSWAHL = listOf(BETRIEB, BETA, ENTWICKLUNG)
+    /**
+     * Die Auswahl, die die Anmeldeseite anbietet. Die Entwicklungsmaschine nur im
+     * Debug-Bau: Auf einem Telefon im Feld ist `localhost` nie erreichbar, und ein
+     * Knopf, der immer ins Leere führt, ist schlechter als keiner.
+     */
+    val AUSWAHL: List<String>
+        get() = listOfNotNull(
+            BETRIEB,
+            BETA,
+            V6,
+            ENTWICKLUNG.takeIf { de.pagerspass.pagerspass.BuildConfig.DEBUG },
+        )
+
+    /** Wie ein Server in der Auswahl heißt. */
+    fun name(adresse: String): String = when (adresse.trimEnd('/')) {
+        BETRIEB -> "Normal"
+        BETA -> "Beta"
+        V6 -> "V6"
+        ENTWICKLUNG -> "Entwicklung"
+        else -> adresse.substringAfter("://").substringBefore(":")
+    }
 }

@@ -89,6 +89,7 @@
                 <data android:host="pagerspass.de" />
                 <data android:host="www.pagerspass.de" />
                 <data android:host="beta.pagerspass.de" />
+                <data android:host="v6.pagerspass.de" />
                 <data android:path="/" />
                 <data android:pathPrefix="/code/" />
                 <data android:pathPrefix="/funk/" />
